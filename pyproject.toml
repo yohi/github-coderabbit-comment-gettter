@@ -1,17 +1,40 @@
 [project]
-name = "github-coderabbit-comment"
-version = "0.1.0"
-description = "GitHubプルリクエストのインラインコメントを取得するツール"
+name = "github-coderabbit-comment-getter"
+version = "1.0.0"
+description = "GitHub PR レビューコメントからAIエージェント用プロンプトを抽出するツール"
+authors = [
+    {name = "yohi", email = "yohi@example.com"}
+]
+readme = "README.md"
+license = {text = "MIT"}
 dependencies = [
     "requests>=2.31.0",
-    "python-dotenv>=1.0.0",
 ]
 requires-python = ">=3.8"
+keywords = ["github", "code-review", "ai-agents", "coderabbit"]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Topic :: Utilities",
+]
+
+[project.urls]
+Homepage = "https://github.com/yohi/github-coderabbit-comment-getter"
+Repository = "https://github.com/yohi/github-coderabbit-comment-getter"
+Issues = "https://github.com/yohi/github-coderabbit-comment-getter/issues"
 
 [project.scripts]
-gh-comments = "github_comments:main"
-gh-comments-simple = "github_comments_simple:main"
-gh-review-prompts = "github_review_prompts:main"
+gh-review-prompts = "github_review_prompts_clean:main"
 
 [build-system]
 requires = ["hatchling"]
