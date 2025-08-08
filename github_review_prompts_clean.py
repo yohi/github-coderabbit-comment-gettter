@@ -110,86 +110,9 @@ class GitHubClient:
     def get_accurate_resolution_status(
         self, comment: Dict, owner: str, repo: str, pull_number: int
     ) -> bool:
-        """GitHub APIを使用してより正確な解決状態を判定"""
-
-        # Method 1: in_reply_to_id を使った返信ベースの解決判定
-        # 元のコメントに対する返信があり、その返信に解決キーワードがある場合
-        comment_id = comment.get("id")
-        if comment_id and self._check_resolution_via_replies(owner, repo, pull_number, comment_id):
-            return True
-
-        # Method 2: conversation_resolvedフィールドの確認（利用可能な場合のみ）
-        if comment.get("conversation_resolved") is True:
-            return True
-
-        # Method 3: レビュー詳細APIを使用した判定
-        comment_review_id = comment.get("pull_request_review_id")
-        if comment_review_id:
-            review_detail = self.get_pr_review_detail(
-                owner, repo, pull_number, comment_review_id
-            )
-
-            if review_detail:
-                # レビューの状態を確認
-                review_state = review_detail.get("state")
-
-                # APPROVEDレビューのコメントは基本的に解決済み
-                if review_state == "APPROVED":
-                    return True
-
-                # レビューのコメント一覧を確認
-                review_comments = review_detail.get("comments", [])
-                for review_comment in review_comments:
-                    if review_comment.get("id") == comment.get("id"):
-                        # 個別コメントの状態をチェック
-                        if review_comment.get("resolved") is True:
-                            return True
-
-        # Method 4: Suggestionコメントの特別扱い
-        body = comment.get("body", "").lower()
-        suggestion_indicators = [
-            "committable suggestion",
-            "suggestion_start",
-            "📝 committable suggestion",
-            "<!-- suggestion_start -->",
-        ]
-
-        # Suggestionコメントは解決済みとしては扱わない
-        # （GitHubでは通常「未解決」として表示される）
-        if any(indicator in body for indicator in suggestion_indicators):
-            return False
-
-        # Method 5: 明示的な解決キーワード + 編集時刻判定
-        resolved_keywords = [
-            "resolved",
-            "解決",
-            "修正済み",
-            "fixed",
-            "done",
-            "完了",
-            "対応済み",
-            "対応完了",
-            "addressed",
-            "implemented",
-            "✅",
-            "☑️",
-            "[x]",
-            "closed",
-        ]
-
-        for keyword in resolved_keywords:
-            if keyword in body:
-                return True
-
-        # Method 6: 編集時刻による判定（コメントが編集された場合、解決の可能性）
-        created_at = comment.get("created_at")
-        updated_at = comment.get("updated_at")
-        if created_at and updated_at and created_at != updated_at:
-            # 編集されたコメントで特定パターンがある場合は解決済みと判定
-            updated_indicators = ["edit:", "update:", "追記:", "※", "追記）"]
-            if any(indicator in body for indicator in updated_indicators):
-                return True
-
+        """GraphQL API以外の解決判定は無効化 - 常にFalseを返す"""
+        # GraphQL API以外での解決判定は無効化
+        # 全ての解決判定はGraphQL APIの結果のみに依存する
         return False
 
     def _check_resolution_via_replies(self, owner: str, repo: str, pull_number: int, comment_id: int) -> bool:
@@ -222,10 +145,14 @@ class GitHubClient:
         except Exception:
             return False
 
-    def get_resolved_comments_via_graphql(self, owner: str, repo: str, pull_number: int) -> set:
-        """GraphQL APIを使用して解決済みコメントIDを取得（推奨）"""
+    def get_resolved_comments_via_graphql(self, owner: str, repo: str, pull_number: int) -> Tuple[set, Dict[int, str]]:
+        """GraphQL APIを使用して解決済みコメントIDとコメント本文を取得（推奨）"""
+        print(f"GraphQL関数が呼び出されました: {owner}/{repo}#{pull_number}", file=sys.stderr)
         if not self.token:
-            return set()
+            print("GitHubトークンがありません", file=sys.stderr)
+            return set(), {}
+        
+        print(f"GitHubトークンあり: {self.token[:20]}...", file=sys.stderr)
 
         query = """
         query($owner: String!, $repo: String!, $number: Int!) {
@@ -237,6 +164,7 @@ class GitHubClient:
                   comments(first: 50) {
                     nodes {
                       databaseId
+                      body
                       author {
                         login
                       }
@@ -256,6 +184,7 @@ class GitHubClient:
         }
 
         try:
+            print(f"GraphQL APIを呼び出し中...", file=sys.stderr)
             response = self.session.post(
                 "https://api.github.com/graphql",
                 json={"query": query, "variables": variables},
@@ -264,10 +193,12 @@ class GitHubClient:
                     "Content-Type": "application/json"
                 }
             )
+            print(f"GraphQL API レスポンス: {response.status_code}", file=sys.stderr)
 
             if response.status_code == 200:
                 data = response.json()
                 resolved_comment_ids = set()
+                comment_bodies = {}  # コメントIDとbodyの対応
 
                 if "data" in data and data["data"]["repository"]["pullRequest"]:
                     threads = data["data"]["repository"]["pullRequest"]["reviewThreads"]["nodes"]
@@ -289,30 +220,30 @@ class GitHubClient:
                                 if comment["databaseId"]:
                                     resolved_comment_ids.add(comment["databaseId"])
 
+                        # 全コメントのbodyを保存（解決済みでなくても）
+                        for comment in thread["comments"]["nodes"]:
+                            if comment["databaseId"] and comment.get("body"):
+                                comment_bodies[comment["databaseId"]] = comment["body"]
 
+                    print(f"GraphQL APIで {coderabbit_resolved_count} 個のCodeRabbit解決済みスレッドを検出", file=sys.stderr)
+                    print(f"GraphQL APIで {len(comment_bodies)} 個のコメント本文を取得", file=sys.stderr)
 
-                return resolved_comment_ids
+                return resolved_comment_ids, comment_bodies
+
+            else:
+                print(f"GraphQL API エラー: {response.status_code} - {response.text}", file=sys.stderr)
 
         except Exception as e:
-            print(f"GraphQL API エラー: {e}", file=sys.stderr)
+            print(f"GraphQL API 例外エラー: {e}", file=sys.stderr)
 
-        return set()
+        return set(), {}
 
 
 def extract_ai_agent_prompt(comment_body: str) -> Optional[str]:
     """コメント本文からPrompt for AI Agentsブロックを抽出"""
 
-    # Suggestionコメントは除外
-    body_lower = comment_body.lower()
-    suggestion_indicators = [
-        "committable suggestion",
-        "suggestion_start",
-        "📝 committable suggestion",
-        "<!-- suggestion_start -->",
-    ]
-    for indicator in suggestion_indicators:
-        if indicator in body_lower:
-            return None
+    # AI用プロンプトがあるものはsuggestionに関係なくRV指摘として扱う
+    # Suggestionコメントの除外処理は削除
 
     # Prompt for AI Agentsブロックを検索
     patterns = [
@@ -345,17 +276,8 @@ def format_review_prompt(comment: Dict) -> Optional[Tuple[str, str]]:
     path = comment.get("path", "")
     line = comment.get("line") or comment.get("original_line", "")
 
-    # Suggestionコメントは除外
-    body_lower = body.lower()
-    suggestion_indicators = [
-        "committable suggestion",
-        "suggestion_start",
-        "📝 committable suggestion",
-        "<!-- suggestion_start -->",
-    ]
-    for indicator in suggestion_indicators:
-        if indicator in body_lower:
-            return None
+    # AI用プロンプトがあるものはsuggestionに関係なくRV指摘として扱う
+    # Suggestionコメントの除外処理は削除
 
     # Prompt for AI Agentsブロックを抽出
     prompt = extract_ai_agent_prompt(body)
@@ -482,9 +404,12 @@ def main():
 
         # インラインコメント（レビューコメント）を取得
         review_comments = client.get_pr_review_comments(owner, repo, pull_number)
+        print(f"取得したコメント数: {len(review_comments)}", file=sys.stderr)
 
-        # GraphQL APIで解決済みコメントIDを取得（利用可能な場合）
-        resolved_comment_ids_graphql = client.get_resolved_comments_via_graphql(owner, repo, pull_number)
+        # GraphQL APIで解決済みコメントIDとコメント本文を取得（利用可能な場合）
+        print("GraphQL API呼び出し開始...", file=sys.stderr)
+        resolved_comment_ids_graphql, graphql_comment_bodies = client.get_resolved_comments_via_graphql(owner, repo, pull_number)
+        print(f"GraphQL API完了: resolved_ids={len(resolved_comment_ids_graphql)}, bodies={len(graphql_comment_bodies)}", file=sys.stderr)
 
 
 
@@ -510,8 +435,24 @@ def main():
                     # 完全なコメント本文を表示
                     full_body = comment.get("body", "")
                     print("完全なコメント本文:", file=sys.stderr)
-                    print(f"{full_body[:500]}...", file=sys.stderr)
+                    print(full_body, file=sys.stderr)  # 完全なコメントを表示
                     print(f"文字数: {len(full_body)}", file=sys.stderr)
+                    
+                    # AI用プロンプト抽出テスト
+                    try:
+                        extracted_prompt = extract_ai_agent_prompt(full_body)
+                        print(f"AI用プロンプト抽出結果: {extracted_prompt}", file=sys.stderr)
+                    except Exception as e:
+                        print(f"プロンプト抽出エラー: {e}", file=sys.stderr)
+                    
+                    # 完全なAPIレスポンスの表示
+                    try:
+                        print("=== 完全なAPIレスポンス ===", file=sys.stderr)
+                        import json
+                        print(json.dumps(comment, indent=2, ensure_ascii=False), file=sys.stderr)
+                        print("=== APIレスポンス終了 ===", file=sys.stderr)
+                    except Exception as e:
+                        print(f"APIレスポンス表示エラー: {e}", file=sys.stderr)
 
                     # 解決状況をAPI基盤で判定
                     is_resolved = client.get_accurate_resolution_status(
@@ -522,23 +463,26 @@ def main():
 
                 # 解決済みコメントをスキップ（オプションが指定された場合）
                 if exclude_resolved and not include_resolved:
-                    # GraphQL APIの結果を優先使用
+                    # GraphQL APIの結果のみを使用
                     comment_id = comment.get("id")
-                    is_resolved = False
-
+                    
                     if comment_id in resolved_comment_ids_graphql:
-                        is_resolved = True
-                    else:
-                        # REST API基盤の解決状況判定をフォールバック
-                        is_resolved = client.get_accurate_resolution_status(
-                            comment, owner, repo, pull_number
-                        )
-
-                    if is_resolved:
                         resolved_count += 1
                         continue
 
-                prompt_info = format_review_prompt(comment)
+                # GraphQLから取得した完全なコメント本文があれば使用
+                comment_id = comment.get("id")
+                if comment_id in graphql_comment_bodies:
+                    # GraphQLの完全なコメント本文を使用
+                    comment_with_full_body = comment.copy()
+                    comment_with_full_body["body"] = graphql_comment_bodies[comment_id]
+                    prompt_info = format_review_prompt(comment_with_full_body)
+                    print(f"GraphQL本文でコメント{comment_id}を処理: {prompt_info is not None}", file=sys.stderr)
+                else:
+                    # REST APIのコメント本文を使用
+                    prompt_info = format_review_prompt(comment)
+                    print(f"REST本文でコメント{comment_id}を処理: {prompt_info is not None}", file=sys.stderr)
+                    
                 if prompt_info:
                     prompts.append(prompt_info)
             except Exception as e:
@@ -629,68 +573,27 @@ def main():
         if analyze_all:
             print("\n=== 全コメント解決状況分析（API基盤判定） ===", file=sys.stderr)
             resolved_count_analysis = 0
-            suggestion_count = 0
             api_resolved_count = 0
             keyword_resolved_count = 0
 
             for i, comment in enumerate(review_comments):
                 comment_id = comment.get("id")
+                body = comment.get("body", "").lower()
 
-                # GraphQL APIの結果を優先して、REST APIをフォールバックとして使用
+                # GraphQL APIの結果のみを使用（他の判定ロジックは無効化）
                 if comment_id in resolved_comment_ids_graphql:
                     is_resolved = True
                 else:
-                    # REST API基盤の解決状況判定をフォールバック
-                    is_resolved = client.get_accurate_resolution_status(
-                        comment, owner, repo, pull_number
-                    )
+                    # GraphQL API以外での判定は無効化
+                    is_resolved = False
 
                 # 解決理由を分析
-                body = comment.get("body", "").lower()
                 resolution_reason = "none"
 
-                # Suggestion check
-                suggestion_indicators = [
-                    "committable suggestion",
-                    "suggestion_start",
-                    "📝 committable suggestion",
-                    "<!-- suggestion_start -->",
-                ]
-                if any(ind in body for ind in suggestion_indicators):
-                    resolution_reason = "suggestion"
-                    suggestion_count += 1
-                elif is_resolved:
-                    # conversation_resolved チェック
-                    if comment.get("conversation_resolved") is True:
-                        resolution_reason = "api_conversation_resolved"
-                        api_resolved_count += 1
-                    else:
-                        # キーワード解決
-                        resolved_keywords = [
-                            "resolved",
-                            "解決",
-                            "修正済み",
-                            "fixed",
-                            "done",
-                            "完了",
-                            "対応済み",
-                            "対応完了",
-                            "addressed",
-                            "implemented",
-                            "✅",
-                            "☑️",
-                            "[x]",
-                            "closed",
-                        ]
-                        keyword_found = any(
-                            keyword in body for keyword in resolved_keywords
-                        )
-                        if keyword_found:
-                            resolution_reason = "keyword"
-                            keyword_resolved_count += 1
-                        else:
-                            resolution_reason = "api_review_status"
-                            api_resolved_count += 1
+                # GraphQL APIで解決済みとして検出されているかチェック
+                if comment_id in resolved_comment_ids_graphql:
+                    resolution_reason = "graphql_resolved"
+                    api_resolved_count += 1
 
                 if is_resolved:
                     resolved_count_analysis += 1
@@ -703,8 +606,8 @@ def main():
                 )
 
             print("\n解決済み判定の内訳（API基盤）:", file=sys.stderr)
-            print(f"  suggestion: {suggestion_count}件", file=sys.stderr)
-            print(f"  api_based: {api_resolved_count}件", file=sys.stderr)
+            print(f"  graphql_resolved: {len(resolved_comment_ids_graphql)}件", file=sys.stderr)
+            print(f"  rest_api_based: {api_resolved_count}件", file=sys.stderr)
             print(f"  keyword: {keyword_resolved_count}件", file=sys.stderr)
             print(f"合計解決済み: {resolved_count_analysis}件", file=sys.stderr)
             print(f"総コメント数: {len(review_comments)}件", file=sys.stderr)
