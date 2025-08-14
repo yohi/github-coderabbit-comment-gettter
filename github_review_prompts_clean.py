@@ -42,30 +42,84 @@ class GitHubClient:
         return owner, repo, int(pull_number)
 
     def get_pr_reviews(self, owner: str, repo: str, pull_number: int) -> List[Dict]:
-        """プルリクエストのレビュー一覧を取得"""
-        url = f"{self.base_url}/repos/{owner}/{repo}/pulls/" f"{pull_number}/reviews"
-
-        try:
-            response = self.session.get(url)
-            response.raise_for_status()
-            return response.json()
-        except requests.exceptions.RequestException as e:
-            print(f"レビュー取得エラー: {e}", file=sys.stderr)
-            return []
+        """プルリクエストのレビュー一覧を全件取得"""
+        all_reviews = []
+        page = 1
+        per_page = 100  # GitHub APIの最大値
+        
+        print(f"REST API: レビュー取得を開始（ページネーション対応）", file=sys.stderr)
+        
+        while True:
+            url = f"{self.base_url}/repos/{owner}/{repo}/pulls/{pull_number}/reviews"
+            params = {
+                "page": page,
+                "per_page": per_page
+            }
+            
+            try:
+                response = self.session.get(url, params=params)
+                response.raise_for_status()
+                page_reviews = response.json()
+                
+                if not page_reviews:  # 空のページに到達したら終了
+                    break
+                    
+                all_reviews.extend(page_reviews)
+                print(f"REST API: ページ {page} で {len(page_reviews)} レビューを取得", file=sys.stderr)
+                
+                # 取得したレビュー数がper_pageより少ない場合、最後のページ
+                if len(page_reviews) < per_page:
+                    break
+                    
+                page += 1
+                
+            except requests.exceptions.RequestException as e:
+                print(f"レビュー取得エラー (ページ {page}): {e}", file=sys.stderr)
+                break
+        
+        print(f"REST API: 合計 {len(all_reviews)} レビューを取得完了", file=sys.stderr)
+        return all_reviews
 
     def get_pr_review_comments(
         self, owner: str, repo: str, pull_number: int
     ) -> List[Dict]:
-        """プルリクエストのインラインコメント（レビューコメント）を取得"""
-        url = f"{self.base_url}/repos/{owner}/{repo}/pulls/" f"{pull_number}/comments"
-
-        try:
-            response = self.session.get(url)
-            response.raise_for_status()
-            return response.json()
-        except requests.exceptions.RequestException as e:
-            print(f"コメント取得エラー: {e}", file=sys.stderr)
-            return []
+        """プルリクエストのインラインコメント（レビューコメント）を全件取得"""
+        all_comments = []
+        page = 1
+        per_page = 100  # GitHub APIの最大値
+        
+        print(f"REST API: コメント取得を開始（ページネーション対応）", file=sys.stderr)
+        
+        while True:
+            url = f"{self.base_url}/repos/{owner}/{repo}/pulls/{pull_number}/comments"
+            params = {
+                "page": page,
+                "per_page": per_page
+            }
+            
+            try:
+                response = self.session.get(url, params=params)
+                response.raise_for_status()
+                page_comments = response.json()
+                
+                if not page_comments:  # 空のページに到達したら終了
+                    break
+                    
+                all_comments.extend(page_comments)
+                print(f"REST API: ページ {page} で {len(page_comments)} コメントを取得", file=sys.stderr)
+                
+                # 取得したコメント数がper_pageより少ない場合、最後のページ
+                if len(page_comments) < per_page:
+                    break
+                    
+                page += 1
+                
+            except requests.exceptions.RequestException as e:
+                print(f"コメント取得エラー (ページ {page}): {e}", file=sys.stderr)
+                break
+        
+        print(f"REST API: 合計 {len(all_comments)} コメントを取得完了", file=sys.stderr)
+        return all_comments
 
     def get_single_comment_detail(
         self, owner: str, repo: str, comment_id: int
@@ -146,7 +200,7 @@ class GitHubClient:
             return False
 
     def get_resolved_comments_via_graphql(self, owner: str, repo: str, pull_number: int) -> Tuple[set, Dict[int, str]]:
-        """GraphQL APIを使用して解決済みコメントIDとコメント本文を取得（推奨）"""
+        """GraphQL APIを使用して解決済みコメントIDとコメント本文を取得（推奨・全件取得対応）"""
         print(f"GraphQL関数が呼び出されました: {owner}/{repo}#{pull_number}", file=sys.stderr)
         if not self.token:
             print("GitHubトークンがありません", file=sys.stderr)
@@ -154,89 +208,129 @@ class GitHubClient:
         
         print(f"GitHubトークンあり: {self.token[:20]}...", file=sys.stderr)
 
-        query = """
-        query($owner: String!, $repo: String!, $number: Int!) {
-          repository(owner: $owner, name: $repo) {
-            pullRequest(number: $number) {
-              reviewThreads(first: 100) {
-                nodes {
-                  isResolved
-                  comments(first: 50) {
+        resolved_comment_ids = set()
+        comment_bodies = {}
+        coderabbit_resolved_count = 0
+        total_threads_processed = 0
+        
+        # ページネーションを使用して全件取得
+        has_next_page = True
+        after_cursor = None
+        page_count = 0
+
+        while has_next_page:
+            page_count += 1
+            print(f"GraphQL API ページ {page_count} を取得中...", file=sys.stderr)
+            
+            query = """
+            query($owner: String!, $repo: String!, $number: Int!, $after: String) {
+              repository(owner: $owner, name: $repo) {
+                pullRequest(number: $number) {
+                  reviewThreads(first: 100, after: $after) {
+                    pageInfo {
+                      hasNextPage
+                      endCursor
+                    }
                     nodes {
-                      databaseId
-                      body
-                      author {
-                        login
+                      isResolved
+                      comments(first: 50) {
+                        pageInfo {
+                          hasNextPage
+                          endCursor
+                        }
+                        nodes {
+                          databaseId
+                          body
+                          author {
+                            login
+                          }
+                        }
                       }
                     }
                   }
                 }
               }
             }
-          }
-        }
-        """
+            """
 
-        variables = {
-            "owner": owner,
-            "repo": repo,
-            "number": pull_number
-        }
+            variables = {
+                "owner": owner,
+                "repo": repo,
+                "number": pull_number,
+                "after": after_cursor
+            }
 
-        try:
-            print(f"GraphQL APIを呼び出し中...", file=sys.stderr)
-            response = self.session.post(
-                "https://api.github.com/graphql",
-                json={"query": query, "variables": variables},
-                headers={
-                    "Authorization": f"Bearer {self.token}",
-                    "Content-Type": "application/json"
-                }
-            )
-            print(f"GraphQL API レスポンス: {response.status_code}", file=sys.stderr)
+            try:
+                response = self.session.post(
+                    "https://api.github.com/graphql",
+                    json={"query": query, "variables": variables},
+                    headers={
+                        "Authorization": f"Bearer {self.token}",
+                        "Content-Type": "application/json"
+                    }
+                )
 
-            if response.status_code == 200:
-                data = response.json()
-                resolved_comment_ids = set()
-                comment_bodies = {}  # コメントIDとbodyの対応
+                if response.status_code == 200:
+                    data = response.json()
+                    
+                    if "data" in data and data["data"]["repository"]["pullRequest"]:
+                        review_threads = data["data"]["repository"]["pullRequest"]["reviewThreads"]
+                        threads = review_threads["nodes"]
+                        page_info = review_threads["pageInfo"]
+                        
+                        # ページネーション情報を更新
+                        has_next_page = page_info["hasNextPage"]
+                        after_cursor = page_info["endCursor"]
+                        
+                        print(f"ページ {page_count}: {len(threads)} スレッドを処理中...", file=sys.stderr)
+                        total_threads_processed += len(threads)
 
-                if "data" in data and data["data"]["repository"]["pullRequest"]:
-                    threads = data["data"]["repository"]["pullRequest"]["reviewThreads"]["nodes"]
-                    coderabbit_resolved_count = 0
+                        for thread in threads:
+                            # スレッド内のコメントもページネーションが必要な場合があるが、
+                            # 通常は50コメント以下なので基本的には1ページで済む
+                            comments_data = thread["comments"]
+                            
+                            # スレッド内コメントのページネーションチェック
+                            if comments_data["pageInfo"]["hasNextPage"]:
+                                print(f"注意: スレッド内に50を超えるコメントがあります。一部のコメントが取得されていない可能性があります。", file=sys.stderr)
+                            
+                            if thread["isResolved"]:
+                                # CodeRabbitのコメントを含むスレッドかチェック
+                                has_coderabbit = any(
+                                    "coderabbitai" in comment.get("author", {}).get("login", "").lower()
+                                    for comment in comments_data["nodes"]
+                                    if comment.get("author")
+                                )
 
-                    for thread in threads:
-                        if thread["isResolved"]:
-                            # CodeRabbitのコメントを含むスレッドかチェック
-                            has_coderabbit = any(
-                                "coderabbitai" in comment.get("author", {}).get("login", "").lower()
-                                for comment in thread["comments"]["nodes"]
-                                if comment.get("author")
-                            )
+                                if has_coderabbit:
+                                    coderabbit_resolved_count += 1
 
-                            if has_coderabbit:
-                                coderabbit_resolved_count += 1
+                                for comment in comments_data["nodes"]:
+                                    if comment["databaseId"]:
+                                        resolved_comment_ids.add(comment["databaseId"])
 
-                            for comment in thread["comments"]["nodes"]:
-                                if comment["databaseId"]:
-                                    resolved_comment_ids.add(comment["databaseId"])
+                            # 全コメントのbodyを保存（解決済みでなくても）
+                            for comment in comments_data["nodes"]:
+                                if comment["databaseId"] and comment.get("body"):
+                                    comment_bodies[comment["databaseId"]] = comment["body"]
 
-                        # 全コメントのbodyを保存（解決済みでなくても）
-                        for comment in thread["comments"]["nodes"]:
-                            if comment["databaseId"] and comment.get("body"):
-                                comment_bodies[comment["databaseId"]] = comment["body"]
+                    else:
+                        print(f"GraphQL API データ構造エラー: {data}", file=sys.stderr)
+                        break
 
-                    print(f"GraphQL APIで {coderabbit_resolved_count} 個のCodeRabbit解決済みスレッドを検出", file=sys.stderr)
-                    print(f"GraphQL APIで {len(comment_bodies)} 個のコメント本文を取得", file=sys.stderr)
+                else:
+                    print(f"GraphQL API エラー: {response.status_code} - {response.text}", file=sys.stderr)
+                    break
 
-                return resolved_comment_ids, comment_bodies
+            except Exception as e:
+                print(f"GraphQL API 例外エラー: {e}", file=sys.stderr)
+                break
 
-            else:
-                print(f"GraphQL API エラー: {response.status_code} - {response.text}", file=sys.stderr)
+        print(f"GraphQL API 完了: {page_count}ページ, {total_threads_processed}スレッド処理", file=sys.stderr)
+        print(f"GraphQL APIで {coderabbit_resolved_count} 個のCodeRabbit解決済みスレッドを検出", file=sys.stderr)
+        print(f"GraphQL APIで {len(comment_bodies)} 個のコメント本文を取得", file=sys.stderr)
 
-        except Exception as e:
-            print(f"GraphQL API 例外エラー: {e}", file=sys.stderr)
-
-        return set(), {}
+        return resolved_comment_ids, comment_bodies
 
 
 def extract_ai_agent_prompt(comment_body: str) -> Optional[str]:
@@ -489,9 +583,15 @@ def main():
                 print(f"コメント処理中にエラー: {e}", file=sys.stderr)
                 continue
 
+        # 未解決コメント数を計算
+        unresolved_count = len(prompts)
+        
         if exclude_resolved and resolved_count > 0:
             msg = f"解決済みコメント {resolved_count} 件をスキップしました"
             print(msg, file=sys.stderr)
+        
+        # 未解決コメント数を常に表示
+        print(f"未解決（リスト化）コメント数: {unresolved_count} 件", file=sys.stderr)
 
         # 結果を整形
         output_lines = []
@@ -605,11 +705,14 @@ def main():
                     file=sys.stderr,
                 )
 
+            unresolved_count_analysis = len(review_comments) - resolved_count_analysis
+            
             print("\n解決済み判定の内訳（API基盤）:", file=sys.stderr)
             print(f"  graphql_resolved: {len(resolved_comment_ids_graphql)}件", file=sys.stderr)
             print(f"  rest_api_based: {api_resolved_count}件", file=sys.stderr)
             print(f"  keyword: {keyword_resolved_count}件", file=sys.stderr)
             print(f"合計解決済み: {resolved_count_analysis}件", file=sys.stderr)
+            print(f"未解決コメント: {unresolved_count_analysis}件", file=sys.stderr)
             print(f"総コメント数: {len(review_comments)}件", file=sys.stderr)
             print("=" * 50, file=sys.stderr)
 
