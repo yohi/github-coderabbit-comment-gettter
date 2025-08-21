@@ -364,7 +364,7 @@ class CLIInterface:
             self.logger.info("コメント処理開始...")
             processor = CommentProcessor(github_client)
             prompts, stats = processor.process_comments(
-                review_comments, resolved_ids, graphql_bodies, config.include_resolved
+                review_comments, resolved_ids, graphql_bodies, config.include_resolved, pr_basic_info
             )
 
             # フィルタリング適用
@@ -376,7 +376,7 @@ class CLIInterface:
 
             # プロンプト生成
             self.logger.info("AIプロンプト生成開始...")
-            prompt_generator = AIPromptGenerator(config.persona)
+            prompt_generator = AIPromptGenerator(config.persona, config.github_token)
 
             # メタデータ準備
             metadata = {

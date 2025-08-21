@@ -251,6 +251,71 @@ def extract_problem_description(body: str) -> str:
     return 'レビューコメントの内容を確認してください'
 
 
+def generate_coderabbit_curl_commands_for_comment(owner: str, repo: str, pr_number: int, comment_id: int, token: str) -> str:
+    """特定のコメントに対するCodeRabbit返信用のcurlコマンドを生成"""
+    templates = {
+        "対応不要": f"@coderabbitai この指摘について確認しましたが、[技術的根拠]により対応不要と判断します。問題がなければこの課題を解決済みにしてください。ただし、この課題のみを解決済みにし、他の課題をすべて解決済みにしないよう注意してください。",
+        "対応完了": f"@coderabbitai ご指摘いただいた点を修正しました。[修正内容]を実施済みです。問題がなければこの課題を解決済みにしてください。ただし、この課題のみを解決済みにし、他の課題をすべて解決済みにしないよう注意してください。",
+        "要確認": f"@coderabbitai この指摘について追加で確認したい点があります：[確認したい内容]。詳細な説明をお願いします。"
+    }
+    
+    curl_lines = []
+    curl_lines.append(f"# コメントID: {comment_id} に対する返信用curlコマンド")
+    curl_lines.append("")
+    
+    for action, message in templates.items():
+        # JSONデータの準備（エスケープ処理）
+        import json
+        data = {
+            "body": message,
+            "in_reply_to": comment_id  # 特定のコメントに返信
+        }
+        data_json = json.dumps(data, ensure_ascii=False).replace('"', '\\"')
+        
+        curl_command = f'''# {action}の場合
+curl -X POST \\
+  "https://api.github.com/repos/{owner}/{repo}/pulls/{pr_number}/comments" \\
+  -H "Authorization: token {token}" \\
+  -H "Accept: application/vnd.github.v3+json" \\
+  -H "Content-Type: application/json" \\
+  -d "{data_json}"'''
+        
+        curl_lines.append(curl_command)
+    
+    return "\n\n".join(curl_lines)
+
+
+def generate_general_coderabbit_curl_commands(owner: str, repo: str, pr_number: int, token: str) -> str:
+    """PR全体への一般的なCodeRabbit返信用のcurlコマンドを生成"""
+    templates = {
+        "全体完了": f"@coderabbitai すべてのレビューコメントを確認し、必要な対応を完了しました。各コメントに個別に返信していますので、ご確認ください。",
+        "部分対応": f"@coderabbitai レビューコメントを確認しました。対応が必要な項目について修正を行い、対応不要と判断した項目については個別に理由をお伝えしています。"
+    }
+    
+    curl_lines = []
+    curl_lines.append("# PR全体に対する返信用curlコマンド（必要に応じて使用）")
+    curl_lines.append("")
+    
+    for action, message in templates.items():
+        import json
+        data = {
+            "body": message
+        }
+        data_json = json.dumps(data, ensure_ascii=False).replace('"', '\\"')
+        
+        curl_command = f'''# {action}の場合
+curl -X POST \\
+  "https://api.github.com/repos/{owner}/{repo}/issues/{pr_number}/comments" \\
+  -H "Authorization: token {token}" \\
+  -H "Accept: application/vnd.github.v3+json" \\
+  -H "Content-Type: application/json" \\
+  -d "{data_json}"'''
+        
+        curl_lines.append(curl_command)
+    
+    return "\n\n".join(curl_lines)
+
+
 def get_default_review_prompt(no_confirm: bool = False, auto_commit: bool = False) -> str:
     """デフォルトレビュープロンプト"""
     base_prompt = """# CodeRabbit レビューコメント対応プロンプト
@@ -469,8 +534,18 @@ def main():
     # プロンプト生成
     review_prompt = get_default_review_prompt(args.no_confirm, args.auto_commit)
     
+    # PR全体への一般的なcurlコマンドを生成
+    general_curl_commands = generate_general_coderabbit_curl_commands(owner, repo, pr_number, token)
+    
     output = []
     output.append(review_prompt)
+    output.append("")
+    output.append("")
+    output.append("## 🔧 PR全体への返信用curlコマンド")
+    output.append("")
+    output.append("レビュー対応完了後、必要に応じて以下のcurlコマンドを使用してください：")
+    output.append("")
+    output.append(general_curl_commands)
     output.append("")
     output.append("")
     output.append("## レビューコメント一覧")
@@ -522,6 +597,19 @@ def main():
             output.append(comment.get('body', '').strip())
             output.append("```")
             output.append("")
+            
+            # 個別のcurlコマンドを生成
+            comment_id = comment.get('id')
+            if comment_id:
+                comment_curl_commands = generate_coderabbit_curl_commands_for_comment(
+                    owner, repo, pr_number, comment_id, token
+                )
+                output.append("**🔧 このコメントへの返信用curlコマンド**:")
+                output.append("```bash")
+                output.append(comment_curl_commands)
+                output.append("```")
+                output.append("")
+            
             output.append("---")
             output.append("")
     

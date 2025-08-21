@@ -1,0 +1,34 @@
+[
+  {
+    "comment_id": 123456,
+    "reply_body": "✅ Fixed! Thanks for catching this security issue."
+  },
+  {
+    "comment_id": 123457,
+    "template": "fixed"
+  },
+  {
+    "comment_id": 123458,
+    "reply_body": "👍 Good point about performance. I've optimized this section."
+  },
+  {
+    "comment_id": 123459,
+    "template": "acknowledged"
+  },
+  {
+    "comment_id": 123460,
+    "reply_body": "🤔 Could you provide more specific details about what type validation you'd like to see here?"
+  },
+  {
+    "comment_id": 123461,
+    "template": "investigating"
+  },
+  {
+    "comment_id": 123462,
+    "reply_body": "⚠️ I understand the concern, but this implementation is intentional due to backwards compatibility requirements with our existing API."
+  },
+  {
+    "comment_id": 123463,
+    "template": "resolved"
+  }
+]

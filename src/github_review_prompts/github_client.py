@@ -412,3 +412,295 @@ class GitHubClient:
     def get_processing_stats(self) -> ProcessingStats:
         """処理統計を取得（後でCommentProcessorで更新される）"""
         return ProcessingStats()
+
+    def reply_to_comment(self, pr_info: GitHubPRInfo, comment_id: int, reply_body: str) -> Dict[str, Any]:
+        """プルリクエストのコメントに返信する
+        
+        Args:
+            pr_info: プルリクエスト情報
+            comment_id: 返信対象のコメントID
+            reply_body: 返信内容
+            
+        Returns:
+            作成された返信コメントの情報
+        """
+        # まず元のコメント情報を取得
+        original_comment = self.get_single_comment_detail(pr_info, comment_id)
+        if not original_comment:
+            raise APIError(f"コメント ID {comment_id} が見つかりません")
+        
+        # 返信作成のためのデータ
+        reply_data = {
+            "body": reply_body,
+            "in_reply_to": comment_id,
+            "path": original_comment["path"],
+            "line": original_comment.get("line"),
+            "side": original_comment.get("side", "RIGHT")
+        }
+        
+        # diff_hunk の情報も必要な場合は追加
+        if original_comment.get("diff_hunk"):
+            reply_data["diff_hunk"] = original_comment["diff_hunk"]
+        
+        url = f"{self.base_url}/repos/{pr_info.owner}/{pr_info.repo}/pulls/{pr_info.pull_number}/comments"
+        
+        try:
+            self.logger.info(f"コメント {comment_id} に返信中...")
+            response = self._make_request("POST", url, json=reply_data)
+            result = response.json()
+            
+            self.logger.info(f"返信コメント作成成功: ID {result.get('id')}")
+            return result
+            
+        except APIError:
+            raise
+        except Exception as e:
+            raise APIError(f"コメント返信エラー: {str(e)}") from e
+
+    def create_comment(self, pr_info: GitHubPRInfo, body: str, path: str, line: int, side: str = "RIGHT") -> Dict[str, Any]:
+        """プルリクエストに新しいコメントを作成する
+        
+        Args:
+            pr_info: プルリクエスト情報
+            body: コメント内容
+            path: ファイルパス
+            line: 行番号
+            side: コメント位置 ("LEFT" or "RIGHT")
+            
+        Returns:
+            作成されたコメントの情報
+        """
+        comment_data = {
+            "body": body,
+            "path": path,
+            "line": line,
+            "side": side
+        }
+        
+        url = f"{self.base_url}/repos/{pr_info.owner}/{pr_info.repo}/pulls/{pr_info.pull_number}/comments"
+        
+        try:
+            self.logger.info(f"新しいコメントを作成中: {path}:{line}")
+            response = self._make_request("POST", url, json=comment_data)
+            result = response.json()
+            
+            self.logger.info(f"コメント作成成功: ID {result.get('id')}")
+            return result
+            
+        except APIError:
+            raise
+        except Exception as e:
+            raise APIError(f"コメント作成エラー: {str(e)}") from e
+
+    def update_comment(self, pr_info: GitHubPRInfo, comment_id: int, new_body: str) -> Dict[str, Any]:
+        """既存のコメントを更新する
+        
+        Args:
+            pr_info: プルリクエスト情報
+            comment_id: 更新対象のコメントID
+            new_body: 新しいコメント内容
+            
+        Returns:
+            更新されたコメントの情報
+        """
+        update_data = {
+            "body": new_body
+        }
+        
+        url = f"{self.base_url}/repos/{pr_info.owner}/{pr_info.repo}/pulls/comments/{comment_id}"
+        
+        try:
+            self.logger.info(f"コメント {comment_id} を更新中...")
+            response = self._make_request("PATCH", url, json=update_data)
+            result = response.json()
+            
+            self.logger.info(f"コメント更新成功: ID {result.get('id')}")
+            return result
+            
+        except APIError:
+            raise
+        except Exception as e:
+            raise APIError(f"コメント更新エラー: {str(e)}") from e
+
+    def delete_comment(self, pr_info: GitHubPRInfo, comment_id: int) -> bool:
+        """コメントを削除する
+        
+        Args:
+            pr_info: プルリクエスト情報
+            comment_id: 削除対象のコメントID
+            
+        Returns:
+            削除が成功したかどうか
+        """
+        url = f"{self.base_url}/repos/{pr_info.owner}/{pr_info.repo}/pulls/comments/{comment_id}"
+        
+        try:
+            self.logger.info(f"コメント {comment_id} を削除中...")
+            response = self._make_request("DELETE", url)
+            
+            if response.status_code == 204:
+                self.logger.info(f"コメント削除成功: ID {comment_id}")
+                return True
+            else:
+                self.logger.warning(f"コメント削除で予期しないステータス: {response.status_code}")
+                return False
+                
+        except APIError:
+            raise
+        except Exception as e:
+            raise APIError(f"コメント削除エラー: {str(e)}") from e
+
+    def generate_curl_command(self, pr_info: GitHubPRInfo, action: str, **kwargs) -> str:
+        """curl コマンドを生成する
+        
+        Args:
+            pr_info: プルリクエスト情報
+            action: 実行するアクション ("reply", "create", "update", "delete")
+            **kwargs: アクション固有のパラメータ
+            
+        Returns:
+            実行可能な curl コマンド
+        """
+        if not self.token:
+            raise APIError("curl コマンド生成にはGitHubトークンが必要です")
+        
+        base_headers = [
+            f'-H "Authorization: token {self.token}"',
+            '-H "Accept: application/vnd.github.v3+json"',
+            '-H "Content-Type: application/json"'
+        ]
+        
+        if action == "reply":
+            comment_id = kwargs.get("comment_id")
+            reply_body = kwargs.get("reply_body")
+            
+            if not comment_id or not reply_body:
+                raise APIError("reply action には comment_id と reply_body が必要です")
+            
+            # 元のコメント情報を取得
+            original_comment = self.get_single_comment_detail(pr_info, comment_id)
+            if not original_comment:
+                raise APIError(f"コメント ID {comment_id} が見つかりません")
+            
+            url = f"{self.base_url}/repos/{pr_info.owner}/{pr_info.repo}/pulls/{pr_info.pull_number}/comments"
+            data = {
+                "body": reply_body,
+                "in_reply_to": comment_id,
+                "path": original_comment["path"],
+                "line": original_comment.get("line"),
+                "side": original_comment.get("side", "RIGHT")
+            }
+            
+            if original_comment.get("diff_hunk"):
+                data["diff_hunk"] = original_comment["diff_hunk"]
+            
+            import json
+            data_json = json.dumps(data, ensure_ascii=False)
+            
+            return f"""curl -X POST \\
+  {url} \\
+  {' '.join(base_headers)} \\
+  -d '{data_json}'"""
+        
+        elif action == "create":
+            body = kwargs.get("body")
+            path = kwargs.get("path")
+            line = kwargs.get("line")
+            side = kwargs.get("side", "RIGHT")
+            
+            if not all([body, path, line]):
+                raise APIError("create action には body, path, line が必要です")
+            
+            url = f"{self.base_url}/repos/{pr_info.owner}/{pr_info.repo}/pulls/{pr_info.pull_number}/comments"
+            data = {
+                "body": body,
+                "path": path,
+                "line": line,
+                "side": side
+            }
+            
+            import json
+            data_json = json.dumps(data, ensure_ascii=False)
+            
+            return f"""curl -X POST \\
+  {url} \\
+  {' '.join(base_headers)} \\
+  -d '{data_json}'"""
+        
+        elif action == "update":
+            comment_id = kwargs.get("comment_id")
+            new_body = kwargs.get("new_body")
+            
+            if not comment_id or not new_body:
+                raise APIError("update action には comment_id と new_body が必要です")
+            
+            url = f"{self.base_url}/repos/{pr_info.owner}/{pr_info.repo}/pulls/comments/{comment_id}"
+            data = {
+                "body": new_body
+            }
+            
+            import json
+            data_json = json.dumps(data, ensure_ascii=False)
+            
+            return f"""curl -X PATCH \\
+  {url} \\
+  {' '.join(base_headers)} \\
+  -d '{data_json}'"""
+        
+        elif action == "delete":
+            comment_id = kwargs.get("comment_id")
+            
+            if not comment_id:
+                raise APIError("delete action には comment_id が必要です")
+            
+            url = f"{self.base_url}/repos/{pr_info.owner}/{pr_info.repo}/pulls/comments/{comment_id}"
+            
+            return f"""curl -X DELETE \\
+  {url} \\
+  {' '.join(base_headers)}"""
+        
+        else:
+            raise APIError(f"未対応のアクション: {action}")
+
+    def batch_reply_to_comments(self, pr_info: GitHubPRInfo, replies: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """複数のコメントに一括で返信する
+        
+        Args:
+            pr_info: プルリクエスト情報
+            replies: 返信情報のリスト [{"comment_id": int, "reply_body": str}, ...]
+            
+        Returns:
+            作成された返信コメントのリスト
+        """
+        results = []
+        errors = []
+        
+        self.logger.info(f"{len(replies)} 件のコメントに一括返信中...")
+        
+        for i, reply in enumerate(replies, 1):
+            try:
+                comment_id = reply["comment_id"]
+                reply_body = reply["reply_body"]
+                
+                self.logger.debug(f"返信 {i}/{len(replies)}: コメントID {comment_id}")
+                
+                result = self.reply_to_comment(pr_info, comment_id, reply_body)
+                results.append(result)
+                
+                # レート制限を考慮した遅延
+                if i < len(replies):
+                    time.sleep(0.5)
+                    
+            except Exception as e:
+                error_msg = f"コメント {reply.get('comment_id', 'unknown')} の返信に失敗: {str(e)}"
+                self.logger.error(error_msg)
+                errors.append(error_msg)
+        
+        if errors:
+            self.logger.warning(f"一括返信完了: 成功 {len(results)} 件, エラー {len(errors)} 件")
+            for error in errors:
+                self.logger.error(f"  - {error}")
+        else:
+            self.logger.info(f"一括返信完了: 全 {len(results)} 件成功")
+        
+        return results

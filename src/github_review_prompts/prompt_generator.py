@@ -11,12 +11,13 @@ from .utils.validators import validate_persona
 class AIPromptGenerator:
     """AI用プロンプト生成クラス（ペルソナ対応）"""
     
-    def __init__(self, persona: str = "code-reviewer"):
+    def __init__(self, persona: str = "code-reviewer", github_token: Optional[str] = None):
         if not validate_persona(persona):
             raise ValueError(f"無効なペルソナ: {persona}")
         
         self.persona = persona
         self.persona_config = PERSONAS[persona]
+        self.github_token = github_token
         self.logger = logging.getLogger(__name__)
         
         self.logger.info(f"AIプロンプト生成初期化: ペルソナ '{persona}'")
@@ -243,6 +244,15 @@ class AIPromptGenerator:
                     context_info
                 ])
         
+        # CodeRabbit返信用curlコマンドを追加
+        curl_commands = self._generate_coderabbit_curl_commands(prompt)
+        if curl_commands:
+            formatted_lines.extend([
+                "",
+                "**CodeRabbit返信用curlコマンド**:",
+                curl_commands
+            ])
+        
         formatted_lines.extend([
             "",
             "---",
@@ -327,6 +337,56 @@ class AIPromptGenerator:
         
         return "\n".join([f"  {line}" for line in info_lines]) if info_lines else None
     
+    def _generate_coderabbit_curl_commands(self, prompt: AIPrompt) -> Optional[str]:
+        """CodeRabbit返信用のcurlコマンドを生成（特定コメントへの返信）"""
+        if not self.github_token:
+            return None
+        
+        # プロンプトからPR情報を取得（contextに含まれることを期待）
+        pr_owner = prompt.context.get("pr_owner")
+        pr_repo = prompt.context.get("pr_repo") 
+        pr_number = prompt.context.get("pr_number")
+        comment_id = prompt.comment_id
+        
+        if not all([pr_owner, pr_repo, pr_number, comment_id]):
+            return None
+        
+        # 返信テンプレート
+        templates = {
+            "対応不要": f"@coderabbitai この指摘について確認しましたが、[技術的根拠]により対応不要と判断します。問題がなければこの課題を解決済みにしてください。ただし、この課題のみを解決済みにし、他の課題をすべて解決済みにしないよう注意してください。",
+            "対応完了": f"@coderabbitai ご指摘いただいた点を修正しました。[修正内容]を実施済みです。問題がなければこの課題を解決済みにしてください。ただし、この課題のみを解決済みにし、他の課題をすべて解決済みにしないよう注意してください。",
+            "要確認": f"@coderabbitai この指摘について追加で確認したい点があります：[確認したい内容]。詳細な説明をお願いします。"
+        }
+        
+        curl_lines = []
+        
+        # まず元のコメント情報を取得するための説明
+        curl_lines.append(f"# このコメント（ID: {comment_id}）に対する返信用curlコマンド")
+        curl_lines.append("")
+        
+        for action, message in templates.items():
+            # JSONデータの準備（エスケープ処理）
+            import json
+            
+            # Pull Request Review Comment への返信データ
+            data = {
+                "body": message,
+                "in_reply_to": comment_id
+            }
+            data_json = json.dumps(data, ensure_ascii=False).replace('"', '\\"')
+            
+            curl_command = f'''# {action}の場合
+curl -X POST \\
+  "https://api.github.com/repos/{pr_owner}/{pr_repo}/pulls/{pr_number}/comments" \\
+  -H "Authorization: token {self.github_token}" \\
+  -H "Accept: application/vnd.github.v3+json" \\
+  -H "Content-Type: application/json" \\
+  -d "{data_json}"'''
+            
+            curl_lines.append(curl_command)
+        
+        return "\n\n".join(curl_lines)
+    
     def _generate_footer(self) -> str:
         """フッター部分を生成"""
         return f"""
@@ -335,6 +395,53 @@ class AIPromptGenerator:
 1. **対応状況の記録**: 各指摘への対応結果を記録してください
 2. **テストの実行**: 変更による副作用がないことを確認してください  
 3. **コミットとプッシュ**: すべての対応が完了したらコミット・プッシュを実行してください
+
+**CodeRabbitへの返信について**:
+
+各コメントには、状況に応じて以下のパターンでCodeRabbitに返信してください：
+
+### 📝 返信パターン
+
+#### ✅ 対応完了時
+```
+@coderabbitai ご指摘いただいた点を修正しました。[修正内容]を実施済みです。
+問題がなければこの課題を解決済みにしてください。ただし、この課題のみを解決済みにし、
+他の課題をすべて解決済みにしないよう注意してください。
+```
+
+#### ❌ 対応不要時
+```
+@coderabbitai この指摘について確認しましたが、[技術的根拠]により対応不要と判断します。
+問題がなければこの課題を解決済みにしてください。ただし、この課題のみを解決済みにし、
+他の課題をすべて解決済みにしないよう注意してください。
+```
+
+#### 🤔 要確認時
+```
+@coderabbitai この指摘について追加で確認したい点があります：[確認したい内容]。
+詳細な説明をお願いします。
+```
+
+### 🔧 curlコマンドでの返信方法
+
+各コメントの「**CodeRabbit返信用curlコマンド**」セクションに、**該当コメントに直接返信する**実行可能なcurlコマンドが用意されています。
+
+#### 🎯 特徴
+- `in_reply_to` パラメータにより、元のコメントに直接返信されます
+- GitHub上でスレッド形式で表示され、コンテキストが保持されます
+- 各コメントに個別のコマンドが生成されるため、適切な相手に返信できます
+
+#### 📋 使用手順
+1. **適切なパターンを選択**: 対応状況に応じて「対応不要」「対応完了」「要確認」から選択
+2. **メッセージをカスタマイズ**: `[技術的根拠]`や`[修正内容]`を具体的な内容に置き換え
+3. **curlコマンドを実行**: ターミナルでコマンドを実行してCodeRabbitに返信
+
+#### ⚙️ APIの仕組み
+- **Pull Request Comments API** (`/pulls/{pr_number}/comments`) を使用
+- `in_reply_to` フィールドで元のコメントIDを指定
+- GitHub上でコメントツリーとして表示されます
+
+**注意**: curlコマンドには適切なGitHubトークンが設定されていることを確認してください。
 
 **対応不要な指摘について**:
 対応不要と判断した指摘については、以下の形式で理由を記載してください:

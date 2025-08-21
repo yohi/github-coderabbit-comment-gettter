@@ -17,6 +17,7 @@ GitHub プルリクエストのレビューコメントから AI エージェン
 
 - **🎯 高精度な解決済みコメント検出**: GitHub GraphQL API を使用して正確に解決済みコメントを識別
 - **🤖 AI エージェント最適化プロンプト**: CodeRabbit 等のレビューツールからプロンプトを抽出・整形
+- **💬 コメント返信機能**: 各CodeRabbitコメントに`in_reply_to`で直接返信するcurlコマンド自動生成
 - **👤 複数ペルソナ対応**: コードレビュアー、セキュリティアナリスト、パフォーマンスオプティマイザー
 - **📂 ブランチ情報自動取得**: ソース・ターゲットブランチ情報とチェックアウト指示を自動生成
 - **🔍 包括的フィルタリング**: カテゴリ、優先度、ファイルパターンによる柔軟な絞り込み
@@ -234,7 +235,33 @@ uv run grp --no-confirm --auto-commit https://github.com/owner/repo/pull/123
 3. **プッシュ**: `git push` でリモートリポジトリに反映
 ```
 
-### 📊 3. 詳細分析モード
+### 🎯 3. CodeRabbit返信ワークフロー
+
+**基本ワークフロー**:
+```bash
+# 1. CodeRabbitコメント分析
+uv run grp https://github.com/owner/repo/pull/123
+
+# 2. 生成されたプロンプトファイルを確認
+cat review_prompt_with_todos.md
+
+# 3. 各コメントの「🔧 このコメントへの返信用curlコマンド」セクションから適切なコマンドを選択
+
+# 4. curlコマンドを実行（例：対応完了の場合）
+curl -X POST \
+  "https://api.github.com/repos/owner/repo/pulls/123/comments" \
+  -H "Authorization: token $GITHUB_TOKEN" \
+  -H "Accept: application/vnd.github.v3+json" \
+  -H "Content-Type: application/json" \
+  -d '{"body": "@coderabbitai MD5からbcryptに変更しました。問題がなければこの課題を解決済みにしてください。", "in_reply_to": 456789}'
+```
+
+**返信の特徴**:
+- ✅ `in_reply_to`パラメータで特定コメントに直接返信
+- ✅ GitHub上でスレッド形式で表示
+- ✅ コンテキストが保持され、どのコメントへの返信かが明確
+
+### 📊 4. 詳細分析モード
 
 ```bash
 # 全コメント分析
@@ -279,6 +306,8 @@ uv run github-review-prompts --format json https://github.com/owner/repo/pull/12
 - `GITHUB_TOKEN`: GitHub APIトークン（**必須**）
   - Personal Access Tokenまたは他の認証方法が使用可能
   - GraphQL APIアクセスに必要
+  - CodeRabbit返信用curlコマンドで使用
+  - Pull Request Comments APIへのアクセス権限が必要
 
 ## 出力形式
 
@@ -384,13 +413,24 @@ uv build --wheel
 |----------|------|------|----------|
 | **uv run grp** | 🚀 軽量版 | 依存関係なし、高速起動 | **日常使用** |
 | **uv run github-review-prompts** | 🎨 フル機能版 | ペルソナ、フィルタリング | **高度な分析** |
+| **uv run grp-reply** | 💬 コメント返信 | 返信、一括処理、curl生成 | **レビュー対応** |
 | **uvx --from wheel grp** | 📦 ビルド版 | パッケージ化済み | **配布・デモ** |
 
 ### 💡 おすすめの使い分け
 
 - **毎日のレビュー**: `uv run grp --no-confirm --auto-commit`
 - **セキュリティ重視**: `uv run github-review-prompts --persona security-analyst`
+- **CodeRabbit返信**: `uv run grp PR_URL` → 生成されたcurlコマンドで直接返信
+- **コメント返信**: `uv run grp-reply reply PR_URL --comment-id ID --template fixed`
+- **一括返信**: `uv run grp-reply batch-reply PR_URL --replies-file replies.json`
 - **初回試用**: `uv run grp --help`
+
+### 🔗 関連ドキュメント
+
+- **コメント返信機能**: [COMMENT_REPLY_USAGE.md](COMMENT_REPLY_USAGE.md) - 詳細な使用方法とcurlコマンド生成
+- **軽量版GRP**: [GRP_USAGE.md](GRP_USAGE.md) - 高速なコメント分析
+- **シンプル使用法**: [SIMPLE_USAGE.md](SIMPLE_USAGE.md) - 基本的な使い方
+- **UVX実行**: [UVX_USAGE.md](UVX_USAGE.md) - パッケージからの実行
 
 ## 技術仕様
 
@@ -470,6 +510,14 @@ github-coderabbit-comment-getter/
 MIT License
 
 ## 📈 変更履歴
+
+### v1.2.0 (2025-08-21) - CodeRabbit返信機能追加
+- 💬 **CodeRabbit直接返信**: 各コメントに`in_reply_to`パラメータで直接返信するcurlコマンドを自動生成
+- 🎯 **スレッド形式対応**: GitHub上でコメントツリーとして表示され、コンテキストが保持される仕組み
+- 🔧 **個別curl生成**: 各コメントIDに対応した「対応不要」「対応完了」「要確認」の3パターンのcurlコマンド
+- 📊 **Pull Request Comments API活用**: 特定コメント返信とPR全体コメントを適切に使い分け
+- 🎨 **プロンプト最適化**: 返信手順とAPIの仕組みを詳細に説明
+- 📋 **包括的対応**: フル機能版とGRP軽量版の両方で個別返信機能をサポート
 
 ### v1.1.0 (2025-08-21) - 効率化アップデート
 - ⚡ **効率化オプション追加**: `--no-confirm` と `--auto-commit` オプション

@@ -24,7 +24,8 @@ class CommentProcessor:
         comments: List[Dict[str, Any]], 
         resolved_ids: Set[int], 
         graphql_bodies: Dict[int, str],
-        include_resolved: bool = False
+        include_resolved: bool = False,
+        pr_info: Optional[Dict[str, Any]] = None
     ) -> Tuple[List[AIPrompt], ProcessingStats]:
         """コメントを処理してAIプロンプトを抽出"""
         start_time = datetime.now()
@@ -60,7 +61,7 @@ class CommentProcessor:
                 review_comment = self._create_review_comment(comment, comment_body, is_resolved)
                 
                 # AIプロンプトを抽出
-                ai_prompt = self._extract_ai_prompt_from_comment(review_comment)
+                ai_prompt = self._extract_ai_prompt_from_comment(review_comment, pr_info)
                 if ai_prompt:
                     ai_prompts.append(ai_prompt)
                     self.stats.prompts_extracted += 1
@@ -174,7 +175,7 @@ class CommentProcessor:
         
         return context
     
-    def _extract_ai_prompt_from_comment(self, comment: ReviewComment) -> Optional[AIPrompt]:
+    def _extract_ai_prompt_from_comment(self, comment: ReviewComment, pr_info: Optional[Dict[str, Any]] = None) -> Optional[AIPrompt]:
         """ReviewCommentからAIプロンプトを抽出"""
         if not comment.body:
             return None
@@ -199,6 +200,23 @@ class CommentProcessor:
         category = categorize_prompt(prompt_content, comment.path)
         priority = determine_priority(prompt_content, category)
         
+        # contextにPR情報を追加
+        context = {
+            "is_resolved": comment.is_resolved,
+            "created_at": comment.created_at,
+            "updated_at": comment.updated_at,
+            "html_url": comment.html_url,
+            **comment.context
+        }
+        
+        # PR情報をcontextに追加
+        if pr_info:
+            context.update({
+                "pr_owner": pr_info.get("owner"),
+                "pr_repo": pr_info.get("repo"),
+                "pr_number": pr_info.get("pull_number")
+            })
+        
         try:
             return AIPrompt(
                 content=prompt_content,
@@ -209,13 +227,7 @@ class CommentProcessor:
                 author=comment.author,
                 priority=priority,
                 category=category,
-                context={
-                    "is_resolved": comment.is_resolved,
-                    "created_at": comment.created_at,
-                    "updated_at": comment.updated_at,
-                    "html_url": comment.html_url,
-                    **comment.context
-                }
+                context=context
             )
         except Exception as e:
             self.logger.error(f"AIPrompt作成エラー (コメント ID: {comment.id}): {str(e)}")

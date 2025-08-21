@@ -35,6 +35,8 @@ Issues = "https://github.com/yohi/github-coderabbit-comment-getter/issues"
 github-review-prompts = "github_review_prompts.cli:main"
 gh-review-prompts = "github_review_prompts.cli:main"
 grp = "grp_uvx:main"
+grp-reply = "github_review_prompts.comment_reply_cli:main"
+github-comment-reply = "github_review_prompts.comment_reply_cli:main"
 
 
 [build-system]
