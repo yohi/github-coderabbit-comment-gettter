@@ -1,0 +1,6 @@
+include README.md
+include *.md
+include src/grp_uvx.py
+recursive-include src/github_review_prompts *.py *.md
+recursive-include src/github_review_prompts/utils *.py
+recursive-include src/github_review_prompts/tests *.py
