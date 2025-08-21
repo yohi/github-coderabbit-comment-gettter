@@ -1,7 +1,7 @@
 """パーサーのテスト"""
 
 import unittest
-from src.github_review_prompts.utils.parsers import (
+from github_review_prompts.utils.parsers import (
     parse_pr_url,
     extract_ai_agent_prompt,
     categorize_prompt,

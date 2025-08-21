@@ -1,6 +1,7 @@
-"""パーサーユーティリティ"""
+"""パーザーユーティリティ"""
 
 import re
+import html
 from typing import Tuple, Optional
 from urllib.parse import urlparse
 
@@ -57,18 +58,15 @@ def extract_ai_agent_prompt(comment_body: str) -> Optional[str]:
     # 複数のパターンに対応
     patterns = [
         # CodeRabbit標準形式: <details><summary>🤖 Prompt for AI Agents</summary>.....</details>
-        (
-            r"<details>\\s*<summary>🤖 Prompt for AI Agents</summary>\\s*"
-            r"(.*?)\\s*</details>"
-        ),
+        r"<details>\s*<summary>🤖 Prompt for AI Agents</summary>\s*(.*?)\s*</details>",
         # Markdown形式1: 🤖 Prompt for AI Agents...```...```
-        r"🤖 Prompt for AI Agents.*?\\n```\\n(.*?)\\n```",
+        r"🤖 Prompt for AI Agents.*?\n```\n(.*?)\n```",
         # Markdown形式2: Prompt for AI Agents...```...```
-        r"Prompt for AI Agents.*?\\n```\\n(.*?)\\n```",
+        r"Prompt for AI Agents.*?\n```\n(.*?)\n```",
         # HTML形式: <summary>Prompt for AI Agents</summary>...<br>
-        r"<summary>.*?Prompt for AI Agents.*?</summary>\\s*(.*?)(?:\\n|<br|$)",
+        r"<summary>.*?Prompt for AI Agents.*?</summary>\s*(.*?)(?:\n|<br|$)",
         # シンプルなマークダウン: **Prompt for AI Agents**...
-        r"\\*\\*Prompt for AI Agents\\*\\*\\s*(.*?)(?:\\n\\n|$)",
+        r"\*\*Prompt for AI Agents\*\*\s*(.*?)(?:\n\n|$)",
     ]
     
     for pattern in patterns:
@@ -94,31 +92,21 @@ def _clean_extracted_prompt(text: str) -> str:
     text = re.sub(r"<[^>]+>", "", text)
     
     # マークダウンコードブロック記法を除去
-    text = re.sub(r"```[a-zA-Z]*\\n?", "", text)
-    text = re.sub(r"\\n```", "", text)
+    text = re.sub(r"```[a-zA-Z]*\n?", "", text)
+    text = re.sub(r"\n```", "", text)
     text = re.sub(r"```", "", text)
     
     # マークダウン強調記法を除去
-    text = re.sub(r"\\*\\*(.*?)\\*\\*", r"\\1", text)  # **bold**
-    text = re.sub(r"\\*(.*?)\\*", r"\\1", text)        # *italic*
-    text = re.sub(r"_(.*?)_", r"\\1", text)           # _italic_
-    text = re.sub(r"`(.*?)`", r"\\1", text)           # `code`
+    text = re.sub(r"\*\*(.*?)\*\*", r"\1", text)  # **bold**
+    text = re.sub(r"\*(.*?)\*", r"\1", text)        # *italic*
+    text = re.sub(r"_(.*?)_", r"\1", text)           # _italic_
+    text = re.sub(r"`(.*?)`", r"\1", text)           # `code`
     
     # 余分な空白文字を除去
-    text = re.sub(r"\\s+", " ", text)
+    text = re.sub(r"\s+", " ", text)
     
-    # HTMLエンティティをデコード（基本的なもの）
-    html_entities = {
-        "&amp;": "&",
-        "&lt;": "<",
-        "&gt;": ">",
-        "&quot;": '"',
-        "&#39;": "'",
-        "&nbsp;": " "
-    }
-    
-    for entity, char in html_entities.items():
-        text = text.replace(entity, char)
+    # HTMLエンティティをデコード
+    text = html.unescape(text)
     
     return text.strip()
 

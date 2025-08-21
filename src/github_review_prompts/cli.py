@@ -36,6 +36,9 @@ class CLIInterface:
 
   # ファイルに出力
   github-review-prompts -o prompts.md https://github.com/owner/repo/pull/123
+  
+  # マークダウンファイルを自動生成
+  github-review-prompts --save-file https://github.com/owner/repo/pull/123
 
   # セキュリティアナリストのペルソナで分析
   github-review-prompts --persona security-analyst https://github.com/owner/repo/pull/123
@@ -57,6 +60,15 @@ class CLIInterface:
 
   # コピーペースト最適化（カラー無効）
   github-review-prompts --no-color https://github.com/owner/repo/pull/123
+
+ファイル生成オプション:
+  デフォルトではコンソール出力のみ。以下のオプションでファイル生成可能：
+  
+  # 指定ファイル名で保存
+  github-review-prompts -o custom_name.md [PR_URL]
+  
+  # 自動ファイル名で保存（coderabbit_review_[repo]_pr[number].md）
+  github-review-prompts --save-file [PR_URL]
 
 環境変数:
   GITHUB_TOKEN                 GitHub APIトークン（必須）
@@ -85,6 +97,11 @@ class CLIInterface:
             choices=["markdown", "json"],
             default="markdown",
             help="出力形式 (デフォルト: markdown)"
+        )
+        output_group.add_argument(
+            "--save-file",
+            action="store_true",
+            help="マークダウンファイルを自動生成する（デフォルトはコンソール出力のみ）"
         )
 
         # AIペルソナオプション
@@ -220,7 +237,7 @@ class CLIInterface:
 
     def display_personas(self) -> None:
         """利用可能なペルソナの一覧を表示"""
-        print("\\n利用可能なAIペルソナ:\\n")
+        print("\n利用可能なAIペルソナ:\n")
 
         for persona_id, config in PERSONAS.items():
             print(f"🤖 {persona_id}")
@@ -287,7 +304,7 @@ class CLIInterface:
             return self._execute_main_process(config, parsed_args)
 
         except KeyboardInterrupt:
-            print("\\n\\n⚠️  処理がユーザーによって中断されました。")
+            print("\n\n⚠️  処理がユーザーによって中断されました。")
             return 130
         except Exception as e:
             if hasattr(self, 'logger') and self.logger:
@@ -298,13 +315,15 @@ class CLIInterface:
 
     def _display_config(self, config, args: argparse.Namespace) -> None:
         """設定確認用の表示（Dry runモード）"""
-        print("\\n🔧 設定確認 (Dry Run Mode)\\n")
+        print("\n🔧 設定確認 (Dry Run Mode)\n")
         print(f"プルリクエストURL: {args.pr_url}")
         print(f"出力形式: {config.output_format}")
         print(f"ペルソナ: {config.persona}")
-        print(f"出力ファイル: {config.output_file or 'コンソール出力'}")
+        output_description = config.output_file or ('自動生成ファイル' if args.save_file else 'コンソール出力のみ')
+        print(f"出力ファイル: {output_description}")
         print(f"解決済み含む: {config.include_resolved}")
         print(f"デバッグモード: {config.debug_mode}")
+        print(f"ファイル自動生成: {'有効' if args.save_file else '無効'}")
 
         if config.github_token:
             print(f"GitHubトークン: 設定済み ({config.github_token[:10]}...)")
@@ -408,19 +427,31 @@ class CLIInterface:
             output_formatter = OutputFormatter(config.output_format)
             formatted_content = output_formatter.format_output(content, metadata, stats)
 
-            if config.output_file:
+            # ファイル出力の判定: --outputオプションまたは--save-fileオプションが指定された場合
+            should_save_file = config.output_file or args.save_file
+            
+            if should_save_file:
+                # 出力ファイル名の決定
+                if config.output_file:
+                    output_file = config.output_file
+                else:
+                    # --save-fileオプションの場合、自動でファイル名を生成
+                    pr_number = pr_info.pull_number
+                    repo_name = pr_info.repo
+                    output_file = f"coderabbit_review_{repo_name}_pr{pr_number}.md"
+                
                 # ファイル出力
-                success = output_formatter.save_to_file(formatted_content, config.output_file)
+                success = output_formatter.save_to_file(formatted_content, output_file)
                 if success:
-                    self.logger.info(f"結果を {config.output_file} に保存しました")
+                    self.logger.info(f"結果を {output_file} に保存しました")
                     # 簡潔なサマリーをコンソールに表示
                     print(f"\\n✅ 処理完了: {stats.prompts_extracted} 件のプロンプトを抽出")
-                    print(f"📄 出力ファイル: {config.output_file}")
+                    print(f"📄 出力ファイル: {output_file}")
                 else:
                     self.logger.error("ファイル保存に失敗しました")
                     return 1
             else:
-                # コンソール出力
+                # コンソール出力のみ
                 output_formatter.display_to_console(formatted_content, metadata, stats)
 
             # 分析モード（デバッグ用）
@@ -458,10 +489,9 @@ class CLIInterface:
 
     def _generate_review_prompt_with_todos(self, prompts, pr_basic_info, pr_info, no_confirm: bool = False, auto_commit: bool = False) -> str:
         """レビュープロンプトとTODOリストを生成"""
-        from pathlib import Path
 
         # レビュープロンプトの内容を読み込み（相対パス）
-        current_dir = Path(__file__).parent.parent.parent  # src/github_review_prompts/cli.py -> repository root
+        current_dir = Path(__file__).parent  # src/github_review_prompts/cli.py -> src/github_review_prompts/
         prompt_file = current_dir / "coderabbit_review_prompt.md"
 
         try:

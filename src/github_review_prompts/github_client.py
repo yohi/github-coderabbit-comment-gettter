@@ -97,7 +97,7 @@ class GitHubClient:
                 error_data = {}
                 try:
                     error_data = response.json()
-                except:
+                except (ValueError, requests.exceptions.JSONDecodeError):
                     pass
                 
                 raise APIError(
