@@ -129,6 +129,9 @@ class AIPromptGenerator:
             
             header_lines.append("")
         
+        # CodeRabbit返信用curlコマンド情報をヘッダーに追加
+        header_lines.extend(self._generate_curl_commands_section())
+        
         return "\n".join(header_lines)
     
     def _generate_pr_stats(self, pr_info: Dict[str, Any], prompts: List[AIPrompt]) -> List[str]:
@@ -311,6 +314,68 @@ class AIPromptGenerator:
 **APIエンドポイント**: `POST /repos/{pr_owner}/{pr_repo}/pulls/{pr_number}/comments`
 **返信方法**: `in_reply_to: {comment_id}` でこのコメントに直接返信可能"""
     
+    def _generate_curl_commands_section(self) -> List[str]:
+        """CodeRabbit返信用curlコマンドセクションを生成"""
+        return [
+            "### 🔧 CodeRabbit返信用curlコマンド",
+            "",
+            "**前提条件**: ",
+            "```bash",
+            "export GITHUB_TOKEN=\"your_github_token_here\"",
+            "```",
+            "",
+            "#### ❌ 対応不要の場合",
+            "```bash",
+            "curl -X POST \"https://api.github.com/repos/[OWNER]/[REPO]/pulls/[PR_NUMBER]/comments\" \\\\",
+            "  -H \"Authorization: token ${GITHUB_TOKEN}\" \\\\",
+            "  -H \"Accept: application/vnd.github.v3+json\" \\\\",
+            "  -H \"Content-Type: application/json\" \\\\",
+            "  -d '{",
+            "    \"body\": \"@coderabbitai 対応不要：[技術的根拠を記載]。適切と判断される場合は**この特定の課題のみ**を解決済みにしてください。他の課題は変更しないでください。\",",
+            "    \"in_reply_to\": [COMMENT_ID]",
+            "  }'",
+            "```",
+            "",
+            "#### 🤔 要確認の場合",
+            "```bash",
+            "curl -X POST \"https://api.github.com/repos/[OWNER]/[REPO]/pulls/[PR_NUMBER]/comments\" \\\\",
+            "  -H \"Authorization: token ${GITHUB_TOKEN}\" \\\\",
+            "  -H \"Accept: application/vnd.github.v3+json\" \\\\",
+            "  -H \"Content-Type: application/json\" \\\\",
+            "  -d '{",
+            "    \"body\": \"@coderabbitai [確認したい内容]について詳細説明をお願いします。\",",
+            "    \"in_reply_to\": [COMMENT_ID]",
+            "  }'",
+            "```",
+            "",
+            "#### ⚠️ 指摘間違いの場合",
+            "```bash",
+            "curl -X POST \"https://api.github.com/repos/[OWNER]/[REPO]/pulls/[PR_NUMBER]/comments\" \\\\",
+            "  -H \"Authorization: token ${GITHUB_TOKEN}\" \\\\",
+            "  -H \"Accept: application/vnd.github.v3+json\" \\\\",
+            "  -H \"Content-Type: application/json\" \\\\",
+            "  -d '{",
+            "    \"body\": \"@coderabbitai この指摘は[具体的な理由]により間違いと判断します。[正しい技術的説明]。妥当と判断される場合は**この特定の課題のみ**を解決済みにしてください。他の課題は変更しないでください。\",",
+            "    \"in_reply_to\": [COMMENT_ID]",
+            "  }'",
+            "```",
+            "",
+            "**使用方法**:",
+            "1. 各TODO項目の「コメントID」を確認",
+            "2. 上記テンプレートの `[OWNER]`, `[REPO]`, `[PR_NUMBER]`, `[COMMENT_ID]` を実際の値に置換",
+            "3. `[技術的根拠を記載]` 部分に具体的な理由を記入",
+            "4. curlコマンドを実行",
+            "",
+            "**技術的根拠の例**:",
+            "- `型安全性の観点から現在の実装が適切`",
+            "- `パフォーマンス要件を満たしており変更不要`",
+            "- `セキュリティリスクが存在しないため対応不要`",
+            "- `コードの可読性を損なう可能性があるため現状維持`",
+            "",
+            "**重要**: 修正完了時の@coderabbitaiへの報告は不要です。上記コマンドは対応しない場合のみ使用してください。課題の解決判断はCodeRabbitが行いますが、**一括での課題解決は絶対に行わないでください**。",
+            ""
+        ]
+    
     def _generate_footer(self) -> str:
         """フッター部分を生成"""
         return f"""
@@ -323,63 +388,6 @@ class AIPromptGenerator:
 - ⚠️ **指摘間違い**: `@coderabbitai この指摘は[具体的な理由]により間違いと判断します。[正しい技術的説明]。妥当と判断される場合は**この特定の課題のみ**を解決済みにしてください。他の課題は変更しないでください。`
 
 **重要**: 修正完了時の@coderabbitaiへの報告は不要です。課題の解決判断はCodeRabbitに委ねます。**一括での課題解決は禁止**です。
-
-### 🔧 CodeRabbit返信用curlコマンド
-
-**前提条件**: 
-```bash
-export GITHUB_TOKEN="your_github_token_here"
-```
-
-#### ❌ 対応不要の場合
-```bash
-curl -X POST "https://api.github.com/repos/[OWNER]/[REPO]/pulls/[PR_NUMBER]/comments" \\
-  -H "Authorization: token ${GITHUB_TOKEN}" \\
-  -H "Accept: application/vnd.github.v3+json" \\
-  -H "Content-Type: application/json" \\
-  -d '{
-    "body": "@coderabbitai 対応不要：[技術的根拠を記載]。適切と判断される場合は**この特定の課題のみ**を解決済みにしてください。他の課題は変更しないでください。",
-    "in_reply_to": [COMMENT_ID]
-  }'
-```
-
-#### 🤔 要確認の場合
-```bash
-curl -X POST "https://api.github.com/repos/[OWNER]/[REPO]/pulls/[PR_NUMBER]/comments" \\
-  -H "Authorization: token ${GITHUB_TOKEN}" \\
-  -H "Accept: application/vnd.github.v3+json" \\
-  -H "Content-Type: application/json" \\
-  -d '{
-    "body": "@coderabbitai [確認したい内容]について詳細説明をお願いします。",
-    "in_reply_to": [COMMENT_ID]
-  }'
-```
-
-#### ⚠️ 指摘間違いの場合
-```bash
-curl -X POST "https://api.github.com/repos/[OWNER]/[REPO]/pulls/[PR_NUMBER]/comments" \\
-  -H "Authorization: token ${GITHUB_TOKEN}" \\
-  -H "Accept: application/vnd.github.v3+json" \\
-  -H "Content-Type: application/json" \\
-  -d '{
-    "body": "@coderabbitai この指摘は[具体的な理由]により間違いと判断します。[正しい技術的説明]。妥当と判断される場合は**この特定の課題のみ**を解決済みにしてください。他の課題は変更しないでください。",
-    "in_reply_to": [COMMENT_ID]
-  }'
-```
-
-**使用方法**:
-1. 各TODO項目の「コメントID」を確認
-2. 上記テンプレートの `[OWNER]`, `[REPO]`, `[PR_NUMBER]`, `[COMMENT_ID]` を実際の値に置換
-3. `[技術的根拠を記載]` 部分に具体的な理由を記入
-4. curlコマンドを実行
-
-**技術的根拠の例**:
-- `型安全性の観点から現在の実装が適切`
-- `パフォーマンス要件を満たしており変更不要`
-- `セキュリティリスクが存在しないため対応不要`
-- `コードの可読性を損なう可能性があるため現状維持`
-
-**重要**: 修正完了時の@coderabbitaiへの報告は不要です。上記コマンドは対応しない場合のみ使用してください。課題の解決判断はCodeRabbitが行いますが、**一括での課題解決は絶対に行わないでください**。
 
 **対応不要な指摘について**:
 対応不要と判断した指摘については、以下の形式で理由を記載してください:
