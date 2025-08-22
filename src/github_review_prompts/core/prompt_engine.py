@@ -17,55 +17,8 @@ class UnifiedPromptEngine:
     """統一プロンプト生成エンジン"""
     
     def __init__(self):
-        self.templates = {
-            'curl_reply_instruction': self._get_curl_reply_template(),
-            'git_instructions': self._get_git_instructions_template(),
-            'commit_message': self._get_commit_message_template()
-        }
-    
-    def _get_curl_reply_template(self) -> str:
-        """curl返信テンプレート"""
-        return """### 🔧 返信方法（重要）
-プルリクエストコメントに対する返信は、以下の **curlコマンド** を使用して行ってください：
-
-```bash
-curl -X POST \\
-  -H "Authorization: Bearer YOUR_GITHUB_TOKEN" \\
-  -H "Accept: application/vnd.github.v3+json" \\
-  -H "Content-Type: application/json" \\
-  -d '{"body": "返信メッセージ", "in_reply_to": COMMENT_ID}' \\
-  https://api.github.com/repos/OWNER/REPO/pulls/PR_NUMBER/comments
-```
-
-**返信すべき場面**:
-- ❌ 対応不要と判断した場合
-- ⏳ 将来対応と判断した場合  
-- 🤔 指摘内容が技術的に間違っていると判断した場合
-- ❓ 不明な点があり確認が必要な場合
-
-**重要な制約**:
-- ⚠️ **返信は指摘コメントに対してのみ行ってください**
-- ✅ 修正対応を完了した場合は返信不要です（修正内容の説明も不要）
-- 💬 質問や確認のコメントに対しては返信してください
-- 🚫 単なる情報提供や説明コメントには返信不要です
-
-**注意**: GitHubの統合ツールやAPIツールは使用せず、必ずcurlコマンドで返信してください。
-
-**返信ガイドライン**:
-- 🎯 修正済み → 返信不要、ただちに次のコメントへ
-- 🔍 要確認 → 質問や確認事項を返信
-- ❌ 対応不要 → 理由を明記して返信
-- ⏳ 後で対応 → 対応予定時期を返信
-
-**返信例**:
-```bash
-curl -X POST \\
-  -H "Authorization: Bearer ${{GITHUB_TOKEN}}" \\
-  -H "Accept: application/vnd.github.v3+json" \\
-  -H "Content-Type: application/json" \\
-  -d '{"body": "@coderabbitai この指摘について検証しましたが、現在の実装で問題ありません。理由：[技術的根拠]", "in_reply_to": 123456789}' \\
-  https://api.github.com/repos/owner/repo/pulls/42/comments
-```"""
+        # 新しいシンプル構造では動的生成を使用
+        pass
 
 
 
