@@ -160,11 +160,17 @@ class UnifiedCLI:
     def _handle_generate(self, args, token: str) -> int:
         """フル機能版 generate の処理（従来フォーマット）"""
         try:
-            # 進行状況表示
+            # カラー用の関数
+            def colorize(text: str, color_code: str) -> str:
+                if args.no_color:
+                    return text
+                return f"\033[{color_code}m{text}\033[0m"
+                
+            # 進行状況表示（カラー対応）
             print()
-            print(f"🔄 GitHub Review Prompt Generator (統一版)")
-            print(f"📋 プルリクエスト: {args.pr_url}")
-            print("=" * 80)
+            print(colorize("🔄 GitHub Review Prompt Generator (統一版)", "1;34"))
+            print(f"{colorize('📋 プルリクエスト:', '1;36')} {args.pr_url}")
+            print(colorize("=" * 80, "1;37"))
             
             # 設定管理
             config = ConfigManager()
@@ -176,17 +182,17 @@ class UnifiedCLI:
             pr_info = github_client.parse_pr_url(args.pr_url)
             
             # PR基本情報とコメント取得
-            print("📍 PR基本情報を取得中...")
+            print(colorize("📍 PR基本情報を取得中...", "1;33"))
             pr_basic_info = github_client.get_pr_basic_info(pr_info)
             
-            print("💬 レビューコメントを取得中...")
+            print(colorize("💬 レビューコメントを取得中...", "1;33"))
             comments = github_client.get_pr_review_comments(pr_info)
-            print(f"📊 取得したコメント数: {len(comments)} 件")
+            print(colorize(f"📊 取得したコメント数: {len(comments)} 件", "1;32"))
             
             # 解決済みコメント検出
-            print("🔍 解決済みコメント検出中...")
+            print(colorize("🔍 解決済みコメント検出中...", "1;33"))
             resolved_ids, _ = github_client.get_resolved_comments_via_graphql(pr_info)
-            print(f"✅ 解決済みコメント: {len(resolved_ids)} 件")
+            print(colorize(f"✅ 解決済みコメント: {len(resolved_ids)} 件", "1;32"))
             
             # 解決済みコメントの除外（--include-resolvedオプションがない場合）
             if not args.include_resolved:
@@ -194,9 +200,9 @@ class UnifiedCLI:
                 comments = [c for c in comments if c.get('id') not in resolved_ids]
                 excluded_count = original_count - len(comments)
                 if excluded_count > 0:
-                    print(f"🚫 解決済みコメントを除外: {excluded_count} 件 → 残り {len(comments)} 件")
+                    print(f"{colorize(f'🚫 解決済みコメントを除外: {excluded_count} 件', '1;31')} {colorize(f'→ 残り {len(comments)} 件', '1;32')}")
             else:
-                print(f"ℹ️ 解決済みコメントも含めて処理: {len(comments)} 件")
+                print(colorize(f"ℹ️ 解決済みコメントも含めて処理: {len(comments)} 件", "1;36"))
             
             # プロンプト用のPR情報を構築
             pr_dict = {
@@ -211,25 +217,25 @@ class UnifiedCLI:
             }
             
             # フィルタリング処理
-            original_count = len(comments)
+            filter_original_count = len(comments)
             if args.author:
                 comments = [c for c in comments if c.get('user', {}).get('login') == args.author]
-                print(f"🔍 作者フィルタ適用: {args.author} → {len(comments)} 件")
+                print(f"{colorize(f'🔍 作者フィルタ適用: {args.author}', '1;35')} {colorize(f'→ {len(comments)} 件', '1;32')}")
             
             if args.since:
                 # 日付フィルタリング実装
-                print(f"📅 日付フィルタ: {args.since} 以降")
+                print(colorize(f"📅 日付フィルタ: {args.since} 以降", "1;35"))
                 pass
             
             if args.file_pattern:
                 pattern = re.compile(args.file_pattern)
                 comments = [c for c in comments if c.get('path') and pattern.search(c['path'])]
-                print(f"📁 ファイルパターンフィルタ適用: {args.file_pattern} → {len(comments)} 件")
+                print(f"{colorize(f'📁 ファイルパターンフィルタ適用: {args.file_pattern}', '1;35')} {colorize(f'→ {len(comments)} 件', '1;32')}")
             
-            if original_count != len(comments):
-                print(f"📋 最終処理対象: {len(comments)} 件 (元: {original_count} 件)")
+            if filter_original_count != len(comments):
+                print(colorize(f"📋 最終処理対象: {len(comments)} 件 (元: {filter_original_count} 件)", "1;36"))
             
-            print("🤖 プロンプト生成中...")
+            print(colorize("🤖 プロンプト生成中...", "1;33"))
             
             # プロンプト生成オプション
             options = {
@@ -243,7 +249,7 @@ class UnifiedCLI:
             prompt = self.prompt_engine.generate_main_prompt(comments, pr_dict, options, token)
             
             # 出力
-            self._output_result(prompt, pr_dict, comments, args.output, args.append, args.save_file)
+            self._output_result(prompt, pr_dict, comments, args.output, args.append, args.save_file, args.no_color)
             
             logger.info(f"プロンプトを生成しました ({len(comments)} コメント)")
             return 0
@@ -299,17 +305,23 @@ class UnifiedCLI:
         else:
             raise ValueError("メッセージ、テンプレート、またはファイルのいずれかを指定してください")
     
-    def _output_result(self, content: str, pr_dict: Dict, comments: List[Dict], output_file: str = None, append: bool = False, save_file: bool = False):
+    def _output_result(self, content: str, pr_dict: Dict, comments: List[Dict], output_file: str = None, append: bool = False, save_file: bool = False, no_color: bool = False):
         """美しい結果出力（従来フォーマット）"""
+        
+        # カラー用の関数
+        def colorize(text: str, color_code: str) -> str:
+            if no_color:
+                return text
+            return f"\033[{color_code}m{text}\033[0m"
         # 統計情報の表示
         print()
-        print("=" * 80)
-        print("✅ レビュープロンプトとTODOリストを生成しました")
-        print(f"📋 処理対象コメント: {len(comments)} 件")
-        print(f"🔗 プルリクエスト: {pr_dict.get('title', 'N/A')}")
+        print(colorize("=" * 80, "1;37"))
+        print(colorize("✅ レビュープロンプトとTODOリストを生成しました", "1;32"))
+        print(f"{colorize('📋 処理対象コメント:', '1;36')} {colorize(f'{len(comments)} 件', '1;33')}")
+        print(f"{colorize('🔗 プルリクエスト:', '1;36')} {pr_dict.get('title', 'N/A')}")
         print()
         
-        # プロンプト用コピー範囲の明確な開始マーカー
+        # プロンプト用コピー範囲の明確な開始マーカー（プレーンテキスト）
         print("🤖" + "=" * 78 + "🤖")
         print("📋 AI AGENT PROMPT - コピーペースト用範囲 (開始)")
         print("💡 以下の内容をコピーしてAIチャットに貼り付けてください")
@@ -355,11 +367,11 @@ class UnifiedCLI:
         # 保存結果の表示
         if saved_files:
             for file in saved_files:
-                print(f"📁 プロンプトファイルを保存しました: {file}")
+                print(f"{colorize('📁 プロンプトファイルを保存しました:', '1;32')} {file}")
         else:
-            print("💡 プロンプトファイルは保存されませんでした（--output または --save-file オプションで保存可能）")
+            print(colorize("💡 プロンプトファイルは保存されませんでした（--output または --save-file オプションで保存可能）", "1;33"))
         
-        print("=" * 80)
+        print(colorize("=" * 80, "1;37"))
 
 
 def main() -> int:
