@@ -103,19 +103,26 @@ class UnifiedPromptEngine:
                                if any(keyword.lower() in comment.get('body', '').lower() 
                                     for keyword in security_keywords))
             
+            # ドキュメント関連の低優先コメント検出
+            doc_keywords = ['readme', 'md051', 'markdown', 'anchor', 'documentation']
+            doc_count = sum(1 for comment in comments 
+                          if any(keyword.lower() in comment.get('body', '').lower() 
+                               for keyword in doc_keywords))
+            
+            other_count = len(comments) - security_count - doc_count
             security_percentage = int((security_count / len(comments)) * 100) if comments else 0
             
             prompt_parts.append(f"""
 ## 🚨 レビューコメント分析（{len(comments)}件）- {security_percentage}%がセキュリティ関連
 
-### 🔴 緊急（セキュリティ・機能破綻）- 推定{security_count}件
+### 🔴 緊急（セキュリティ・機能破綻）- {security_count}件
 **即座対応必須**: トークン漏洩リスク、システム破綻要因
 
-### 🟡 重要（機能改善・品質向上）- 推定{len(comments) - security_count}件  
+### 🟡 重要（機能改善・品質向上）- {other_count}件  
 **PR内対応**: 機能改善、リファクタリング、品質向上
 
-### 🟢 低優先（スタイル・軽微改善）
-**余裕があれば**: スタイル改善、軽微な最適化
+### 🟢 低優先（スタイル・軽微改善）- {doc_count}件
+**余裕があれば**: ドキュメント修正、スタイル改善
 
 ### ⚡ 推奨対応順序
 1. **🔴 セキュリティ関連**: トークン埋め込み・漏洩の完全除去（最優先）
@@ -138,7 +145,18 @@ class UnifiedPromptEngine:
                 # セキュリティ関連かどうかの自動判定
                 is_security = any(keyword.lower() in comment.get('body', '').lower() 
                                 for keyword in security_keywords)
-                classification = "🔴緊急" if is_security else "[🔴緊急/🟡重要/🟢低優先] ← 内容確認して分類"
+                
+                # ドキュメント関連の低優先判定
+                doc_keywords = ['readme', 'md051', 'markdown', 'anchor', 'documentation']
+                is_doc_low_priority = any(keyword.lower() in comment.get('body', '').lower() 
+                                        for keyword in doc_keywords)
+                
+                if is_security:
+                    classification = "🔴緊急"
+                elif is_doc_low_priority:
+                    classification = "🟢低優先"  
+                else:
+                    classification = "[🔴緊急/🟡重要/🟢低優先] ← 内容確認して分類"
                 
                 prompt_parts.append(f"""
 ### TODO #{i}: {self._extract_comment_title(comment)}
