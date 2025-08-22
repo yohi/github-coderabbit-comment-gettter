@@ -306,7 +306,7 @@ def get_default_review_prompt(no_confirm: bool = False, auto_commit: bool = Fals
 ## 作業手順
 1. コメントの技術的妥当性を評価
 2. 対応要否を判断し、理由を明記
-3. **対応する場合**: 具体的な修正を実施後、@coderabbitaiに完了報告
+3. **対応する場合**: 具体的な修正を実施（@coderabbitaiへの完了報告は不要）
 4. **対応しない場合**: GitHub APIを使って@coderabbitaiに技術的根拠を含む返信コメントを作成
 5. **重要**: 各対応完了後は必ず該当コメントの解決済み指示を含める
 
