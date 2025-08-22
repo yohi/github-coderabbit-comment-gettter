@@ -85,17 +85,18 @@ class UnifiedPromptEngine:
             prompt_parts.append("""
 次のコメントに進む前に、必ず確認を求めてください。""")
 
-        # 自動コミット・プッシュモードの設定
+        # 自動コミット・プッシュモードの設定（簡略化）
         if options.get('auto_commit'):
             prompt_parts.append("""
 ## 🔄 Git自動操作設定
-**自動コミット・プッシュモード**: すべてのレビューコメント対応完了後、以下を自動実行してください：
+**自動コミット・プッシュモード**: 作業完了後、変更内容確認してから手動コミット検討してください。
 
-""" + self.templates['git_instructions'] + """
+**Git操作手順**:
+1. 変更ファイルのみ個別に `git add <ファイル名>` 
+2. `git commit -m "CodeRabbitレビューコメント対応"`
+3. 内容確認後 `git push`
 
-""" + self.templates['commit_message'] + """
-
-**注意**: Git操作実行前に作業内容を簡潔にサマリーしてください。""")
+**注意**: `git add .` は使用せず、関連ファイルのみをコミットしてください。""")
 
         # 重要な注意事項
         prompt_parts.append("""
