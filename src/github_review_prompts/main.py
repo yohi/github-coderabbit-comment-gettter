@@ -183,6 +183,21 @@ class UnifiedCLI:
             comments = github_client.get_pr_review_comments(pr_info)
             print(f"📊 取得したコメント数: {len(comments)} 件")
             
+            # 解決済みコメント検出
+            print("🔍 解決済みコメント検出中...")
+            resolved_ids, _ = github_client.get_resolved_comments_via_graphql(pr_info)
+            print(f"✅ 解決済みコメント: {len(resolved_ids)} 件")
+            
+            # 解決済みコメントの除外（--include-resolvedオプションがない場合）
+            if not args.include_resolved:
+                original_count = len(comments)
+                comments = [c for c in comments if c.get('id') not in resolved_ids]
+                excluded_count = original_count - len(comments)
+                if excluded_count > 0:
+                    print(f"🚫 解決済みコメントを除外: {excluded_count} 件 → 残り {len(comments)} 件")
+            else:
+                print(f"ℹ️ 解決済みコメントも含めて処理: {len(comments)} 件")
+            
             # プロンプト用のPR情報を構築
             pr_dict = {
                 'title': pr_basic_info.get('title'),
