@@ -187,35 +187,164 @@ class UnifiedPromptEngine:
         return '\n'.join(prompt_parts)
     
     def _format_single_comment(self, comment: Dict, pr_info: Dict, github_token: str = None) -> str:
-        """単一コメントのフォーマット"""
-        parts = []
+        """構造化された単一コメントのフォーマット"""
+        # 基本情報抽出
+        comment_id = comment.get('id', 'unknown')
+        author = comment.get('user', {}).get('login', 'Unknown')
+        created_at = comment.get('created_at', 'Unknown')
+        file_path = comment.get('path', 'Unknown')
+        line_number = comment.get('line') or comment.get('original_line', 'Unknown')
+        body = comment.get('body', '')
         
-        # 基本情報
-        parts.append(f"**作成者**: {comment.get('user', {}).get('login', 'Unknown')}")
-        parts.append(f"**作成日時**: {comment.get('created_at', 'Unknown')}")
+        # 自動分類とメタデータ生成
+        classification_data = self._analyze_comment(body, file_path)
         
-        if comment.get('id'):
-            # コメントIDのみ記載（返信時に使用）
-            parts.append(f"**コメントID**: {comment['id']}")
-        
-        # ファイル情報
-        if comment.get('path'):
-            parts.append(f"**ファイル**: `{comment['path']}`")
-            if comment.get('line'):
-                parts.append(f"**行番号**: {comment['line']}")
-        
-        # コメント本文
-        if comment.get('body'):
-            parts.append(f"""
-**コメント内容**:
-```
-{comment['body']}
-```""")
-        
+        # YAML構造化データ
+        yaml_data = f"""```yaml
+id: {comment_id}
+author: {author}
+created_at: {created_at}
+file_path: {file_path}
+line_number: {line_number}
+classification: {classification_data['classification']}
+title: "{classification_data['title']}"
+issue_type: {classification_data['issue_type']}
+severity: {classification_data['severity']}
+tools_detected: {classification_data['tools_detected']}
+```"""
 
+        # 構造化されたコメント表示
+        parts = [
+            yaml_data,
+            f"**🏷️ 分類**: {classification_data['classification_emoji']}",
+            f"**📁 ファイル**: `{file_path}` (L{line_number})",
+            f"**⚠️ 重要度**: {classification_data['severity']}",
+            f"**🔍 問題種別**: {classification_data['issue_type']}",
+            "",
+            "**📝 説明**:",
+            self._extract_summary(body),
+            "",
+            "**🔧 提案アクション**:",
+            self._extract_suggested_actions(body),
+            "",
+            f"**⚡ 自動判断候補**: {classification_data['auto_decision']}",
+            "",
+            "**🎯 最終判断**: [ ] ✅実施 [ ] ❌対応不要 [ ] ⏳将来対応 [ ] 🤔要確認",
+            "",
+            f"**🔗 GitHub**: {comment.get('html_url', 'N/A')}",
+            f"**💬 コメントID**: {comment_id}"
+        ]
         
         return '\n'.join(parts)
     
+    def _analyze_comment(self, body: str, file_path: str) -> Dict[str, str]:
+        """コメントの自動分析・分類"""
+        body_lower = body.lower()
+        
+        # 分類・重要度マッピングルール
+        classification_rules = {
+            'security': {'emoji': '🔴', 'priority': 1, 'auto_decision': '✅実施'},
+            'functionality': {'emoji': '🔴', 'priority': 2, 'auto_decision': '✅実施'},
+            'performance': {'emoji': '🟡', 'priority': 3, 'auto_decision': '✅実施'},
+            'maintainability': {'emoji': '🟡', 'priority': 4, 'auto_decision': '🤔要確認'},
+            'style': {'emoji': '🟢', 'priority': 5, 'auto_decision': '⏳将来対応'},
+            'documentation': {'emoji': '🟢', 'priority': 6, 'auto_decision': '⏳将来対応'}
+        }
+        
+        # セキュリティ関連判定
+        security_keywords = ['token', 'credential', 'secret', 'github_pat', 'ghp_', 'authorization', 'bearer', 'security', '漏洩', 'vulnerability']
+        if any(keyword in body_lower for keyword in security_keywords):
+            return {
+                'classification': 'urgent',
+                'classification_emoji': '🔴',
+                'issue_type': 'security',
+                'severity': 'critical',
+                'auto_decision': '✅実施',
+                'title': self._extract_title(body),
+                'tools_detected': self._extract_tools(body)
+            }
+        
+        # ドキュメント関連判定
+        if file_path.endswith('.md') or any(keyword in body_lower for keyword in ['readme', 'md051', 'markdown', 'anchor', 'documentation']):
+            return {
+                'classification': 'low_priority',
+                'classification_emoji': '🟢',
+                'issue_type': 'documentation',
+                'severity': 'low',
+                'auto_decision': '⏳将来対応',
+                'title': self._extract_title(body),
+                'tools_detected': self._extract_tools(body)
+            }
+        
+        # 機能・品質関連（デフォルト）
+        return {
+            'classification': 'important',
+            'classification_emoji': '🟡',
+            'issue_type': 'functionality',
+            'severity': 'medium',
+            'auto_decision': '🤔要確認',
+            'title': self._extract_title(body),
+            'tools_detected': self._extract_tools(body)
+        }
+    
+    def _extract_title(self, body: str) -> str:
+        """コメントからタイトルを抽出"""
+        lines = body.split('\n')
+        first_line = lines[0].strip()
+        
+        # ## や ** などのマークダウン記号を除去
+        clean_line = first_line.replace('**', '').replace('##', '').replace('*', '').strip()
+        
+        # 50文字でカット
+        if len(clean_line) > 50:
+            return clean_line[:47] + '...'
+        return clean_line or 'レビューコメント'
+    
+    def _extract_summary(self, body: str) -> str:
+        """コメントからサマリーを抽出"""
+        lines = body.split('\n')
+        summary_lines = []
+        
+        for line in lines[:3]:  # 最初の3行
+            line = line.strip()
+            if line and not line.startswith('```') and not line.startswith('---'):
+                summary_lines.append(line)
+        
+        return '\n'.join(summary_lines) or body[:200] + ('...' if len(body) > 200 else '')
+    
+    def _extract_suggested_actions(self, body: str) -> str:
+        """コメントから提案アクションを抽出"""
+        # diff ブロックを探す
+        if '```diff' in body or '```suggestion' in body:
+            return "コードブロックに具体的な修正案あり"
+        
+        # 具体的な指示を探す
+        action_keywords = ['修正', '変更', '追加', '削除', '更新', 'fix', 'change', 'add', 'remove', 'update']
+        lines = body.split('\n')
+        
+        action_lines = []
+        for line in lines:
+            if any(keyword in line.lower() for keyword in action_keywords):
+                action_lines.append(f"- {line.strip()}")
+        
+        return '\n'.join(action_lines) if action_lines else "詳細はコメント本文を参照"
+    
+    def _extract_tools(self, body: str) -> str:
+        """コメントからツール検出情報を抽出"""
+        tools = []
+        
+        # 一般的なツール
+        tool_patterns = ['markdownlint', 'eslint', 'pylint', 'ruff', 'black', 'mypy', 'tsc', 'prettier']
+        for tool in tool_patterns:
+            if tool.lower() in body.lower():
+                tools.append(tool)
+        
+        # MD051 など特定のルール
+        if 'md051' in body.lower():
+            tools.append('MD051')
+        
+        return str(tools) if tools else '[]'
+
     def _generate_curl_section(self, pr_info: Dict, github_token: str = None) -> str:
         """curl返信セクションを生成"""
         owner = pr_info.get('owner', 'OWNER')
