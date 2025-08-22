@@ -87,19 +87,7 @@ CodeRabbitレビューコメント対応 - #123
 - 提案に従いエラーハンドリングを更新
 ```"""
 
-    def generate_comment_reply_info(self, comment_id: int, pr_owner: str, pr_repo: str, pr_number: int) -> str:
-        """個別コメントの返信情報を生成"""
-        return f"""**コメントID**: {comment_id}
-**APIエンドポイント**: `POST /repos/{pr_owner}/{pr_repo}/pulls/{pr_number}/comments`
-**返信方法**: 以下のcurlコマンドで `in_reply_to: {comment_id}` を指定して返信
-```bash
-curl -X POST \\
-  -H "Authorization: Bearer YOUR_GITHUB_TOKEN" \\
-  -H "Accept: application/vnd.github.v3+json" \\
-  -H "Content-Type: application/json" \\
-  -d '{{"body": "返信メッセージ", "in_reply_to": {comment_id}}}' \\
-  https://api.github.com/repos/{pr_owner}/{pr_repo}/pulls/{pr_number}/comments
-```"""
+
 
     def generate_main_prompt(self, 
                            comments: List[Dict], 
@@ -248,19 +236,8 @@ curl -X POST \\
         parts.append(f"**作成日時**: {comment.get('created_at', 'Unknown')}")
         
         if comment.get('id'):
-            # 返信情報を追加
-            reply_info = self.generate_comment_reply_info(
-                comment['id'],
-                pr_info.get('owner'),
-                pr_info.get('repo'), 
-                pr_info.get('number')
-            )
-            
-            # TOKENを実際の値に置換
-            if github_token:
-                reply_info = reply_info.replace('YOUR_GITHUB_TOKEN', github_token)
-            
-            parts.append(reply_info)
+            # コメントIDのみ記載（返信時に使用）
+            parts.append(f"**コメントID**: {comment['id']}")
         
         # ファイル情報
         if comment.get('path'):
