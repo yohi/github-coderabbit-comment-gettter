@@ -46,25 +46,39 @@ class UnifiedCLI:
         """引数パーサーを作成（従来フォーマット互換）"""
         parser = argparse.ArgumentParser(
             prog="github-review-prompts",
-            description="🔄 GitHub PR Review Comments - 統一AI処理ツール",
+            description="🔄 GitHub Review Prompt Generator (統一版)",
             formatter_class=argparse.RawDescriptionHelpFormatter,
             epilog="""
-使用例:
-  # プロンプト生成（標準出力のみ）
-  %(prog)s https://github.com/owner/repo/pull/123
-  %(prog)s --no-confirm --auto-commit https://github.com/owner/repo/pull/123
+例:
+  # プロンプト生成
+  grp https://github.com/owner/repo/pull/123
+  grp --persona security-analyst https://github.com/owner/repo/pull/123
+  grp --no-confirm https://github.com/owner/repo/pull/123
+  grp --auto-commit https://github.com/owner/repo/pull/123
+  grp --debug https://github.com/owner/repo/pull/123
+  grp --no-confirm --auto-commit --debug https://github.com/owner/repo/pull/123
   
-  # ファイル保存も行う場合
-  %(prog)s --save-file https://github.com/owner/repo/pull/123
-  %(prog)s --output my_prompt.md https://github.com/owner/repo/pull/123
+  # ファイル保存
+  grp --save-file https://github.com/owner/repo/pull/123
+  grp --output my_prompt.md https://github.com/owner/repo/pull/123
   
-  # コメント返信
-  %(prog)s --reply-to 456 --reply-message "修正しました" https://github.com/owner/repo/pull/123
+  # コメント返信（curlベース）
+  grp --reply-to 123456 --reply-message "Fixed, thanks!" https://github.com/owner/repo/pull/123
+  grp --reply-to 123456 --reply-template fixed https://github.com/owner/repo/pull/123
+  grp --reply-to 123456 --reply-template acknowledged --no-confirm https://github.com/owner/repo/pull/123
+
+モード説明:
+  - uvx環境: 常にフル機能モード（依存関係自動インストール）
+  - uv run環境: フル機能モード（仮想環境の依存関係使用）
+  - 直接実行環境: フル機能モード（高度なフィルタリング、ペルソナ等）
 
 環境変数:
-  GITHUB_TOKEN    GitHub Personal Access Token (必須)
-  GITHUB_API_URL  GitHub API Base URL (デフォルト: https://api.github.com)
-"""
+  GITHUB_TOKEN - GitHub APIトークン（必須）
+
+出力:
+  - review_prompt_with_todos.md (--save-file 指定時)
+  - コンソール出力
+        """
         )
         
         # メイン引数（PR URL）
@@ -72,11 +86,11 @@ class UnifiedCLI:
         
         # プロンプト生成オプション
         parser.add_argument("--persona", choices=list(PERSONAS.keys()), 
-                           default="engineer", help="AI ペルソナを選択")
+                           default="engineer", help="AIエージェントのペルソナ")
         parser.add_argument("--format", choices=["markdown", "json", "text"], 
                            default="markdown", help="出力形式")
-        parser.add_argument("--no-confirm", action="store_true", help="確認をスキップして連続処理")
-        parser.add_argument("--auto-commit", action="store_true", help="自動コミット・プッシュモード")
+        parser.add_argument("--no-confirm", action="store_true", help="各コメント処理後の確認をスキップする")
+        parser.add_argument("--auto-commit", action="store_true", help="作業完了後に自動的にgit commit & pushを実行する")
         
         # フィルタリングオプション
         parser.add_argument("--include-resolved", action="store_true", help="解決済みコメントも含める")
@@ -87,18 +101,17 @@ class UnifiedCLI:
         # 返信オプション
         parser.add_argument("--reply-to", type=int, help="指定されたコメントIDに返信")
         parser.add_argument("--reply-message", help="返信メッセージ（--reply-toと組み合わせて使用）")
-        parser.add_argument("--reply-template", choices=["fixed", "acknowledged", "clarification", "wontfix", 
-                                                        "duplicate", "resolved", "investigating", "question"], 
-                           help="返信テンプレート")
+        parser.add_argument("--reply-template", choices=["fixed", "acknowledged", "investigating", "clarification", "wontfix"], 
+                           help="返信テンプレートを使用")
         
         # 出力オプション
         parser.add_argument("--output", "-o", help="出力ファイル (指定なしで標準出力のみ)")
         parser.add_argument("--append", action="store_true", help="ファイルに追記 (新規作成ではなく)")
         parser.add_argument("--save-file", action="store_true", help="review_prompt_with_todos.md にプロンプトを保存")
-        parser.add_argument("--no-color", action="store_true", help="カラー出力を無効にする")
+        parser.add_argument("--no-color", action="store_true", help="カラー出力を無効にする（コピーペースト最適化）")
         
         # システムオプション
-        parser.add_argument("--debug", action="store_true", help="デバッグログを有効化")
+        parser.add_argument("--debug", action="store_true", help="デバッグモードを有効にする（詳細ログ出力）")
         parser.add_argument("--token", help="GitHub トークン (環境変数 GITHUB_TOKEN で設定可能)")
         parser.add_argument("--api-url", default="https://api.github.com", help="GitHub API URL")
         
