@@ -346,7 +346,7 @@ security_risk: {str(security_risk).lower()}
         return None
     
     def _extract_file_list_pattern(self, body: str) -> dict:
-        """複数ファイル指摘パターンを抽出（改善版）"""
+        """複数ファイル指摘パターンを抽出（修正版）"""
         import re
         
         # より正確なファイル情報抽出
@@ -358,8 +358,7 @@ security_risk: {str(security_risk).lower()}
             
             return {
                 'problem': problem,
-                'files': file_info['files'],
-                'descriptions': file_info['descriptions'],
+                'files': file_info,  # 構造化ファイル情報全体を渡す
                 'actions': concrete_actions
             }
         return None
