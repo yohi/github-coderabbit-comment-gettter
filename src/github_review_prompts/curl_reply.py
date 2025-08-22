@@ -347,7 +347,7 @@ def get_github_token() -> str:
         print("❌ エラー: GITHUB_TOKEN 環境変数が設定されていません。")
         print("")
         print("以下のコマンドで設定してください:")
-        print("  export GITHUB_TOKEN=ghp_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx")
+        print("  export GITHUB_TOKEN=your_github_token_here")
         sys.exit(1)
     return token
 

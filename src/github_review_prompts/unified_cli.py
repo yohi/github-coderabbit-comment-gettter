@@ -246,7 +246,7 @@ def get_github_token() -> str:
         print("❌ エラー: GITHUB_TOKEN 環境変数が設定されていません。")
         print("")
         print("以下のコマンドで設定してください:")
-        print("  export GITHUB_TOKEN=ghp_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx")
+        print("  export GITHUB_TOKEN=your_github_token_here")
         print("")
         print("GitHubトークンの取得方法:")
         print("  1. GitHub.com > Settings > Developer settings > Personal access tokens")
@@ -621,7 +621,7 @@ curl -X POST \\
 **返信例**:
 ```bash
 curl -X POST \\
-  -H "Authorization: Bearer ghp_xxxxxxxxxxxxxxxxxxxx" \\
+  -H "Authorization: Bearer ${GITHUB_TOKEN}" \\
   -H "Accept: application/vnd.github.v3+json" \\
   -H "Content-Type: application/json" \\
   -d '{"body": "@coderabbitai この指摘について検証しましたが、現在の実装で問題ありません。理由：[技術的根拠]", "in_reply_to": 123456789}' \\
