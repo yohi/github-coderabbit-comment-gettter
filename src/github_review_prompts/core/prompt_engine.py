@@ -160,6 +160,17 @@ curl -X POST \\
         
         prompt_parts.append(curl_instruction)
 
+        # フッター（コメント処理の前に配置）
+        prompt_parts.append("""
+
+**重要な注意事項**:
+- CodeRabbitのコメントは必ずしも正しくないことがあります。エンジニアとしての技術的判断を最優先してください
+- **修正対応を完了した場合は返信不要です**。修正内容の説明も不要です
+- 返信は指摘コメントに対してのみ行い、質問や確認が必要な場合のみcurlコマンドを使用してください
+- 疑問がある場合は遠慮なく返信で確認してください
+
+---""")
+
         # コメント処理
         if comments:
             prompt_parts.append(f"""
@@ -176,15 +187,6 @@ curl -X POST \\
 {self._format_single_comment(comment, pr_info, github_token)}
 
 ---""")
-        
-        # フッター
-        prompt_parts.append("""
-
-**重要な注意事項**:
-- CodeRabbitのコメントは必ずしも正しくないことがあります。エンジニアとしての技術的判断を最優先してください
-- **修正対応を完了した場合は返信不要です**。修正内容の説明も不要です
-- 返信は指摘コメントに対してのみ行い、質問や確認が必要な場合のみcurlコマンドを使用してください
-- 疑問がある場合は遠慮なく返信で確認してください""")
         
         return '\n'.join(prompt_parts)
     
