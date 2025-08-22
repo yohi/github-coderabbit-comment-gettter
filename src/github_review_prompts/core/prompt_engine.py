@@ -97,28 +97,52 @@ class UnifiedPromptEngine:
 
         # コメント処理
         if comments:
+            # セキュリティ関連コメントの自動検出
+            security_keywords = ['token', 'credential', 'secret', 'github_pat', 'ghp_', 'authorization', 'bearer']
+            security_count = sum(1 for comment in comments 
+                               if any(keyword.lower() in comment.get('body', '').lower() 
+                                    for keyword in security_keywords))
+            
+            security_percentage = int((security_count / len(comments)) * 100) if comments else 0
+            
             prompt_parts.append(f"""
-## レビューコメント分析（{len(comments)}件）
+## 🚨 レビューコメント分析（{len(comments)}件）- {security_percentage}%がセキュリティ関連
 
-### 🔴 緊急（セキュリティ・機能破綻）
-**優先対応**: セキュリティリスク、システム破綻要因
+### 🔴 緊急（セキュリティ・機能破綻）- 推定{security_count}件
+**即座対応必須**: トークン漏洩リスク、システム破綻要因
 
-### 🟡 重要（機能改善・品質向上）  
+### 🟡 重要（機能改善・品質向上）- 推定{len(comments) - security_count}件  
 **PR内対応**: 機能改善、リファクタリング、品質向上
 
 ### 🟢 低優先（スタイル・軽微改善）
 **余裕があれば**: スタイル改善、軽微な最適化
 
-**対応順序**: 🔴→🟡→🟢の順で処理してください
+### ⚡ 推奨対応順序
+1. **🔴 セキュリティ関連**: トークン埋め込み・漏洩の完全除去（最優先）
+2. **🔴 その他緊急**: システム破綻リスクの修正
+3. **🟡 品質改善**: 機能・コード品質の向上
+4. **🟢 軽微修正**: ドキュメント・スタイル改善
+
+**🚨 重要**: {security_percentage}%がセキュリティ関連の緊急案件です。トークン漏洩リスクが高いため、🔴項目の完全解決を最優先してください。
+
+### 🔍 根本原因分析
+- **設計問題**: トークン値を直接文字列生成に使用
+- **移行不完全**: 環境変数参照への移行が部分的
+- **整合性不備**: テストコードとの整合性問題
 
 ---
 ## 🔍 対象コメント一覧
 """)
             
             for i, comment in enumerate(comments, 1):
+                # セキュリティ関連かどうかの自動判定
+                is_security = any(keyword.lower() in comment.get('body', '').lower() 
+                                for keyword in security_keywords)
+                classification = "🔴緊急" if is_security else "[🔴緊急/🟡重要/🟢低優先] ← 内容確認して分類"
+                
                 prompt_parts.append(f"""
 ### TODO #{i}: {self._extract_comment_title(comment)}
-**分類**: [🔴緊急/🟡重要/🟢低優先] ← 内容を確認して分類してください
+**分類**: {classification}
 
 {self._format_single_comment(comment, pr_info, github_token)}
 
