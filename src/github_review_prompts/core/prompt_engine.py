@@ -212,14 +212,13 @@ auto_decision: {classification_data['auto_decision']}
 security_risk: {str(security_risk).lower()}
 ```"""
 
-        # 規則性統一・原文活用フォーマット
+        # パターンベース最適化フォーマット
+        optimized_content = self._optimize_comment_format(body)
+        
         parts = [
             yaml_data,
             "",
-            "**CodeRabbitコメント全文**:",
-            "```",
-            body,
-            "```",
+            optimized_content,
             "",
             "**🎯 最終判断**: [ ] ✅実施 [ ] ❌対応不要 [ ] ⏳将来対応 [ ] 🤔要確認"
         ]
@@ -307,7 +306,158 @@ security_risk: {str(security_risk).lower()}
         
         return str(tools) if tools else '[]'
     
+    def _optimize_comment_format(self, body: str) -> str:
+        """GitHubコメントをパターンベースで最適化"""
+        import re
+        
+        # パターン1: 問題説明 + diffブロック
+        problem_diff = self._extract_problem_and_diff(body)
+        if problem_diff:
+            return self._format_problem_diff_pattern(problem_diff)
+        
+        # パターン2: 複数ファイル指摘
+        file_list = self._extract_file_list_pattern(body)
+        if file_list:
+            return self._format_file_list_pattern(file_list)
+        
+        # パターン3: 検証スクリプト提供
+        script_pattern = self._extract_script_pattern(body)
+        if script_pattern:
+            return self._format_script_pattern(script_pattern)
+        
+        # フォールバック: 未知パターンは要点抽出
+        return self._format_fallback_pattern(body)
+    
+    def _extract_problem_and_diff(self, body: str) -> dict:
+        """問題説明とdiffブロックを抽出"""
+        import re
+        
+        # 問題説明部分（**で囲まれた部分）
+        problem_match = re.search(r'\*\*(.*?)\*\*', body, re.DOTALL)
+        
+        # diffブロックまたはsuggestionブロック
+        diff_blocks = re.findall(r'```(?:diff|suggestion)\n(.*?)\n```', body, re.DOTALL)
+        
+        if problem_match and diff_blocks:
+            return {
+                'problem': problem_match.group(1).strip(),
+                'diffs': diff_blocks
+            }
+        return None
+    
+    def _extract_file_list_pattern(self, body: str) -> dict:
+        """複数ファイル指摘パターンを抽出"""
+        import re
+        
+        # ファイルパスと行番号のパターン
+        file_matches = re.findall(r'([a-zA-Z0-9_./]+\.py)\s*(?:\(.*?行\s*(\d+).*?\))?[:\s]*([^\n]+)', body)
+        
+        if len(file_matches) >= 2:  # 複数ファイル
+            problem_desc = body.split('\n')[0].strip()
+            if problem_desc.startswith('_'):  # マークダウン記号除去
+                problem_desc = re.sub(r'^_.*?_\s*', '', problem_desc)
+            
+            return {
+                'problem': problem_desc,
+                'files': file_matches,
+                'method': self._extract_solution_method(body)
+            }
+        return None
+    
+    def _extract_script_pattern(self, body: str) -> dict:
+        """検証スクリプトパターンを抽出"""
+        import re
+        
+        # shellスクリプトブロック
+        script_blocks = re.findall(r'```(?:shell|bash)\n(.*?)\n```', body, re.DOTALL)
+        
+        if script_blocks:
+            problem_desc = body.split('\n')[0].strip()
+            return {
+                'problem': problem_desc,
+                'scripts': script_blocks
+            }
+        return None
+    
+    def _extract_solution_method(self, body: str) -> str:
+        """修正方法を抽出"""
+        lines = body.split('\n')
+        for line in lines:
+            if any(keyword in line.lower() for keyword in ['対応:', '修正:', 'fix:', 'solution:']):
+                return line.strip()
+        return "詳細は原文参照"
+    
+    def _format_problem_diff_pattern(self, data: dict) -> str:
+        """問題+diff パターンの整形"""
+        diff_text = '\n'.join(f"```diff\n{diff}\n```" for diff in data['diffs'])
+        
+        return f"""**問題**: {data['problem']}
 
+**修正案**:
+{diff_text}"""
+    
+    def _format_file_list_pattern(self, data: dict) -> str:
+        """ファイルリスト パターンの整形"""
+        file_list = []
+        for file_info in data['files']:
+            file_path, line_num, description = file_info
+            line_info = f" (行{line_num})" if line_num else ""
+            file_list.append(f"- `{file_path}`{line_info}: {description}")
+        
+        files_text = '\n'.join(file_list)
+        
+        return f"""**問題**: {data['problem']}
+
+**対象ファイル**:
+{files_text}
+
+**修正方法**: {data['method']}"""
+    
+    def _format_script_pattern(self, data: dict) -> str:
+        """スクリプト パターンの整形"""
+        script_text = '\n'.join(f"```shell\n{script}\n```" for script in data['scripts'])
+        
+        return f"""**問題**: {data['problem']}
+
+**検証スクリプト**:
+{script_text}"""
+    
+    def _format_fallback_pattern(self, body: str) -> str:
+        """フォールバック: 要点抽出"""
+        lines = body.split('\n')
+        important_lines = []
+        
+        # HTMLタグや詳細セクションを除外
+        skip_patterns = ['<details>', '<summary>', '<!-- ', '_💡 Verification agent_', '_🧩 Analysis chain_']
+        in_details = False
+        
+        for line in lines[:10]:  # 最初の10行のみ
+            line = line.strip()
+            
+            if '<details>' in line:
+                in_details = True
+                continue
+            if '</details>' in line:
+                in_details = False
+                continue
+            if in_details:
+                continue
+                
+            if line and not any(pattern in line for pattern in skip_patterns):
+                # マークダウン記号を除去
+                clean_line = line.replace('**', '').replace('*', '').replace('_', '').strip()
+                if clean_line and len(clean_line) > 10:
+                    important_lines.append(clean_line)
+                    
+                if len(important_lines) >= 3:  # 最大3行
+                    break
+        
+        summary = '\n'.join(important_lines) if important_lines else "詳細は技術的検証が必要"
+        
+        return f"""**要点**:
+{summary}
+
+**注意**: 複雑なコメントのため、原文確認推奨"""
 
     def _generate_curl_section(self, pr_info: Dict, github_token: str = None) -> str:
         """curl返信セクションを生成"""
