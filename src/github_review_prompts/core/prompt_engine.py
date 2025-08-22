@@ -199,40 +199,33 @@ class UnifiedPromptEngine:
         # 自動分類とメタデータ生成
         classification_data = self._analyze_comment(body, file_path)
         
-        # YAML構造化データ
+        # 最適化されたYAML構造（重複なし）
+        security_risk = classification_data['issue_type'] == 'security'
         yaml_data = f"""```yaml
 id: {comment_id}
-author: {author}
-created_at: {created_at}
-file_path: {file_path}
-line_number: {line_number}
-classification: {classification_data['classification']}
-title: "{classification_data['title']}"
-issue_type: {classification_data['issue_type']}
-severity: {classification_data['severity']}
-tools_detected: {classification_data['tools_detected']}
+priority: {classification_data['classification_emoji']} {classification_data['severity']}
+type: {classification_data['issue_type']}
+file: {file_path}:{line_number}
+auto_decision: {classification_data['auto_decision']}
+security_risk: {str(security_risk).lower()}
 ```"""
 
-        # 構造化されたコメント表示
+        # 問題説明（1-2行で簡潔に）
+        problem_summary = self._extract_problem_summary(body)
+        
+        # 修正案（コピペ可能なコード）
+        solution_code = self._extract_solution_code(body)
+        
+        # 簡潔で実用的なコメント表示
         parts = [
             yaml_data,
-            f"**🏷️ 分類**: {classification_data['classification_emoji']}",
-            f"**📁 ファイル**: `{file_path}` (L{line_number})",
-            f"**⚠️ 重要度**: {classification_data['severity']}",
-            f"**🔍 問題種別**: {classification_data['issue_type']}",
             "",
-            "**📝 説明**:",
-            self._extract_summary(body),
+            f"**問題**: {problem_summary}",
             "",
-            "**🔧 提案アクション**:",
-            self._extract_suggested_actions(body),
+            "**修正案**:",
+            solution_code,
             "",
-            f"**⚡ 自動判断候補**: {classification_data['auto_decision']}",
-            "",
-            "**🎯 最終判断**: [ ] ✅実施 [ ] ❌対応不要 [ ] ⏳将来対応 [ ] 🤔要確認",
-            "",
-            f"**🔗 GitHub**: {comment.get('html_url', 'N/A')}",
-            f"**💬 コメントID**: {comment_id}"
+            "**判断**: [ ] ✅実施 [ ] ❌対応不要 [ ] ⏳将来対応 [ ] 🤔要確認"
         ]
         
         return '\n'.join(parts)
@@ -300,34 +293,7 @@ tools_detected: {classification_data['tools_detected']}
             return clean_line[:47] + '...'
         return clean_line or 'レビューコメント'
     
-    def _extract_summary(self, body: str) -> str:
-        """コメントからサマリーを抽出"""
-        lines = body.split('\n')
-        summary_lines = []
-        
-        for line in lines[:3]:  # 最初の3行
-            line = line.strip()
-            if line and not line.startswith('```') and not line.startswith('---'):
-                summary_lines.append(line)
-        
-        return '\n'.join(summary_lines) or body[:200] + ('...' if len(body) > 200 else '')
-    
-    def _extract_suggested_actions(self, body: str) -> str:
-        """コメントから提案アクションを抽出"""
-        # diff ブロックを探す
-        if '```diff' in body or '```suggestion' in body:
-            return "コードブロックに具体的な修正案あり"
-        
-        # 具体的な指示を探す
-        action_keywords = ['修正', '変更', '追加', '削除', '更新', 'fix', 'change', 'add', 'remove', 'update']
-        lines = body.split('\n')
-        
-        action_lines = []
-        for line in lines:
-            if any(keyword in line.lower() for keyword in action_keywords):
-                action_lines.append(f"- {line.strip()}")
-        
-        return '\n'.join(action_lines) if action_lines else "詳細はコメント本文を参照"
+
     
     def _extract_tools(self, body: str) -> str:
         """コメントからツール検出情報を抽出"""
@@ -344,6 +310,78 @@ tools_detected: {classification_data['tools_detected']}
             tools.append('MD051')
         
         return str(tools) if tools else '[]'
+    
+    def _extract_problem_summary(self, body: str) -> str:
+        """問題を1-2行で簡潔に要約"""
+        lines = body.split('\n')
+        summary_parts = []
+        
+        for line in lines[:2]:  # 最初の2行
+            line = line.strip()
+            if line and not line.startswith('```') and not line.startswith('---') and not line.startswith('##'):
+                # マークダウン記号を除去
+                clean_line = line.replace('**', '').replace('*', '').strip()
+                if clean_line:
+                    summary_parts.append(clean_line)
+        
+        summary = ' '.join(summary_parts)
+        
+        # 100文字でカット
+        if len(summary) > 100:
+            summary = summary[:97] + '...'
+            
+        return summary or '詳細はコメント本文を参照'
+    
+    def _extract_solution_code(self, body: str) -> str:
+        """修正案のコードを抽出（コピペ可能）"""
+        # diffブロックを探す
+        if '```diff' in body:
+            start = body.find('```diff')
+            end = body.find('```', start + 6)
+            if end != -1:
+                diff_content = body[start:end + 3]
+                return diff_content
+        
+        # suggestionブロックを探す  
+        if '```suggestion' in body:
+            start = body.find('```suggestion')
+            end = body.find('```', start + 12)
+            if end != -1:
+                suggestion_content = body[start:end + 3]
+                return suggestion_content
+        
+        # その他のコードブロックを探す
+        code_blocks = []
+        lines = body.split('\n')
+        in_code_block = False
+        current_block = []
+        
+        for line in lines:
+            if line.strip().startswith('```'):
+                if in_code_block:
+                    code_blocks.append('\n'.join(current_block) + '\n```')
+                    current_block = []
+                    in_code_block = False
+                else:
+                    current_block = [line]
+                    in_code_block = True
+            elif in_code_block:
+                current_block.append(line)
+        
+        if code_blocks:
+            return code_blocks[0]  # 最初のコードブロック
+        
+        # コードブロックがない場合、行レベルでの変更指示を探す
+        action_lines = []
+        for line in lines:
+            line = line.strip()
+            if any(marker in line for marker in ['-', '+', 'replace', 'change', 'add', 'remove']):
+                action_lines.append(line)
+        
+        if action_lines:
+            return '\n'.join(action_lines[:3])  # 最初の3行
+        
+        return "詳細な修正手順はコメント本文を参照"
 
     def _generate_curl_section(self, pr_info: Dict, github_token: str = None) -> str:
         """curl返信セクションを生成"""
