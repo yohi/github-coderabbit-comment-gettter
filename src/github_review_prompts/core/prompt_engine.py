@@ -276,13 +276,7 @@ curl -X POST \\
 {comment['body']}
 ```""")
         
-        # 差分情報
-        if comment.get('diff_hunk'):
-            parts.append(f"""
-**差分**:
-```diff
-{comment['diff_hunk']}
-```""")
+
         
         return '\n'.join(parts)
     
