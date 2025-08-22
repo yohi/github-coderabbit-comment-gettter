@@ -197,18 +197,3 @@ curl -X POST \\
 ```""")
         
         return '\n'.join(parts)
-
-    def generate_lightweight_prompt(self, comments: List[Dict], pr_info: Dict) -> str:
-        """軽量版プロンプトを生成"""
-        return f"""# CodeRabbit Review Comments - 軽量版
-
-**PR**: {pr_info.get('title', 'N/A')}
-**Comments**: {len(comments)} 件
-
-""" + self.templates['curl_reply_instruction'] + """
-
-## Comments:
-""" + '\n\n'.join([
-            f"### {i}. {comment.get('user', {}).get('login', 'Unknown')}\n{comment.get('body', '')}"
-            for i, comment in enumerate(comments, 1)
-        ])
