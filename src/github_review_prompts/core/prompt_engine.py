@@ -66,37 +66,27 @@ class UnifiedPromptEngine:
 **⏳ 将来対応**: `@coderabbitai 妥当な指摘ですが[現フェーズ]では対応しません。[将来フェーズ]で対応予定。`
 **🤔 要確認**: `@coderabbitai [確認内容]について詳細説明をお願いします。`
 
-## 最終確認
-- [ ] セキュリティスキャン通過
-- [ ] 構文・Lintエラー解消  
-- [ ] 必要な返信完了
-- [ ] 変更内容確認後、手動コミット検討""")
+**重要**: エンジニアとしての技術的判断を最優先し、疑問がある場合はCodeRabbitに返信で確認してください。""")
 
         # 返信方法の追加
         curl_instruction = self._generate_curl_section(pr_info, github_token)
         prompt_parts.append(curl_instruction)
 
-        # 確認スキップモードの設定
-        if options.get('no_confirm'):
-            prompt_parts.append("""
-## ⚡ 作業モード設定
-**確認スキップモード**: 各コメント処理後の確認は行わず、連続して処理を進めてください。""")
-        else:
-            prompt_parts.append("""
-次のコメントに進む前に、必ず確認を求めてください。""")
+        # 検証チェックリストセクション
+        prompt_parts.append("""
+## 検証チェックリスト
+各重要な修正後に実行：
+- [ ] 構文チェック: `python -m py_compile <ファイル名>`
+- [ ] Lintチェック: `ruff check <ファイル名>`
+- [ ] トークン漏洩チェック: `grep -r "github_pat\\|ghp_" src/`
+- [ ] 必要な返信完了
 
-        # 自動コミット・プッシュモードの設定（簡略化）
-        if options.get('auto_commit'):
-            prompt_parts.append("""
-## 🔄 Git自動操作設定
-**自動コミット・プッシュモード**: 作業完了後、変更内容確認してから手動コミット検討してください。
-
-**Git操作手順**:
-1. 変更ファイルのみ個別に `git add <ファイル名>` 
-2. `git commit -m "CodeRabbitレビューコメント対応"`
-3. 内容確認後 `git push`
-
-**注意**: `git add .` は使用せず、関連ファイルのみをコミットしてください。""")
+## Git操作方針
+**手動確認推奨**: 作業完了後、以下を**段階的に実行**
+1. `git status` で変更確認
+2. `git add <ファイル名>` で関連ファイルのみ追加
+3. `git commit -m "CodeRabbitレビューコメント対応"`
+4. 内容確認後 `git push`""")
 
         # 重要な注意事項
         prompt_parts.append("""
@@ -108,15 +98,27 @@ class UnifiedPromptEngine:
         # コメント処理
         if comments:
             prompt_parts.append(f"""
-## レビューコメント一覧
+## レビューコメント分析（{len(comments)}件）
 
-**合計**: {len(comments)} 件のコメント
+### 🔴 緊急（セキュリティ・機能破綻）
+**優先対応**: セキュリティリスク、システム破綻要因
 
----""")
+### 🟡 重要（機能改善・品質向上）  
+**PR内対応**: 機能改善、リファクタリング、品質向上
+
+### 🟢 低優先（スタイル・軽微改善）
+**余裕があれば**: スタイル改善、軽微な最適化
+
+**対応順序**: 🔴→🟡→🟢の順で処理してください
+
+---
+## 🔍 対象コメント一覧
+""")
             
             for i, comment in enumerate(comments, 1):
                 prompt_parts.append(f"""
 ### TODO #{i}: {self._extract_comment_title(comment)}
+**分類**: [🔴緊急/🟡重要/🟢低優先] ← 内容を確認して分類してください
 
 {self._format_single_comment(comment, pr_info, github_token)}
 
