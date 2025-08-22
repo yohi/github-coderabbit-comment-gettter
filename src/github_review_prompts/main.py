@@ -241,9 +241,24 @@ class UnifiedCLI:
             # GitHub クライアント
             github_client = GitHubClient(token, args.api_url)
             
-            # PR情報とコメント取得
-            pr_info = github_client.get_pr_info(args.pr_url)
-            comments = github_client.get_pr_comments(args.pr_url)
+            # PR URLをパース
+            pr_info = github_client.parse_pr_url(args.pr_url)
+            
+            # PR基本情報とコメント取得
+            pr_basic_info = github_client.get_pr_basic_info(pr_info)
+            comments = github_client.get_pr_review_comments(pr_info)
+            
+            # プロンプト用のPR情報を構築
+            pr_dict = {
+                'title': pr_basic_info.get('title'),
+                'url': args.pr_url,
+                'author': pr_basic_info.get('user', {}).get('login'),
+                'head_branch': pr_basic_info.get('head', {}).get('ref'),
+                'base_branch': pr_basic_info.get('base', {}).get('ref'),
+                'owner': pr_info.owner,
+                'repo': pr_info.repository,
+                'number': pr_info.pr_number
+            }
             
             # フィルタリング
             if args.author:
@@ -266,7 +281,7 @@ class UnifiedCLI:
             }
             
             # プロンプト生成
-            prompt = self.prompt_engine.generate_main_prompt(comments, pr_info, options)
+            prompt = self.prompt_engine.generate_main_prompt(comments, pr_dict, options)
             
             # 出力
             self._output_result(prompt, args.output, args.append)
