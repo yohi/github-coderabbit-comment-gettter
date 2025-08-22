@@ -139,7 +139,7 @@ def validate_github_token(token: str) -> Tuple[bool, Optional[str]]:
     if token.startswith("ghs_") and len(token) > 40:
         return True, "app"
     
-    return False, f"無効なトークン形式: {token[:10]}..."
+    return False, "無効なトークン形式です"
 
 
 def validate_persona(persona: str) -> bool:

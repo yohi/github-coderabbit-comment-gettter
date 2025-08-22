@@ -32,9 +32,15 @@ Repository = "https://github.com/yohi/github-coderabbit-comment-getter"
 Issues = "https://github.com/yohi/github-coderabbit-comment-getter/issues"
 
 [project.scripts]
-github-review-prompts = "github_review_prompts.cli:main"
-gh-review-prompts = "github_review_prompts.cli:main"
-grp = "grp_uvx:main"
+# 新しい統一エントリーポイント（推奨）
+grp = "github_review_prompts.main:main"
+github-review-prompts = "github_review_prompts.main:main"
+gh-review-prompts = "github_review_prompts.main:main"
+
+# 非推奨エントリーポイント（互換性維持のみ）
+grp-legacy-unified = "github_review_prompts.unified_cli:main"
+grp-legacy-cli = "github_review_prompts.cli:main" 
+grp-legacy = "grp_uvx:main"
 grp-reply = "github_review_prompts.comment_reply_cli:main"
 github-comment-reply = "github_review_prompts.comment_reply_cli:main"
 

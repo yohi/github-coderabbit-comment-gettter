@@ -1,6 +1,7 @@
 """GitHub API クライアント"""
 
-import asyncio
+from contextlib import suppress
+import json
 import logging
 import time
 from typing import Dict, List, Optional, Set, Tuple, Any
@@ -10,7 +11,7 @@ from requests.packages.urllib3.util.retry import Retry
 
 from .models import (
     APIError, AuthenticationError, RateLimitError, 
-    ReviewComment, GitHubPRInfo, ProcessingStats
+    GitHubPRInfo, ProcessingStats
 )
 from .utils.parsers import parse_pr_url
 from .utils.validators import validate_github_token, sanitize_content
@@ -67,6 +68,8 @@ class GitHubClient:
     def _make_request(self, method: str, url: str, **kwargs) -> requests.Response:
         """共通のリクエスト処理（エラーハンドリング付き）"""
         try:
+            # デフォルトのタイムアウト（呼び出し側で kwargs["timeout"] により上書き可能）
+            kwargs.setdefault("timeout", (5, 30))  # (connect, read) 秒
             response = self.session.request(method, url, **kwargs)
             
             # レート制限チェック
@@ -85,20 +88,24 @@ class GitHubClient:
             
             # 権限不足
             if response.status_code == 403:
-                error_msg = "GitHub API アクセスが拒否されました。"
-                if "rate limit" in response.text.lower():
-                    error_msg += " レート制限に達している可能性があります。"
-                else:
-                    error_msg += " トークンの権限を確認してください。"
-                raise APIError(error_msg, status_code=403)
+                text_lower = response.text.lower()
+                remaining = response.headers.get("X-RateLimit-Remaining")
+                is_rate_limited = ("rate limit" in text_lower) or (remaining == "0")
+                if is_rate_limited:
+                    reset_time = int(response.headers.get("X-RateLimit-Reset", time.time() + 60))
+                    wait_time = max(reset_time - int(time.time()), 1)
+                    raise RateLimitError(
+                        f"API レート制限に達しました。{wait_time}秒後に再試行してください。",
+                        status_code=403,
+                        response_data={"reset_time": reset_time, "wait_time": wait_time}
+                    )
+                raise APIError("GitHub API アクセスが拒否されました。トークンの権限を確認してください。", status_code=403)
             
             # その他のHTTPエラー
             if not response.ok:
                 error_data = {}
-                try:
+                with suppress(ValueError, json.JSONDecodeError):
                     error_data = response.json()
-                except (ValueError, requests.exceptions.JSONDecodeError):
-                    pass
                 
                 raise APIError(
                     f"GitHub API エラー: {response.status_code} - {response.reason}",
@@ -181,9 +188,10 @@ class GitHubClient:
         
         while True:
             url = f"{self.base_url}/repos/{pr_info.owner}/{pr_info.repo}/pulls/{pr_info.pull_number}/comments"
+            per_page = min(page_size, 100)  # GitHub APIの最大値は100
             params = {
                 "page": page,
-                "per_page": min(page_size, 100)  # GitHub APIの最大値は100
+                "per_page": per_page
             }
             
             try:
@@ -196,8 +204,8 @@ class GitHubClient:
                 all_comments.extend(page_comments)
                 self.logger.debug(f"ページ {page}: {len(page_comments)} コメント取得")
                 
-                # 最後のページかどうか判定
-                if len(page_comments) < page_size:
+                # 最後のページかどうか判定（実際に指定した per_page を用いる）
+                if len(page_comments) < per_page:
                     break
                 
                 page += 1
@@ -222,9 +230,10 @@ class GitHubClient:
         
         while True:
             url = f"{self.base_url}/repos/{pr_info.owner}/{pr_info.repo}/pulls/{pr_info.pull_number}/reviews"
+            per_page = min(page_size, 100)
             params = {
                 "page": page,
-                "per_page": min(page_size, 100)
+                "per_page": per_page
             }
             
             try:
@@ -237,7 +246,7 @@ class GitHubClient:
                 all_reviews.extend(page_reviews)
                 self.logger.debug(f"ページ {page}: {len(page_reviews)} レビュー取得")
                 
-                if len(page_reviews) < page_size:
+                if len(page_reviews) < per_page:
                     break
                 
                 page += 1
@@ -565,7 +574,7 @@ class GitHubClient:
             raise APIError("curl コマンド生成にはGitHubトークンが必要です")
         
         base_headers = [
-            f'-H "Authorization: token {self.token}"',
+            '-H "Authorization: token ${GITHUB_TOKEN}"',
             '-H "Accept: application/vnd.github.v3+json"',
             '-H "Content-Type: application/json"'
         ]

@@ -1,4 +1,17 @@
-"""CLI インターフェース"""
+"""
+[非推奨] CLI インターフェース
+このファイルは非推奨です。main.py の統一CLIを使用してください。
+
+互換性のため一時的に残されています。
+新しいコマンド: python -m github_review_prompts.main generate [OPTIONS]
+"""
+
+import warnings
+warnings.warn(
+    "このCLIは非推奨です。main.py の統一CLIを使用してください。",
+    DeprecationWarning,
+    stacklevel=2
+)
 
 import argparse
 import logging
@@ -326,7 +339,7 @@ class CLIInterface:
         print(f"ファイル自動生成: {'有効' if args.save_file else '無効'}")
 
         if config.github_token:
-            print(f"GitHubトークン: 設定済み ({config.github_token[:10]}...)")
+            print("GitHubトークン: 設定済み（マスク済み）")
         else:
             print("⚠️  GitHubトークン: 未設定")
 
@@ -562,17 +575,19 @@ class CLIInterface:
 **自動コミット・プッシュモード**: すべてのレビューコメント対応完了後、以下を自動実行してください：
 
 ### Git操作手順
-1. **ステージング**: `git add .` で変更ファイルをステージング
-2. **コミット**: `git commit -m "CodeRabbit review comments addressed - [PR番号]"` でコミット
+1. **ステージング**: 変更したファイルのみを個別に `git add <ファイル名>` でステージング
+2. **コミット**: `git commit -m "CodeRabbitレビューコメント対応 - [PR番号]"` でコミット
 3. **プッシュ**: `git push` でリモートリポジトリに反映
+
+⚠️ **注意**: `git add .` は使用しないでください。関係のないファイルまでコミットされる危険があります。
 
 ### コミットメッセージ例
 ```
-CodeRabbit review comments addressed - #123
+CodeRabbitレビューコメント対応 - #123
 
-- Fixed potential security issue in auth module
-- Refactored database connection handling
-- Updated error handling as suggested
+- 認証モジュールの潜在的セキュリティ問題を修正
+- データベース接続処理をリファクタリング
+- 提案に従いエラーハンドリングを更新
 ```
 
 **注意**: Git操作実行前に作業内容を簡潔にサマリーしてください。"""
@@ -598,17 +613,19 @@ CodeRabbit review comments addressed - #123
 **自動コミット・プッシュモード**: すべてのレビューコメント対応完了後、以下を自動実行してください：
 
 ### Git操作手順
-1. **ステージング**: `git add .` で変更ファイルをステージング
-2. **コミット**: `git commit -m "CodeRabbit review comments addressed - [PR番号]"` でコミット
+1. **ステージング**: 変更したファイルのみを個別に `git add <ファイル名>` でステージング
+2. **コミット**: `git commit -m "CodeRabbitレビューコメント対応 - [PR番号]"` でコミット
 3. **プッシュ**: `git push` でリモートリポジトリに反映
+
+⚠️ **注意**: `git add .` は使用しないでください。関係のないファイルまでコミットされる危険があります。
 
 ### コミットメッセージ例
 ```
-CodeRabbit review comments addressed - #123
+CodeRabbitレビューコメント対応 - #123
 
-- Fixed potential security issue in auth module
-- Refactored database connection handling
-- Updated error handling as suggested
+- 認証モジュールの潜在的セキュリティ問題を修正
+- データベース接続処理をリファクタリング
+- 提案に従いエラーハンドリングを更新
 ```
 
 **注意**: Git操作実行前に作業内容を簡潔にサマリーしてください。"""
@@ -669,12 +686,11 @@ git checkout -b {head_branch} fork/{head_branch}"""
 
         for i, prompt in enumerate(prompts, 1):
             # プロンプトから基本情報を抽出
-            location_info = prompt.get('location', {})
-            file_path = location_info.get('file_path', 'Unknown')
-            line_number = location_info.get('line', 'Unknown')
+            file_path = getattr(prompt, 'file_path', 'Unknown')
+            line_number = getattr(prompt, 'line_number', 'Unknown')
 
             # コメント本体から情報を抽出
-            comment_body = prompt.get('prompt_text', '')
+            comment_body = getattr(prompt, 'content', '')
 
             # レビュー種類を判定
             review_type = self._extract_review_type(comment_body)
@@ -686,7 +702,7 @@ git checkout -b {head_branch} fork/{head_branch}"""
             problem_description = self._extract_problem_description(comment_body)
 
             todos_content += f"""### TODO #{i}: {title}
-**ID**: {prompt.get('id', 'Unknown')}
+**ID**: {getattr(prompt, 'comment_id', 'Unknown')}
 **ファイル**: `{file_path}`
 **行**: {line_number}
 **種類**: {review_type}
