@@ -387,9 +387,25 @@ security_risk: {str(security_risk).lower()}
         return "詳細は原文参照"
     
     def _format_problem_diff_pattern(self, data: dict) -> str:
-        """問題+diff パターンの整形（改善版）"""
-        # 重複除去済みdiffの表示
-        diff_text = '\n'.join(f"```diff\n{diff}\n```" for diff in data['diffs'])
+        """問題+diff パターンの整形（完全版）"""
+        
+        # 重複除去済みのdiffを表示
+        diff_blocks = data.get('diffs', [])
+        
+        if diff_blocks:
+            # 最も適切なdiffを1つ選択（最初の有効なもの）
+            best_diff = None
+            for diff in diff_blocks:
+                if diff and len(diff.strip()) > 10:
+                    best_diff = diff
+                    break
+            
+            if best_diff:
+                diff_text = f"```diff\n{best_diff}\n```"
+            else:
+                diff_text = "（修正案は原文参照）"
+        else:
+            diff_text = "（修正案は原文参照）"
         
         return f"""**問題**: {data['problem']}
 
@@ -533,45 +549,81 @@ security_risk: {str(security_risk).lower()}
         return 'コード品質改善: 詳細は原文を確認してください'
     
     def _extract_unique_diffs(self, body: str) -> list:
-        """重複除去付きdiffブロック抽出（改良版）"""
+        """重複除去付きdiffブロック抽出（完全版）"""
         import re
         
         # diffブロックまたはsuggestionブロック
         diff_blocks = re.findall(r'```(?:diff|suggestion)\n(.*?)\n```', body, re.DOTALL)
         
-        # 重複除去と統一化
+        # より厳密な重複除去
         unique_diffs = []
-        seen_core_content = set()
+        seen_signatures = set()
         
         for diff in diff_blocks:
             diff_clean = diff.strip()
             
-            # コアコンテンツの抽出（行番号や空白を除去して比較）
-            core_content = re.sub(r'^\s*\d+\s*', '', diff_clean, flags=re.MULTILINE)  # 行番号除去
-            core_content = re.sub(r'\s+', ' ', core_content)  # 空白正規化
+            # 重複判定用署名の生成（より厳密）
+            signature = self._generate_diff_signature(diff_clean)
             
-            if core_content and core_content not in seen_core_content:
-                seen_core_content.add(core_content)
-                # より読みやすい形式に統一
+            if signature and signature not in seen_signatures:
+                seen_signatures.add(signature)
+                # 統一フォーマットに整形
                 formatted_diff = self._format_unified_diff(diff_clean)
-                unique_diffs.append(formatted_diff)
+                if formatted_diff:  # 空でない場合のみ追加
+                    unique_diffs.append(formatted_diff)
         
         return unique_diffs
     
+    def _generate_diff_signature(self, diff_content: str) -> str:
+        """diff重複判定用の署名生成"""
+        import re
+        
+        lines = diff_content.split('\n')
+        core_lines = []
+        
+        for line in lines:
+            line = line.strip()
+            if line:
+                # 行番号・プレフィックス除去で本質的内容を抽出
+                clean_line = re.sub(r'^\s*\d+\s*', '', line)  # 行番号
+                clean_line = re.sub(r'^[-+\s]*', '', clean_line)  # diff記号
+                clean_line = clean_line.strip()
+                
+                if clean_line and len(clean_line) > 2:  # 意味のある行のみ
+                    core_lines.append(clean_line)
+        
+        # 本質的な変更内容のみで署名生成
+        return '|'.join(core_lines)
+    
     def _format_unified_diff(self, diff_content: str) -> str:
-        """diffを統一フォーマットに整形"""
+        """diffを統一フォーマットに整形（完全版）"""
+        import re
+        
         lines = diff_content.split('\n')
         formatted_lines = []
+        has_meaningful_content = False
         
         for line in lines:
             line = line.strip()
             if line:
                 # 行番号削除（先頭の数字を除去）
                 clean_line = re.sub(r'^\s*\d+\s*', '', line)
-                if clean_line:
+                
+                # 意味のある変更行かチェック
+                if clean_line and (clean_line.startswith('+') or clean_line.startswith('-') or clean_line.startswith('##')):
+                    formatted_lines.append(clean_line)
+                    has_meaningful_content = True
+                elif clean_line and not clean_line.startswith('@'):  # @@行は除外
                     formatted_lines.append(clean_line)
         
-        return '\n'.join(formatted_lines)
+        # 意味のある変更がない場合は空を返す
+        if not has_meaningful_content:
+            return ""
+        
+        result = '\n'.join(formatted_lines)
+        
+        # 最終的に空または短すぎる場合は除外
+        return result if len(result.strip()) > 10 else ""
     
     def _extract_structured_files(self, body: str) -> dict:
         """構造化されたファイル情報抽出（改良版）"""
