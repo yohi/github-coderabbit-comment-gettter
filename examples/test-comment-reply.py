@@ -31,7 +31,7 @@ def test_comment_reply_functionality():
     )
     
     # GitHubクライアントのモック
-    with patch('requests.Session') as mock_session:
+    with patch('github_review_prompts.github_client.requests.Session') as mock_session:
         # モックレスポンス
         mock_response = Mock()
         mock_response.status_code = 200
@@ -204,7 +204,7 @@ def test_curl_command_generation():
         url="https://github.com/test-owner/test-repo/pull/123"
     )
     
-    with patch('requests.Session'):
+    with patch('github_review_prompts.github_client.requests.Session'):
         # トークンバリデーションをスキップしてテスト用クライアントを作成
         client = GitHubClient(token=None)  # トークンなしで初期化
         client.token = "test-token"  # 後でトークンを設定

@@ -4,14 +4,14 @@ GitHub プルリクエストのレビューコメントから AI エージェン
 
 ## 📋 目次
 
-- [✨ 主な機能](#-主な機能)
-- [📦 インストール](#-インストール)
-- [🚀 使用方法](#-使用方法)
-- [📖 実用例](#-実用例)
-- [🛠️ トラブルシューティング](#️-トラブルシューティング)
-- [🎯 コマンド比較表](#-コマンド比較表)
-- [🔧 開発](#-開発)
-- [📈 変更履歴](#-変更履歴)
+- [✨ 主な機能](#features)
+- [📦 インストール](#install)
+- [🚀 使用方法](#usage)
+- [📖 実用例](#examples)
+- [🛠️ トラブルシューティング](#troubleshooting)
+- [🎯 コマンド比較表](#commands)
+- [🔧 開発](#development)
+- [📈 変更履歴](#changelog)
 
 ## ✨ 主な機能
 
@@ -47,9 +47,10 @@ GitHub プルリクエストのレビューコメントから AI エージェン
    - "resolved", "fixed", "done", "✅" 等のキーワードによる判定
 
 ## 📦 インストール
+<a id="install"></a>
 
 ### 必要環境
-- Python 3.13+
+- Python 3.8+
 - GitHub API トークン
 
 ### uv を使用した環境セットアップ（推奨）
@@ -107,6 +108,7 @@ processing:
 ```
 
 ## 🚀 使用方法
+<a id="usage"></a>
 
 ### 🏃‍♂️ クイックスタート
 
@@ -184,6 +186,7 @@ uv run github-review-prompts --list-personas
 - **⚡ performance-optimizer**: パフォーマンス最適化重点
 
 ## 📖 実用例
+<a id="examples"></a>
 
 ### 🎯 1. 基本的な使用パターン
 
@@ -366,6 +369,7 @@ git pull origin feature/security-fixes
 - 総コメント数と解決済みコメント数
 
 ## 🛠️ トラブルシューティング
+<a id="troubleshooting"></a>
 
 ### 🔑 APIレート制限・認証エラー
 
@@ -408,6 +412,7 @@ uv build --wheel
 ```
 
 ## 🎯 コマンド比較表
+<a id="commands"></a>
 
 | コマンド | 説明 | 特徴 | 推奨用途 |
 |----------|------|------|----------|
@@ -465,7 +470,8 @@ uv build --wheel
 - **Python要件**: >=3.8
 - **依存関係**: `requests>=2.31.0`
 
-## 開発
+## 🔧 開発
+<a id="development"></a>
 
 ### ローカル開発
 
@@ -510,6 +516,7 @@ github-coderabbit-comment-getter/
 MIT License
 
 ## 📈 変更履歴
+<a id="changelog"></a>
 
 ### v1.2.0 (2025-08-21) - CodeRabbit返信機能追加
 - 💬 **CodeRabbit直接返信**: 各コメントに`in_reply_to`パラメータで直接返信するcurlコマンドを自動生成

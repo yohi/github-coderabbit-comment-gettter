@@ -163,13 +163,13 @@ class AIPromptGenerator:
                 # 同じリポジトリかフォークかで分岐
                 if head_repo == base_repo:
                     lines.extend([
-                        f"# ローカルでソースブランチにチェックアウト",
+                        "# ローカルでソースブランチにチェックアウト",
                         f"git checkout {head_branch}",
                         f"git pull origin {head_branch}"
                     ])
                 else:
                     lines.extend([
-                        f"# フォークからのPRの場合",
+                        "# フォークからのPRの場合",
                         f"git remote add fork https://github.com/{head_repo}.git",
                         f"git fetch fork {head_branch}",
                         f"git checkout -b {head_branch} fork/{head_branch}"
@@ -222,7 +222,7 @@ class AIPromptGenerator:
         
         formatted_lines = [
             f"{priority_symbol} {category_symbol} **{prompt.location}**",
-            f"",
+            "",
             f"**指摘内容**: {prompt.content}",
         ]
         
@@ -297,9 +297,10 @@ class AIPromptGenerator:
     def _generate_coderabbit_reply_info(self, prompt: AIPrompt) -> Optional[str]:
         """CodeRabbit返信用の簡潔な情報を生成"""
         comment_id = prompt.comment_id
-        pr_owner = prompt.context.get("pr_owner")
-        pr_repo = prompt.context.get("pr_repo") 
-        pr_number = prompt.context.get("pr_number")
+        context = prompt.context or {}
+        pr_owner = context.get("pr_owner")
+        pr_repo = context.get("pr_repo")
+        pr_number = context.get("pr_number")
         
         if not all([pr_owner, pr_repo, pr_number, comment_id]):
             return None
