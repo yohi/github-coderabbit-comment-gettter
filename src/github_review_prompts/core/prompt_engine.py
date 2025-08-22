@@ -398,36 +398,45 @@ security_risk: {str(security_risk).lower()}
 {diff_text}"""
     
     def _format_file_list_pattern(self, data: dict) -> str:
-        """ファイルリスト パターンの整形（改善版）"""
-        file_list = []
+        """ファイルリスト パターンの整形（完全改善版）"""
         
-        # 構造化されたファイル情報の表示
-        if data['descriptions']:
-            for file_path, description in data['descriptions']:
-                file_list.append(f"- `{file_path}`: {description}")
-        else:
-            # フォールバック: 基本ファイル情報
-            for file_info in data['files']:
-                if len(file_info) >= 2:
-                    file_path, line_num = file_info[0], file_info[1]
-                    line_info = f" (行{line_num})" if line_num else ""
-                    file_list.append(f"- `{file_path}`{line_info}")
-                else:
-                    file_list.append(f"- `{file_info[0]}`")
+        # 統一されたファイル情報を使用
+        files_info = data.get('files', {}).get('files', [])
+        actions = data.get('actions', [])
         
-        files_text = '\n'.join(file_list)
+        result_parts = []
         
-        # 具体的な修正内容
-        actions_text = ""
-        if data.get('actions'):
-            actions_text = f"""
-**修正内容**:
-{chr(10).join(f"- {action}" for action in data['actions'])}"""
+        # 問題説明
+        problem = data.get('problem', '修正が必要な問題')
+        result_parts.append(f"**問題**: {problem}")
         
-        return f"""**問題**: {data['problem']}
-
-**対象ファイル**:
-{files_text}{actions_text}"""
+        # 統一されたファイルリスト
+        if files_info:
+            file_lines = []
+            for file_info in files_info:
+                path = file_info.get('path', '')
+                lines = file_info.get('lines', '')
+                description = file_info.get('description', '')
+                
+                if path:
+                    line_part = f" (L{lines})" if lines else ""
+                    desc_part = f": {description}" if description else ""
+                    file_lines.append(f"- `{path}`{line_part}{desc_part}")
+            
+            if file_lines:
+                result_parts.append(f"**対象ファイル**:\n" + "\n".join(file_lines))
+        
+        # 具体的な修正アクション
+        if actions:
+            action_lines = []
+            for i, action in enumerate(actions, 1):
+                if action and len(action.strip()) > 5:
+                    action_lines.append(f"{i}. {action.strip()}")
+            
+            if action_lines:
+                result_parts.append(f"**修正アクション**:\n" + "\n".join(action_lines))
+        
+        return "\n\n".join(result_parts)
     
     def _format_script_pattern(self, data: dict) -> str:
         """スクリプト パターンの整形"""
@@ -476,94 +485,168 @@ security_risk: {str(security_risk).lower()}
 **注意**: 複雑なコメントのため、原文確認推奨"""
 
     def _extract_clear_problem(self, body: str) -> str:
-        """明確な問題説明を抽出"""
+        """明確な問題説明を抽出（改良版）"""
         import re
         
-        # **で囲まれた主要な問題説明
+        # パターン1: **で囲まれた主要な問題説明
         main_problems = re.findall(r'\*\*(.*?)\*\*', body, re.DOTALL)
         
-        # 最初の明確な説明文を採用
         for problem in main_problems:
             problem = problem.strip()
-            if len(problem) > 10 and ('が不正' in problem or '重大' in problem or 'セキュリティ' in problem or 'リスク' in problem):
-                return problem
+            # より具体的なキーワードチェック
+            important_keywords = ['が不正', '重大', 'セキュリティ', 'リスク', '漏洩', '埋め込み', 'トークン', '統一', '修正']
+            if len(problem) > 15 and any(keyword in problem for keyword in important_keywords):
+                # 改行を除去して単一行に
+                return re.sub(r'\s+', ' ', problem)
         
-        # フォールバック: 最初の行から抽出
-        first_line = body.split('\n')[0].strip()
-        clean_line = re.sub(r'^_.*?_\s*', '', first_line)  # マークダウン記号除去
-        clean_line = clean_line.replace('💡', '').replace('🧩', '').strip()
+        # パターン2: 最初の意味のある行
+        lines = body.split('\n')
+        for line in lines[:5]:  # 最初の5行から探索
+            line = line.strip()
+            # マークダウン記号・絵文字を除去
+            clean_line = re.sub(r'^_.*?_\s*', '', line)
+            clean_line = re.sub(r'[💡🧩⚠️]', '', clean_line).strip()
+            
+            # 意味のある文章かチェック
+            if len(clean_line) > 20 and ('の' in clean_line or 'を' in clean_line or 'が' in clean_line):
+                return clean_line
         
-        return clean_line or '詳細な問題説明が必要'
+        # パターン3: コメント全体から要約生成
+        return self._generate_problem_summary(body)
+    
+    def _generate_problem_summary(self, body: str) -> str:
+        """コメント全体から問題要約を生成"""
+        import re
+        
+        # セキュリティ関連キーワードチェック
+        if any(keyword in body.lower() for keyword in ['token', 'security', '漏洩', 'セキュリティ']):
+            return 'セキュリティリスク: トークン関連の修正が必要'
+        
+        # 機能関連
+        if any(keyword in body.lower() for keyword in ['function', '機能', 'bug', 'バグ']):
+            return '機能問題: コード動作の修正が必要'
+        
+        # ドキュメント関連
+        if any(keyword in body.lower() for keyword in ['md051', 'markdown', 'アンカー', 'document']):
+            return 'ドキュメント問題: リンクまたは形式の修正が必要'
+        
+        # フォールバック
+        return 'コード品質改善: 詳細は原文を確認してください'
     
     def _extract_unique_diffs(self, body: str) -> list:
-        """重複除去付きdiffブロック抽出"""
+        """重複除去付きdiffブロック抽出（改良版）"""
         import re
         
         # diffブロックまたはsuggestionブロック
         diff_blocks = re.findall(r'```(?:diff|suggestion)\n(.*?)\n```', body, re.DOTALL)
         
-        # 重複除去（内容ベース）
+        # 重複除去と統一化
         unique_diffs = []
-        seen_content = set()
+        seen_core_content = set()
         
         for diff in diff_blocks:
-            # 空白や改行を正規化して比較
-            normalized = re.sub(r'\s+', ' ', diff.strip())
-            if normalized and normalized not in seen_content:
-                seen_content.add(normalized)
-                unique_diffs.append(diff.strip())
+            diff_clean = diff.strip()
+            
+            # コアコンテンツの抽出（行番号や空白を除去して比較）
+            core_content = re.sub(r'^\s*\d+\s*', '', diff_clean, flags=re.MULTILINE)  # 行番号除去
+            core_content = re.sub(r'\s+', ' ', core_content)  # 空白正規化
+            
+            if core_content and core_content not in seen_core_content:
+                seen_core_content.add(core_content)
+                # より読みやすい形式に統一
+                formatted_diff = self._format_unified_diff(diff_clean)
+                unique_diffs.append(formatted_diff)
         
         return unique_diffs
     
-    def _extract_structured_files(self, body: str) -> dict:
-        """構造化されたファイル情報抽出"""
-        import re
-        
-        # ファイルパス:行番号 パターン（より正確）
-        file_patterns = re.findall(r'([a-zA-Z0-9_/.]+\.py)\s*(?:\（?(?:行)?(\d+(?:[／/,]\d+)*)\）?)?', body)
-        
-        # 修正対象の詳細説明（改善版）
-        target_sections = []
-        lines = body.split('\n')
+    def _format_unified_diff(self, diff_content: str) -> str:
+        """diffを統一フォーマットに整形"""
+        lines = diff_content.split('\n')
+        formatted_lines = []
         
         for line in lines:
-            # "- filename: description" パターン
+            line = line.strip()
+            if line:
+                # 行番号削除（先頭の数字を除去）
+                clean_line = re.sub(r'^\s*\d+\s*', '', line)
+                if clean_line:
+                    formatted_lines.append(clean_line)
+        
+        return '\n'.join(formatted_lines)
+    
+    def _extract_structured_files(self, body: str) -> dict:
+        """構造化されたファイル情報抽出（改良版）"""
+        import re
+        
+        # ファイル情報の統一収集
+        file_info_map = {}  # ファイル名 -> {lines: set, description: str}
+        
+        # パターン1: ファイル名(行XX/YY) 形式
+        file_line_matches = re.findall(r'([a-zA-Z0-9_/.]+\.py)\s*(?:\（?(?:行)?(\d+(?:[／/,]\d+)*)\）?)', body)
+        for file_path, line_nums in file_line_matches:
+            if file_path not in file_info_map:
+                file_info_map[file_path] = {'lines': set(), 'description': ''}
+            
+            if line_nums:
+                # 複数行番号を分割処理
+                for line_num in re.split(r'[／/,]', line_nums):
+                    if line_num.strip():
+                        file_info_map[file_path]['lines'].add(line_num.strip())
+        
+        # パターン2: "- filename: description" 形式
+        lines = body.split('\n')
+        for line in lines:
             match = re.match(r'[-*]\s*([a-zA-Z0-9_/.]+\.py)\s*(?:\（.*?\）)?\s*[:：]\s*(.+)', line)
             if match:
-                target_sections.append((match.group(1), match.group(2).strip()))
+                file_path, description = match.group(1), match.group(2).strip()
+                if file_path not in file_info_map:
+                    file_info_map[file_path] = {'lines': set(), 'description': ''}
+                file_info_map[file_path]['description'] = description
         
-        return {
-            'files': file_patterns,
-            'descriptions': target_sections
-        }
+        # 統一されたファイルリスト生成
+        unified_files = []
+        for file_path, info in file_info_map.items():
+            line_info = sorted(info['lines']) if info['lines'] else []
+            line_str = ', '.join(line_info) if line_info else ''
+            unified_files.append({
+                'path': file_path,
+                'lines': line_str,
+                'description': info['description']
+            })
+        
+        return {'files': unified_files}
     
     def _extract_concrete_actions(self, body: str) -> list:
-        """具体的な修正アクション抽出"""
+        """具体的な修正アクション抽出（改良版）"""
         import re
         
         actions = []
+        
+        # パターン1: セキュリティ関連の統一修正
+        if 'token' in body.lower() and '${GITHUB_TOKEN}' in body:
+            actions.append('全ての生トークン埋め込みを ${GITHUB_TOKEN} 環境変数に変更')
+        
+        # パターン2: 具体的な置換指示
+        replace_patterns = re.findall(r'`([^`]+)`\s*[→を]\s*`([^`]+)`', body)
+        for old, new in replace_patterns[:2]:
+            actions.append(f'置換: `{old}` → `{new}`')
+        
+        # パターン3: ファイル追加・修正
+        add_patterns = re.findall(r'\+\s*(.+)', body)
+        for addition in add_patterns[:2]:
+            if len(addition.strip()) > 5 and '<' not in addition:
+                actions.append(f'追加: {addition.strip()}')
+        
+        # パターン4: 一般的な対応指示
         lines = body.split('\n')
-        
-        # 修正指示パターン
-        action_patterns = [
-            r'対応[:：]\s*(.+)',
-            r'修正[:：]\s*(.+)',
-            r'変更[:：]\s*(.+)',
-            r'現状[:：]\s*(.+)\s*→\s*(.+)',
-            r'-\s*(.+?)\s*\+\s*(.+)'
-        ]
-        
         for line in lines:
-            for pattern in action_patterns:
+            for pattern in [r'対応[:：]\s*(.+)', r'修正[:：]\s*(.+)', r'変更[:：]\s*(.+)']:
                 match = re.search(pattern, line)
-                if match:
-                    if len(match.groups()) == 2:  # before -> after
-                        actions.append(f"{match.group(1).strip()} → {match.group(2).strip()}")
-                    else:
-                        actions.append(match.group(1).strip())
+                if match and len(match.group(1).strip()) > 10:
+                    actions.append(match.group(1).strip())
                     break
         
-        return actions[:3]  # 最大3つの具体的アクション
+        return actions[:3]  # 最大3つまで
 
     def _generate_curl_section(self, pr_info: Dict, github_token: str = None) -> str:
         """curl返信セクションを生成"""
