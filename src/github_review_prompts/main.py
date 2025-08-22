@@ -212,7 +212,7 @@ class UnifiedCLI:
             }
             
             # プロンプト生成
-            prompt = self.prompt_engine.generate_main_prompt(comments, pr_dict, options)
+            prompt = self.prompt_engine.generate_main_prompt(comments, pr_dict, options, token)
             
             # 出力
             self._output_result(prompt, pr_dict, comments, args.output, args.append, args.save_file)

@@ -92,7 +92,8 @@ curl -X POST \\
     def generate_main_prompt(self, 
                            comments: List[Dict], 
                            pr_info: Dict,
-                           options: Dict = None) -> str:
+                           options: Dict = None,
+                           github_token: str = None) -> str:
         """メインプロンプトを生成"""
         if options is None:
             options = {}
@@ -130,6 +131,23 @@ curl -X POST \\
             prompt_parts.append("""
 次のコメントに進む前に、必ず確認を求めてください。""")
 
+        # 返信方法の追加（コメント処理の前に配置）
+        curl_instruction = self.templates['curl_reply_instruction']
+        
+        # TOKENを実際の値に置換
+        if github_token:
+            curl_instruction = curl_instruction.replace('YOUR_GITHUB_TOKEN', github_token)
+            curl_instruction = curl_instruction.replace('ghp_xxxxxxxxxxxxxxxxxxxx', github_token)
+        
+        # プルリクエスト情報でプレースホルダーを置換
+        if pr_info:
+            curl_instruction = curl_instruction.replace('OWNER/REPO', f"{pr_info.get('owner')}/{pr_info.get('repo')}")
+            curl_instruction = curl_instruction.replace('owner/repo', f"{pr_info.get('owner')}/{pr_info.get('repo')}")
+            curl_instruction = curl_instruction.replace('PR_NUMBER', str(pr_info.get('number', 'PR_NUMBER')))
+            curl_instruction = curl_instruction.replace('/42/', f"/{pr_info.get('number', '42')}/")
+        
+        prompt_parts.append(curl_instruction)
+
         # コメント処理
         if comments:
             prompt_parts.append(f"""
@@ -143,12 +161,9 @@ curl -X POST \\
                 prompt_parts.append(f"""
 ### 📝 コメント #{i}
 
-{self._format_single_comment(comment, pr_info)}
+{self._format_single_comment(comment, pr_info, github_token)}
 
 ---""")
-        
-        # 返信方法の追加
-        prompt_parts.append(self.templates['curl_reply_instruction'])
         
         # フッター
         prompt_parts.append("""
@@ -157,7 +172,7 @@ curl -X POST \\
         
         return '\n'.join(prompt_parts)
     
-    def _format_single_comment(self, comment: Dict, pr_info: Dict) -> str:
+    def _format_single_comment(self, comment: Dict, pr_info: Dict, github_token: str = None) -> str:
         """単一コメントのフォーマット"""
         parts = []
         
@@ -167,12 +182,18 @@ curl -X POST \\
         
         if comment.get('id'):
             # 返信情報を追加
-            parts.append(self.generate_comment_reply_info(
+            reply_info = self.generate_comment_reply_info(
                 comment['id'],
                 pr_info.get('owner'),
                 pr_info.get('repo'), 
                 pr_info.get('number')
-            ))
+            )
+            
+            # TOKENを実際の値に置換
+            if github_token:
+                reply_info = reply_info.replace('YOUR_GITHUB_TOKEN', github_token)
+            
+            parts.append(reply_info)
         
         # ファイル情報
         if comment.get('path'):
