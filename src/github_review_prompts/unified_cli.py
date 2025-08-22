@@ -1,8 +1,18 @@
 #!/usr/bin/env python3
 """
-統一CLI - uvx/uv両環境対応
-依存関係の有無を自動検出して適切なモードで動作
+[非推奨] 統一CLI - uvx/uv両環境対応
+このファイルは非推奨です。main.py の統一CLIを使用してください。
+
+互換性のため一時的に残されています。
+新しいコマンド: python -m github_review_prompts.main generate [OPTIONS]
 """
+
+import warnings
+warnings.warn(
+    "このCLIは非推奨です。main.py の統一CLIを使用してください。",
+    DeprecationWarning,
+    stacklevel=2
+)
 
 import argparse
 import json

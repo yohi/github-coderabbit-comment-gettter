@@ -1,4 +1,17 @@
-"""CLI インターフェース"""
+"""
+[非推奨] CLI インターフェース
+このファイルは非推奨です。main.py の統一CLIを使用してください。
+
+互換性のため一時的に残されています。
+新しいコマンド: python -m github_review_prompts.main generate [OPTIONS]
+"""
+
+import warnings
+warnings.warn(
+    "このCLIは非推奨です。main.py の統一CLIを使用してください。",
+    DeprecationWarning,
+    stacklevel=2
+)
 
 import argparse
 import logging
