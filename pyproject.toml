@@ -1,21 +1,127 @@
 [project]
-name = "github-coderabbit-comment"
-version = "0.1.0"
-description = "GitHubプルリクエストのインラインコメントを取得するツール"
-dependencies = [
-    "requests>=2.31.0",
-    "python-dotenv>=1.0.0",
+name = "github-review-prompts-ai-agent"
+version = "1.0.0"
+description = "AI agent-optimized prompts extraction from GitHub PR review comments with persona support"
+authors = [
+    {name = "yohi", email = "yohi@example.com"}
 ]
-requires-python = ">=3.8"
+readme = "README.md"
+license = "MIT"
+dependencies = [
+    "requests>=2.32.0",
+    "pydantic>=2.10.0",
+    "pyyaml>=6.0.1",
+    "rich>=13.9.0",
+]
+requires-python = ">=3.13"
+keywords = ["github", "code-review", "ai-agents", "coderabbit", "prompts", "graphql"]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Topic :: Utilities",
+]
+
+[project.urls]
+Homepage = "https://github.com/yohi/github-coderabbit-comment-getter"
+Repository = "https://github.com/yohi/github-coderabbit-comment-getter"
+Issues = "https://github.com/yohi/github-coderabbit-comment-getter/issues"
 
 [project.scripts]
-gh-comments = "github_comments:main"
-gh-comments-simple = "github_comments_simple:main"
-gh-review-prompts = "github_review_prompts:main"
+github-review-prompts = "github_review_prompts.cli:main"
+gh-review-prompts = "github_review_prompts.cli:main"
+grp = "grp_uvx:main"
+grp-reply = "github_review_prompts.comment_reply_cli:main"
+github-comment-reply = "github_review_prompts.comment_reply_cli:main"
+
 
 [build-system]
-requires = ["hatchling"]
-build-backend = "hatchling.build"
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
 
-[tool.hatch.build.targets.wheel]
-packages = ["."]
+[tool.setuptools]
+package-dir = {"" = "src"}
+py-modules = ["grp_uvx"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["github_review_prompts*"]
+
+[tool.setuptools.package-data]
+"github_review_prompts" = ["*.md", "*.yml", "*.yaml"]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.24.0",
+    "pytest-cov>=6.0.0",
+    "black>=24.0.0",
+    "isort>=5.13.0",
+    "mypy>=1.13.0",
+    "ruff>=0.8.0",
+]
+
+[tool.hatch.envs.default]
+dependencies = [
+    "coverage[toml]>=6.2",
+    "pytest",
+    "pytest-cov",
+]
+[tool.hatch.envs.default.scripts]
+test = "pytest {args:tests}"
+test-cov = "coverage run -m pytest {args:tests}"
+cov-report = [
+  "coverage combine",
+  "coverage report",
+]
+cov = [
+  "test-cov",
+  "cov-report",
+]
+
+[tool.black]
+target-version = ["py313"]
+line-length = 88
+
+[tool.isort]
+profile = "black"
+multi_line_output = 3
+
+[tool.mypy]
+python_version = "3.13"
+check_untyped_defs = true
+disallow_untyped_defs = true
+warn_return_any = true
+warn_unused_configs = true
+no_implicit_optional = true
+
+[tool.ruff]
+target-version = "py313"
+line-length = 88
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "W", "UP", "B", "A"]
+ignore = []
+
+[tool.coverage.run]
+source_pkgs = ["github_review_prompts", "tests"]
+branch = true
+parallel = true
+omit = [
+    "src/github_review_prompts/__about__.py",
+]
+
+[tool.coverage.paths]
+github_review_prompts = ["src/github_review_prompts", "*/github-review-prompts-ai-agent/src/github_review_prompts"]
+tests = ["tests", "*/github-review-prompts-ai-agent/tests"]
+
+[tool.coverage.report]
+exclude_lines = [
+    "no cov",
+    "if __name__ == .__main__.:",
+    "if TYPE_CHECKING:",
+]

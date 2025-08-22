@@ -151,3 +151,11 @@ dmypy.json
 
 # Cython debug symbols
 cython_debug/
+
+# Project specific output files
+review_prompt_*.md
+*_todos.json
+*_todos.md
+
+# Development test environments
+test-env/
