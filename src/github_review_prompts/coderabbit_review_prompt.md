@@ -43,19 +43,24 @@
 - 指摘が正しく、修正を実施した場合
 
 ### 返信方法
-プルリクエストコメントに対して以下の方法で返信してください：
+プルリクエストコメントに対して以下の **curlコマンド** で返信してください：
 
-**注意**: curlコマンドやシェルコマンドは実行せず、適切なAPIツールを使用してください。
-
-利用可能なAPIツール例：
-- GitHub統合が可能な場合: GitHub APIツールを使用
-- 手動対応が必要な場合: 返信内容をユーザーに提示
-
+```bash
+curl -X POST \
+  -H "Authorization: Bearer YOUR_GITHUB_TOKEN" \
+  -H "Accept: application/vnd.github.v3+json" \
+  -H "Content-Type: application/json" \
+  -d '{"body": "返信メッセージ", "in_reply_to": COMMENT_ID}' \
+  https://api.github.com/repos/OWNER/REPO/pulls/PR_NUMBER/comments
 ```
-// 返信例（適切なAPIツール使用時）
-[GitHubコメント機能を使用して以下のメッセージで返信]
-"@coderabbitai この指摘について検証しましたが、現在の実装で問題ありません。理由：[技術的根拠]"
-```
+
+**返信すべき場面**:
+- ❌ 対応不要と判断した場合
+- ⏳ 将来対応と判断した場合  
+- 🤔 指摘内容が技術的に間違っていると判断した場合
+- ❓ 不明な点があり確認が必要な場合
+
+**注意**: GitHubの統合ツールやAPIツールは使用せず、必ずcurlコマンドで返信してください。
 
 ### 返信テンプレート
 

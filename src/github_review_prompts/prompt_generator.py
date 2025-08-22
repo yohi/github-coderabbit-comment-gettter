@@ -313,10 +313,18 @@ class AIPromptGenerator:
         if not all([pr_owner, pr_repo, pr_number, comment_id]):
             return None
         
-        # 簡潔な返信情報（curlコマンドへの参照は削除）
+        # 返信情報（curlコマンドでの返信を指示）
         return f"""**コメントID**: {comment_id}
 **APIエンドポイント**: `POST /repos/{pr_owner}/{pr_repo}/pulls/{pr_number}/comments`
-**返信方法**: `in_reply_to: {comment_id}` でこのコメントに直接返信可能"""
+**返信方法**: 以下のcurlコマンドで `in_reply_to: {comment_id}` を指定して返信
+```bash
+curl -X POST \\
+  -H "Authorization: Bearer YOUR_GITHUB_TOKEN" \\
+  -H "Accept: application/vnd.github.v3+json" \\
+  -H "Content-Type: application/json" \\
+  -d '{{"body": "返信メッセージ", "in_reply_to": {comment_id}}}' \\
+  https://api.github.com/repos/{pr_owner}/{pr_repo}/pulls/{pr_number}/comments
+```"""
     
     def _generate_curl_commands_section(self, github_token: str) -> List[str]:
         """CodeRabbit返信用curlコマンドセクションを生成"""
