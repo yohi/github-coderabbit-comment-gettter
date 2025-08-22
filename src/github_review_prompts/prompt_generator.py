@@ -41,9 +41,14 @@ class AIPromptGenerator:
         # フッターと拒否理由の指示
         footer = self._generate_footer()
         
+        # curlコマンドセクションを生成
+        curl_commands_section = "\n".join(self._generate_curl_commands_section())
+        
         # 全体を組み合わせ
         output_parts = [
             header,
+            "",
+            curl_commands_section,
             "",
             "# AI Agent Prompts List",
             "",
@@ -128,9 +133,6 @@ class AIPromptGenerator:
                 ])
             
             header_lines.append("")
-        
-        # CodeRabbit返信用curlコマンド情報をヘッダーに追加
-        header_lines.extend(self._generate_curl_commands_section())
         
         return "\n".join(header_lines)
     
