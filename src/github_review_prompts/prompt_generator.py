@@ -42,7 +42,7 @@ class AIPromptGenerator:
         footer = self._generate_footer()
         
         # curlコマンドセクションを生成
-        curl_commands_section = "\n".join(self._generate_curl_commands_section())
+        curl_commands_section = "\n".join(self._generate_curl_commands_section(self.github_token))
         
         # 全体を組み合わせ
         output_parts = [
@@ -316,21 +316,21 @@ class AIPromptGenerator:
 **APIエンドポイント**: `POST /repos/{pr_owner}/{pr_repo}/pulls/{pr_number}/comments`
 **返信方法**: `in_reply_to: {comment_id}` でこのコメントに直接返信可能"""
     
-    def _generate_curl_commands_section(self) -> List[str]:
+    def _generate_curl_commands_section(self, github_token: str) -> List[str]:
         """CodeRabbit返信用curlコマンドセクションを生成"""
         return [
             "### 🔧 CodeRabbit返信用curlコマンド",
             "",
-            "**前提条件**: ",
+            "**使用可能なGitHubトークン**: ",
             "```bash",
-            "export GITHUB_TOKEN=\"your_github_token_here\"",
+            f"# トークン: {github_token[:10]}...（自動設定済み）",
             "```",
             "",
             "#### ❌ 対応不要の場合",
             "**重要**: curlコマンド実行と同時に、該当ソースファイルにTODOコメントを追加してください。",
             "```bash",
             "curl -X POST \"https://api.github.com/repos/[OWNER]/[REPO]/pulls/[PR_NUMBER]/comments\" \\\\",
-            "  -H \"Authorization: token ${GITHUB_TOKEN}\" \\\\",
+            f"  -H \"Authorization: token {github_token}\" \\\\",
             "  -H \"Accept: application/vnd.github.v3+json\" \\\\",
             "  -H \"Content-Type: application/json\" \\\\",
             "  -d '{",
@@ -346,7 +346,7 @@ class AIPromptGenerator:
             "#### 🤔 要確認の場合",
             "```bash",
             "curl -X POST \"https://api.github.com/repos/[OWNER]/[REPO]/pulls/[PR_NUMBER]/comments\" \\\\",
-            "  -H \"Authorization: token ${GITHUB_TOKEN}\" \\\\",
+            f"  -H \"Authorization: token {github_token}\" \\\\",
             "  -H \"Accept: application/vnd.github.v3+json\" \\\\",
             "  -H \"Content-Type: application/json\" \\\\",
             "  -d '{",
@@ -359,7 +359,7 @@ class AIPromptGenerator:
             "**重要**: curlコマンド実行と同時に、該当ソースファイルにTODOコメントを追加してください。",
             "```bash",
             "curl -X POST \"https://api.github.com/repos/[OWNER]/[REPO]/pulls/[PR_NUMBER]/comments\" \\\\",
-            "  -H \"Authorization: token ${GITHUB_TOKEN}\" \\\\",
+            f"  -H \"Authorization: token {github_token}\" \\\\",
             "  -H \"Accept: application/vnd.github.v3+json\" \\\\",
             "  -H \"Content-Type: application/json\" \\\\",
             "  -d '{",
