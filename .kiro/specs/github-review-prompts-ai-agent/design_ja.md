@@ -17,17 +17,17 @@ graph TB
     B --> D[GraphQL APIクライアント]
     C --> E[GitHub REST API]
     D --> F[GitHub GraphQL API]
-    
+
     B --> G[コメントプロセッサー]
     G --> H[解決フィルター]
     G --> I[プロンプト抽出器]
-    
+
     H --> J[AIプロンプト生成器]
     I --> J
     J --> K[出力フォーマッター]
     K --> L[コンソール出力]
     K --> M[ファイル出力]
-    
+
     N[設定マネージャー] --> B
     N --> J
     O[ロガー] --> B
@@ -240,10 +240,10 @@ class Configuration:
 class ErrorHandler:
     def handle_api_error(self, error: Exception, context: Dict) -> bool:
         """再試行ロジック付きでAPIエラーを処理"""
-        
+
     def handle_processing_error(self, error: Exception, comment: Dict) -> None:
         """コメント処理エラーを適切に処理"""
-        
+
     def log_error(self, error: Exception, context: Dict) -> None:
         """適切な詳細レベルでエラーをログ記録"""
 ```
@@ -288,10 +288,10 @@ SAMPLE_COMMENTS = {
         "body": """
         <details>
         <summary>🤖 Prompt for AI Agents</summary>
-        
+
         保守性を向上させ、タイプミスのリスクを減らすために
         ハードコードされた文字列を定数に置き換える。
-        
+
         </details>
         """,
         "path": "src/main.py",
@@ -329,10 +329,10 @@ SAMPLE_COMMENTS = {
 class PerformanceOptimizer:
     def __init__(self, max_concurrent_requests: int = 5):
         self.semaphore = asyncio.Semaphore(max_concurrent_requests)
-        
+
     async def fetch_comments_batch(self, pr_urls: List[str]) -> List[Dict]:
         """複数のPRから並行してコメントを取得"""
-        
+
     def cache_api_responses(self, cache_duration: int = 300) -> None:
         """冗長な呼び出しを減らすためにAPIレスポンスをキャッシュ"""
 ```
@@ -357,10 +357,10 @@ class PerformanceOptimizer:
 class SecurityValidator:
     def validate_pr_url(self, url: str) -> bool:
         """インジェクション攻撃を防ぐためにPR URLを検証"""
-        
+
     def sanitize_comment_content(self, content: str) -> str:
         """安全な処理のためにコメント内容をサニタイズ"""
-        
+
     def validate_file_path(self, path: str) -> bool:
         """ディレクトリトラバーサルを防ぐために出力ファイルパスを検証"""
 ```
@@ -389,15 +389,15 @@ RATE_LIMIT_DELAY=1.0
 github:
   token: ${GITHUB_TOKEN}
   api_base_url: "https://api.github.com"
-  
+
 output:
   format: "markdown"
   default_file: "review-prompts.md"
-  
+
 personas:
   default: "code-reviewer"
   available: ["code-reviewer", "security-analyst", "performance-optimizer"]
-  
+
 processing:
   include_resolved: false
   max_concurrent_requests: 5

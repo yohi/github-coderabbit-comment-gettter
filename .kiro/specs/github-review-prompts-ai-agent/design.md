@@ -17,17 +17,17 @@ graph TB
     B --> D[GraphQL API Client]
     C --> E[GitHub REST API]
     D --> F[GitHub GraphQL API]
-    
+
     B --> G[Comment Processor]
     G --> H[Resolution Filter]
     G --> I[Prompt Extractor]
-    
+
     H --> J[AI Prompt Generator]
     I --> J
     J --> K[Output Formatter]
     K --> L[Console Output]
     K --> M[File Output]
-    
+
     N[Configuration Manager] --> B
     N --> J
     O[Logger] --> B
@@ -240,10 +240,10 @@ class Configuration:
 class ErrorHandler:
     def handle_api_error(self, error: Exception, context: Dict) -> bool:
         """Handle API errors with retry logic"""
-        
+
     def handle_processing_error(self, error: Exception, comment: Dict) -> None:
         """Handle comment processing errors gracefully"""
-        
+
     def log_error(self, error: Exception, context: Dict) -> None:
         """Log errors with appropriate detail level"""
 ```
@@ -288,10 +288,10 @@ SAMPLE_COMMENTS = {
         "body": """
         <details>
         <summary>🤖 Prompt for AI Agents</summary>
-        
+
         Replace hardcoded strings with constants to improve maintainability
         and reduce the risk of typos.
-        
+
         </details>
         """,
         "path": "src/main.py",
@@ -329,10 +329,10 @@ SAMPLE_COMMENTS = {
 class PerformanceOptimizer:
     def __init__(self, max_concurrent_requests: int = 5):
         self.semaphore = asyncio.Semaphore(max_concurrent_requests)
-        
+
     async def fetch_comments_batch(self, pr_urls: List[str]) -> List[Dict]:
         """Fetch comments from multiple PRs concurrently"""
-        
+
     def cache_api_responses(self, cache_duration: int = 300) -> None:
         """Cache API responses to reduce redundant calls"""
 ```
@@ -357,10 +357,10 @@ class PerformanceOptimizer:
 class SecurityValidator:
     def validate_pr_url(self, url: str) -> bool:
         """Validate PR URL to prevent injection attacks"""
-        
+
     def sanitize_comment_content(self, content: str) -> str:
         """Sanitize comment content for safe processing"""
-        
+
     def validate_file_path(self, path: str) -> bool:
         """Validate output file paths to prevent directory traversal"""
 ```
@@ -389,15 +389,15 @@ RATE_LIMIT_DELAY=1.0
 github:
   token: ${GITHUB_TOKEN}
   api_base_url: "https://api.github.com"
-  
+
 output:
   format: "markdown"
   default_file: "review-prompts.md"
-  
+
 personas:
   default: "code-reviewer"
   available: ["code-reviewer", "security-analyst", "performance-optimizer"]
-  
+
 processing:
   include_resolved: false
   max_concurrent_requests: 5
