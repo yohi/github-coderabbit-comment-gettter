@@ -606,7 +606,17 @@ curl -X POST \\
 - 🤔 指摘内容が技術的に間違っていると判断した場合
 - ❓ 不明な点があり確認が必要な場合
 
-**注意**: GitHubの統合ツールやAPIツールは使用せず、必ずcurlコマンドで返信してください。"""
+**注意**: GitHubの統合ツールやAPIツールは使用せず、必ずcurlコマンドで返信してください。
+
+**返信例**:
+```bash
+curl -X POST \\
+  -H "Authorization: Bearer ghp_xxxxxxxxxxxxxxxxxxxx" \\
+  -H "Accept: application/vnd.github.v3+json" \\
+  -H "Content-Type: application/json" \\
+  -d '{"body": "@coderabbitai この指摘について検証しましたが、現在の実装で問題ありません。理由：[技術的根拠]", "in_reply_to": 123456789}' \\
+  https://api.github.com/repos/owner/repo/pulls/42/comments
+```"""
     
     # 確認スキップオプションに応じたセクション追加
     if no_confirm:
