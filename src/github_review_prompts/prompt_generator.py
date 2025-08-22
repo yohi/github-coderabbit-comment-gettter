@@ -318,11 +318,11 @@ class AIPromptGenerator:
 
 **CodeRabbit返信パターン**:
 - ✅ **対応完了**: 修正のみ実施、返信は不要
-- ❌ **対応不要**: `@coderabbitai 対応不要：[技術的根拠]。適切と判断される場合は課題を解決済みにしてください。`  
+- ❌ **対応不要**: `@coderabbitai 対応不要：[技術的根拠]。適切と判断される場合は**この特定の課題のみ**を解決済みにしてください。他の課題は変更しないでください。`  
 - 🤔 **要確認**: `@coderabbitai 確認要望：[確認内容]。詳細説明をお願いします。`
-- ⚠️ **指摘間違い**: `@coderabbitai この指摘は[具体的な理由]により間違いと判断します。[正しい技術的説明]。妥当と判断される場合は課題を解決済みにしてください。`
+- ⚠️ **指摘間違い**: `@coderabbitai この指摘は[具体的な理由]により間違いと判断します。[正しい技術的説明]。妥当と判断される場合は**この特定の課題のみ**を解決済みにしてください。他の課題は変更しないでください。`
 
-**重要**: 修正完了時の@coderabbitaiへの報告は不要です。課題の解決判断はCodeRabbitに委ねます。
+**重要**: 修正完了時の@coderabbitaiへの報告は不要です。課題の解決判断はCodeRabbitに委ねます。**一括での課題解決は禁止**です。
 
 ### 🔧 CodeRabbit返信用curlコマンド
 
@@ -338,7 +338,7 @@ curl -X POST "https://api.github.com/repos/[OWNER]/[REPO]/pulls/[PR_NUMBER]/comm
   -H "Accept: application/vnd.github.v3+json" \\
   -H "Content-Type: application/json" \\
   -d '{
-    "body": "@coderabbitai 対応不要：[技術的根拠を記載]。適切と判断される場合は課題を解決済みにしてください。",
+    "body": "@coderabbitai 対応不要：[技術的根拠を記載]。適切と判断される場合は**この特定の課題のみ**を解決済みにしてください。他の課題は変更しないでください。",
     "in_reply_to": [COMMENT_ID]
   }'
 ```
@@ -362,7 +362,7 @@ curl -X POST "https://api.github.com/repos/[OWNER]/[REPO]/pulls/[PR_NUMBER]/comm
   -H "Accept: application/vnd.github.v3+json" \\
   -H "Content-Type: application/json" \\
   -d '{
-    "body": "@coderabbitai この指摘は[具体的な理由]により間違いと判断します。[正しい技術的説明]。妥当と判断される場合は課題を解決済みにしてください。",
+    "body": "@coderabbitai この指摘は[具体的な理由]により間違いと判断します。[正しい技術的説明]。妥当と判断される場合は**この特定の課題のみ**を解決済みにしてください。他の課題は変更しないでください。",
     "in_reply_to": [COMMENT_ID]
   }'
 ```
@@ -379,7 +379,7 @@ curl -X POST "https://api.github.com/repos/[OWNER]/[REPO]/pulls/[PR_NUMBER]/comm
 - `セキュリティリスクが存在しないため対応不要`
 - `コードの可読性を損なう可能性があるため現状維持`
 
-**重要**: 修正完了時の@coderabbitaiへの報告は不要です。上記コマンドは対応しない場合のみ使用してください。課題の解決判断はCodeRabbitが行います。
+**重要**: 修正完了時の@coderabbitaiへの報告は不要です。上記コマンドは対応しない場合のみ使用してください。課題の解決判断はCodeRabbitが行いますが、**一括での課題解決は絶対に行わないでください**。
 
 **対応不要な指摘について**:
 対応不要と判断した指摘については、以下の形式で理由を記載してください:
