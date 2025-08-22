@@ -326,7 +326,7 @@ class CLIInterface:
         print(f"ファイル自動生成: {'有効' if args.save_file else '無効'}")
 
         if config.github_token:
-            print(f"GitHubトークン: 設定済み ({config.github_token[:10]}...)")
+            print("GitHubトークン: 設定済み（マスク済み）")
         else:
             print("⚠️  GitHubトークン: 未設定")
 

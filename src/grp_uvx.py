@@ -252,10 +252,12 @@ def extract_problem_description(body: str) -> str:
 
 
 def generate_coderabbit_curl_commands_for_comment(owner: str, repo: str, pr_number: int, comment_id: int, token: str) -> str:
-    """特定のコメントに対するCodeRabbit返信用のcurlコマンドを生成（3パターンのみ）"""
+    """特定のコメントに対するCodeRabbit返信用のcurlコマンドを生成（3パターンのみ）
+    NOTE: 認証は環境変数 GITHUB_TOKEN を参照させ、トークン値は出力しない。
+    """
     templates = {
-        "対応不要": f"@coderabbitai この指摘について確認しましたが、[技術的根拠]により対応不要と判断します。この課題のみを解決済みにしてください。",
-        "指摘間違い": f"@coderabbitai この指摘は[具体的な理由]により間違いと判断します。[正しい技術的説明]。この課題のみを解決済みにしてください。",
+        "対応不要": "@coderabbitai この指摘について確認しましたが、[技術的根拠]により対応不要と判断します。この課題のみを解決済みにしてください。",
+        "指摘間違い": "@coderabbitai この指摘は[具体的な理由]により間違いと判断します。[正しい技術的説明]。この課題のみを解決済みにしてください。"
         "要確認": f"@coderabbitai この指摘について追加で確認したい点があります：[確認したい内容]。詳細な説明をお願いします。"
     }
     
@@ -276,7 +278,7 @@ def generate_coderabbit_curl_commands_for_comment(owner: str, repo: str, pr_numb
         curl_command = f'''# {action}の場合
 curl -X POST \\
   "https://api.github.com/repos/{owner}/{repo}/pulls/{pr_number}/comments" \\
-  -H "Authorization: token {token}" \\
+  -H "Authorization: token ${GITHUB_TOKEN}" \\
   -H "Accept: application/vnd.github.v3+json" \\
   -H "Content-Type: application/json" \\
   -d "{data_json}"'''
@@ -519,15 +521,12 @@ def main():
     # curlコマンドテンプレートを先に生成
     output.append("### 🔧 CodeRabbit返信用curlコマンド")
     output.append("")
-    output.append("**使用可能なGitHubトークン**: ")
-    output.append("```bash")
-    output.append(f"# トークン: {token[:10]}...（自動設定済み）")
-    output.append("```")
+    output.append("**認証**: 環境変数 GITHUB_TOKEN を使用します（値は出力しません）")
     output.append("")
     output.append("#### ❌ 対応不要（完全に不要）の場合")
     output.append("```bash")
     output.append(f"curl -X POST \"https://api.github.com/repos/{owner}/{repo}/pulls/{pr_number}/comments\" \\\\")
-    output.append(f"  -H \"Authorization: token {token}\" \\\\")
+    output.append("  -H \"Authorization: token ${GITHUB_TOKEN}\" \\\\")
     output.append("  -H \"Accept: application/vnd.github.v3+json\" \\\\")
     output.append("  -H \"Content-Type: application/json\" \\\\")
     output.append("  -d '{")
@@ -540,7 +539,7 @@ def main():
     output.append("**重要**: curlコマンド実行と同時に、該当ソースファイルにTODOコメントを追加してください。")
     output.append("```bash")
     output.append(f"curl -X POST \"https://api.github.com/repos/{owner}/{repo}/pulls/{pr_number}/comments\" \\\\")
-    output.append(f"  -H \"Authorization: token {token}\" \\\\")
+    output.append("  -H \"Authorization: token ${GITHUB_TOKEN}\" \\\\")
     output.append("  -H \"Accept: application/vnd.github.v3+json\" \\\\")
     output.append("  -H \"Content-Type: application/json\" \\\\")
     output.append("  -d '{")
@@ -556,7 +555,7 @@ def main():
     output.append("#### 🤔 要確認の場合")
     output.append("```bash")
     output.append(f"curl -X POST \"https://api.github.com/repos/{owner}/{repo}/pulls/{pr_number}/comments\" \\\\")
-    output.append(f"  -H \"Authorization: token {token}\" \\\\")
+    output.append("  -H \"Authorization: token ${GITHUB_TOKEN}\" \\\\")
     output.append("  -H \"Accept: application/vnd.github.v3+json\" \\\\")
     output.append("  -H \"Content-Type: application/json\" \\\\")
     output.append("  -d '{")
@@ -568,7 +567,7 @@ def main():
     output.append("#### ⚠️ 指摘間違いの場合")
     output.append("```bash")
     output.append(f"curl -X POST \"https://api.github.com/repos/{owner}/{repo}/pulls/{pr_number}/comments\" \\\\")
-    output.append(f"  -H \"Authorization: token {token}\" \\\\")
+    output.append("  -H \"Authorization: token ${GITHUB_TOKEN}\" \\\\")
     output.append("  -H \"Accept: application/vnd.github.v3+json\" \\\\")
     output.append("  -H \"Content-Type: application/json\" \\\\")
     output.append("  -d '{")

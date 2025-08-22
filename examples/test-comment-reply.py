@@ -89,7 +89,7 @@ def test_comment_reply_functionality():
                 reply_body="Test reply"
             )
             assert "curl -X POST" in curl_command
-            assert "test-token" in curl_command
+            assert "${GITHUB_TOKEN}" in curl_command
             print("     curlコマンド生成成功")
         
         # 6. 一括返信テスト
@@ -224,7 +224,7 @@ def test_curl_command_generation():
                 reply_body="Test reply"
             )
             assert "POST" in curl_cmd
-            assert "Authorization: token test-token" in curl_cmd
+            assert "Authorization: token ${GITHUB_TOKEN}" in curl_cmd
             assert "Test reply" in curl_cmd
             print("  ✅ reply curl command OK")
             
