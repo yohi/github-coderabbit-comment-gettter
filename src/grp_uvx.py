@@ -378,7 +378,6 @@ def main():
 
 出力:
   - review_prompt_with_todos.md (プロンプトファイル)
-  - curl_commands.txt (返信用curlコマンド)
   - コンソール出力
         """
     )
@@ -489,10 +488,7 @@ def main():
     # プロンプト生成
     review_prompt = get_default_review_prompt(args.no_confirm, args.auto_commit)
     
-    # curlコマンド用の別ファイル準備
-    curl_commands = []
-    
-    # 個別コメント用のcurlコマンドのみ生成（全体報告は削除）
+    # curlコマンドは各TODO項目に直接埋め込み
     
     output = []
     output.append(review_prompt)
@@ -501,7 +497,7 @@ def main():
     
     output.append("## 🔧 返信用コマンド")
     output.append("")
-    output.append("対応不要・指摘間違い・要確認時の返信は `curl_commands.txt` を参照")
+    output.append("各TODO項目にcurlコマンドを直接記載しています。")
     output.append("")
     output.append("## レビューコメント一覧")
     output.append("")
@@ -569,31 +565,27 @@ def main():
                     except Exception as e:
                         output.append("**❌ 自動返信失敗**:")
                         output.append(f"- エラー: {str(e)}")
-                        output.append(f"- curl_commands.txt のコメント #{i} の部分を参照してください")
+                        output.append(f"- 以下のcurlコマンドを手動で実行してください")
                         output.append("")
                         
-                        # curlコマンドを別ファイル用に保存
+                        # curlコマンドを直接プロンプトに埋め込み
                         comment_curl_commands = generate_coderabbit_curl_commands_for_comment(
                             owner, repo, pr_number, comment_id, token
                         )
-                        curl_commands.append(f"# コメント #{i}: {title}")
-                        curl_commands.append(comment_curl_commands)
-                        curl_commands.append("")
-                        curl_commands.append("=" * 80)
-                        curl_commands.append("")
+                        output.append("**🔧 返信用curlコマンド**:")
+                        output.append("```bash")
+                        output.append(comment_curl_commands)
+                        output.append("```")
+                        output.append("")
                 else:
-                    # curlコマンドを別ファイルに追加
+                    # curlコマンドを直接プロンプトに埋め込み
                     comment_curl_commands = generate_coderabbit_curl_commands_for_comment(
                         owner, repo, pr_number, comment_id, token
                     )
-                    curl_commands.append(f"# コメント #{i}: {title}")
-                    curl_commands.append(comment_curl_commands)
-                    curl_commands.append("")
-                    curl_commands.append("=" * 80)
-                    curl_commands.append("")
-                    
-                    # プロンプトには簡潔な参照のみ
-                    output.append(f"**🔧 返信**: curl_commands.txt のコメント #{i} を参照")
+                    output.append("**🔧 返信用curlコマンド**:")
+                    output.append("```bash")
+                    output.append(comment_curl_commands)
+                    output.append("```")
                     output.append("")
             
             output.append("---")
@@ -632,12 +624,7 @@ def main():
     with open(output_file, 'w', encoding='utf-8') as f:
         f.write(combined_output)
     
-    # curlコマンドファイルの保存
-    if curl_commands:
-        curl_file = "curl_commands.txt"
-        with open(curl_file, 'w', encoding='utf-8') as f:
-            f.write("\n".join(curl_commands))
-        print(f"📄 curlコマンドファイル: {curl_file}")
+    # curlコマンドはプロンプト内に直接埋め込み済み（別ファイル不要）
 
 
 if __name__ == "__main__":
