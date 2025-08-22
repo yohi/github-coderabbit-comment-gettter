@@ -50,9 +50,13 @@ class UnifiedCLI:
             formatter_class=argparse.RawDescriptionHelpFormatter,
             epilog="""
 使用例:
-  # プロンプト生成
+  # プロンプト生成（標準出力のみ）
   %(prog)s https://github.com/owner/repo/pull/123
   %(prog)s --no-confirm --auto-commit https://github.com/owner/repo/pull/123
+  
+  # ファイル保存も行う場合
+  %(prog)s --save-file https://github.com/owner/repo/pull/123
+  %(prog)s --output my_prompt.md https://github.com/owner/repo/pull/123
   
   # コメント返信
   %(prog)s --reply-to 456 --reply-message "修正しました" https://github.com/owner/repo/pull/123
@@ -88,8 +92,9 @@ class UnifiedCLI:
                            help="返信テンプレート")
         
         # 出力オプション
-        parser.add_argument("--output", "-o", help="出力ファイル (指定なしで標準出力)")
+        parser.add_argument("--output", "-o", help="出力ファイル (指定なしで標準出力のみ)")
         parser.add_argument("--append", action="store_true", help="ファイルに追記 (新規作成ではなく)")
+        parser.add_argument("--save-file", action="store_true", help="review_prompt_with_todos.md にプロンプトを保存")
         parser.add_argument("--no-color", action="store_true", help="カラー出力を無効にする")
         
         # システムオプション
@@ -210,7 +215,7 @@ class UnifiedCLI:
             prompt = self.prompt_engine.generate_main_prompt(comments, pr_dict, options)
             
             # 出力
-            self._output_result(prompt, pr_dict, comments, args.output, args.append)
+            self._output_result(prompt, pr_dict, comments, args.output, args.append, args.save_file)
             
             logger.info(f"プロンプトを生成しました ({len(comments)} コメント)")
             return 0
@@ -266,17 +271,12 @@ class UnifiedCLI:
         else:
             raise ValueError("メッセージ、テンプレート、またはファイルのいずれかを指定してください")
     
-    def _output_result(self, content: str, pr_dict: Dict, comments: List[Dict], output_file: str = None, append: bool = False):
+    def _output_result(self, content: str, pr_dict: Dict, comments: List[Dict], output_file: str = None, append: bool = False, save_file: bool = False):
         """美しい結果出力（従来フォーマット）"""
-        # デフォルトのファイル名
-        if not output_file:
-            output_file = "review_prompt_with_todos.md"
-        
         # 統計情報の表示
         print()
         print("=" * 80)
         print("✅ レビュープロンプトとTODOリストを生成しました")
-        print(f"📄 ファイル保存: {output_file}")
         print(f"📋 処理対象コメント: {len(comments)} 件")
         print(f"🔗 プルリクエスト: {pr_dict.get('title', 'N/A')}")
         print()
@@ -299,16 +299,37 @@ class UnifiedCLI:
         print("🤖" + "=" * 78 + "🤖")
         print()
         
-        # ファイル保存
-        try:
-            mode = 'a' if append else 'w'
-            with open(output_file, mode, encoding='utf-8') as f:
-                f.write(content)
-                if append:
-                    f.write('\n\n---\n\n')
-            print(f"📁 プロンプトファイルを保存しました: {output_file}")
-        except Exception as e:
-            logger.error(f"ファイル保存に失敗しました: {e}")
+        # ファイル保存処理
+        saved_files = []
+        
+        # --output オプションでのファイル保存
+        if output_file:
+            try:
+                mode = 'a' if append else 'w'
+                with open(output_file, mode, encoding='utf-8') as f:
+                    f.write(content)
+                    if append:
+                        f.write('\n\n---\n\n')
+                saved_files.append(output_file)
+            except Exception as e:
+                logger.error(f"ファイル保存に失敗しました ({output_file}): {e}")
+        
+        # --save-file オプションでのデフォルトファイル保存
+        if save_file:
+            default_file = "review_prompt_with_todos.md"
+            try:
+                with open(default_file, 'w', encoding='utf-8') as f:
+                    f.write(content)
+                saved_files.append(default_file)
+            except Exception as e:
+                logger.error(f"デフォルトファイル保存に失敗しました ({default_file}): {e}")
+        
+        # 保存結果の表示
+        if saved_files:
+            for file in saved_files:
+                print(f"📁 プロンプトファイルを保存しました: {file}")
+        else:
+            print("💡 プロンプトファイルは保存されませんでした（--output または --save-file オプションで保存可能）")
         
         print("=" * 80)
 
