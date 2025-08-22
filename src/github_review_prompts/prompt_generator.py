@@ -244,13 +244,13 @@ class AIPromptGenerator:
                     context_info
                 ])
         
-        # CodeRabbit返信用curlコマンドを追加
-        curl_commands = self._generate_coderabbit_curl_commands(prompt)
-        if curl_commands:
+        # CodeRabbit返信用の簡潔な指示を追加
+        reply_info = self._generate_coderabbit_reply_info(prompt)
+        if reply_info:
             formatted_lines.extend([
                 "",
-                "**CodeRabbit返信用curlコマンド**:",
-                curl_commands
+                "**CodeRabbit返信用**:",
+                reply_info
             ])
         
         formatted_lines.extend([
@@ -262,186 +262,91 @@ class AIPromptGenerator:
         return "\n".join(formatted_lines)
     
     def _generate_persona_context(self, prompt: AIPrompt) -> Optional[str]:
-        """ペルソナ固有のコンテキストを生成"""
+        """ペルソナ固有のコンテキストを生成（簡潔版）"""
         if self.persona == "security-analyst":
-            return self._generate_security_context(prompt)
+            return "セキュリティリスク・OWASP Top 10・機密性/完全性/可用性を重点評価"
         elif self.persona == "performance-optimizer":
-            return self._generate_performance_context(prompt)
+            return "パフォーマンス影響・CPU/メモリ/ネットワーク負荷・スケーラビリティを重点評価"
         elif self.persona == "code-reviewer":
-            return self._generate_code_review_context(prompt)
+            return "可読性・保守性・拡張性・コーディング規約・開発効率を重点評価"
         
         return None
     
-    def _generate_security_context(self, prompt: AIPrompt) -> str:
-        """セキュリティアナリスト向けのコンテキスト"""
-        context_lines = [
-            "- この指摘は潜在的なセキュリティリスクを含んでいる可能性があります",
-            "- OWASP Top 10 や一般的な攻撃手法との関連を検討してください",
-            "- データの機密性、完全性、可用性への影響を評価してください"
-        ]
-        
-        if prompt.category == "security":
-            context_lines.append("- セキュリティカテゴリの指摘として分類されています")
-        
-        return "\n".join([f"  {line}" for line in context_lines])
-    
-    def _generate_performance_context(self, prompt: AIPrompt) -> str:
-        """パフォーマンス最適化スペシャリスト向けのコンテキスト"""
-        context_lines = [
-            "- この指摘がシステムのパフォーマンスに与える影響を評価してください",
-            "- CPU使用率、メモリ消費、ネットワーク負荷を考慮してください",
-            "- スケーラビリティとレスポンス時間への影響を検討してください"
-        ]
-        
-        if prompt.category == "performance":
-            context_lines.append("- パフォーマンスカテゴリの指摘として分類されています")
-        
-        return "\n".join([f"  {line}" for line in context_lines])
-    
-    def _generate_code_review_context(self, prompt: AIPrompt) -> str:
-        """コードレビュアー向けのコンテキスト"""
-        context_lines = [
-            "- コードの可読性、保守性、拡張性を評価してください",
-            "- 既存のコーディング規約との整合性を確認してください",
-            "- チームの開発効率への影響を考慮してください"
-        ]
-        
-        if prompt.priority == "high":
-            context_lines.append("- 高優先度の指摘として分類されています")
-        
-        return "\n".join([f"  {line}" for line in context_lines])
-    
     def _format_context_info(self, context: Dict[str, Any]) -> Optional[str]:
-        """コンテキスト情報をフォーマット"""
-        info_lines = []
+        """コンテキスト情報をフォーマット（簡潔版）"""
+        info_parts = []
         
         if context.get("is_resolved"):
-            info_lines.append("- この指摘は解決済みとしてマークされています")
+            info_parts.append("解決済み")
         
         if context.get("is_coderabbit"):
-            info_lines.append("- CodeRabbit AIによる自動指摘です")
+            info_parts.append("CodeRabbit")
         
         if context.get("was_edited"):
-            info_lines.append("- このコメントは編集されています")
+            info_parts.append("編集済み")
         
         if context.get("change_type"):
-            change_type_ja = {
-                "addition": "追加", "deletion": "削除", 
-                "modification": "変更", "unknown": "不明"
-            }
-            change_type = change_type_ja.get(context["change_type"], "不明")
-            info_lines.append(f"- 差分タイプ: {change_type}")
+            change_type_ja = {"addition": "追加", "deletion": "削除", "modification": "変更", "unknown": "不明"}
+            info_parts.append(change_type_ja.get(context["change_type"], "不明"))
         
         if context.get("file_extension"):
-            info_lines.append(f"- ファイル拡張子: .{context['file_extension']}")
+            info_parts.append(f".{context['file_extension']}")
         
-        return "\n".join([f"  {line}" for line in info_lines]) if info_lines else None
+        return " | ".join(info_parts) if info_parts else None
     
-    def _generate_coderabbit_curl_commands(self, prompt: AIPrompt) -> Optional[str]:
-        """CodeRabbit返信用のcurlコマンドを生成（特定コメントへの返信）"""
-        if not self.github_token:
-            return None
-        
-        # プロンプトからPR情報を取得（contextに含まれることを期待）
+    def _generate_coderabbit_reply_info(self, prompt: AIPrompt) -> Optional[str]:
+        """CodeRabbit返信用の簡潔な情報を生成"""
+        comment_id = prompt.comment_id
         pr_owner = prompt.context.get("pr_owner")
         pr_repo = prompt.context.get("pr_repo") 
         pr_number = prompt.context.get("pr_number")
-        comment_id = prompt.comment_id
         
         if not all([pr_owner, pr_repo, pr_number, comment_id]):
             return None
         
-        # 返信テンプレート
-        templates = {
-            "対応不要": f"@coderabbitai この指摘について確認しましたが、[技術的根拠]により対応不要と判断します。問題がなければこの課題を解決済みにしてください。ただし、この課題のみを解決済みにし、他の課題をすべて解決済みにしないよう注意してください。",
-            "対応完了": f"@coderabbitai ご指摘いただいた点を修正しました。[修正内容]を実施済みです。問題がなければこの課題を解決済みにしてください。ただし、この課題のみを解決済みにし、他の課題をすべて解決済みにしないよう注意してください。",
-            "要確認": f"@coderabbitai この指摘について追加で確認したい点があります：[確認したい内容]。詳細な説明をお願いします。"
-        }
-        
-        curl_lines = []
-        
-        # まず元のコメント情報を取得するための説明
-        curl_lines.append(f"# このコメント（ID: {comment_id}）に対する返信用curlコマンド")
-        curl_lines.append("")
-        
-        for action, message in templates.items():
-            # JSONデータの準備（エスケープ処理）
-            import json
-            
-            # Pull Request Review Comment への返信データ
-            data = {
-                "body": message,
-                "in_reply_to": comment_id
-            }
-            data_json = json.dumps(data, ensure_ascii=False).replace('"', '\\"')
-            
-            curl_command = f'''# {action}の場合
-curl -X POST \\
-  "https://api.github.com/repos/{pr_owner}/{pr_repo}/pulls/{pr_number}/comments" \\
-  -H "Authorization: token {self.github_token}" \\
-  -H "Accept: application/vnd.github.v3+json" \\
-  -H "Content-Type: application/json" \\
-  -d "{data_json}"'''
-            
-            curl_lines.append(curl_command)
-        
-        return "\n\n".join(curl_lines)
+        # 簡潔な返信情報
+        return f"""**コメントID**: {comment_id}
+**APIエンドポイント**: `POST /repos/{pr_owner}/{pr_repo}/pulls/{pr_number}/comments`
+**返信方法**: `in_reply_to: {comment_id}` でこのコメントに直接返信可能
+
+*詳細なcurlコマンドは最下部の「CodeRabbit返信用curlコマンド」セクションを参照*"""
     
     def _generate_footer(self) -> str:
         """フッター部分を生成"""
         return f"""
-**対応完了後の確認事項**:
+**対応手順**: ① 各指摘を検証 ② 必要に応じて修正 ③ CodeRabbitに返信 ④ 完了後コミット・プッシュ
 
-1. **対応状況の記録**: 各指摘への対応結果を記録してください
-2. **テストの実行**: 変更による副作用がないことを確認してください  
-3. **コミットとプッシュ**: すべての対応が完了したらコミット・プッシュを実行してください
-
-**CodeRabbitへの返信について**:
-
-各コメントには、状況に応じて以下のパターンでCodeRabbitに返信してください：
-
-### 📝 返信パターン
-
-#### ✅ 対応完了時
-```
-@coderabbitai ご指摘いただいた点を修正しました。[修正内容]を実施済みです。
-問題がなければこの課題を解決済みにしてください。ただし、この課題のみを解決済みにし、
-他の課題をすべて解決済みにしないよう注意してください。
-```
-
-#### ❌ 対応不要時
-```
-@coderabbitai この指摘について確認しましたが、[技術的根拠]により対応不要と判断します。
-問題がなければこの課題を解決済みにしてください。ただし、この課題のみを解決済みにし、
-他の課題をすべて解決済みにしないよう注意してください。
-```
-
-#### 🤔 要確認時
-```
-@coderabbitai この指摘について追加で確認したい点があります：[確認したい内容]。
-詳細な説明をお願いします。
-```
+**CodeRabbit返信パターン**:
+- ✅ **対応完了**: `@coderabbitai 修正完了：[修正内容]。この課題のみ解決済みにしてください。`
+- ❌ **対応不要**: `@coderabbitai 対応不要：[技術的根拠]。この課題のみ解決済みにしてください。`  
+- 🤔 **要確認**: `@coderabbitai 確認要望：[確認内容]。詳細説明をお願いします。`
 
 ### 🔧 curlコマンドでの返信方法
 
-各コメントの「**CodeRabbit返信用curlコマンド**」セクションに、**該当コメントに直接返信する**実行可能なcurlコマンドが用意されています。
+**環境変数設定**: 先に `export GITHUB_TOKEN="your_token"` を設定してください。
 
-#### 🎯 特徴
-- `in_reply_to` パラメータにより、元のコメントに直接返信されます
-- GitHub上でスレッド形式で表示され、コンテキストが保持されます
-- 各コメントに個別のコマンドが生成されるため、適切な相手に返信できます
+#### 📋 curlコマンドテンプレート
+```bash
+# 対応完了の場合
+curl -X POST "https://api.github.com/repos/[OWNER]/[REPO]/pulls/[PR_NUMBER]/comments" \\
+  -H "Authorization: token $GITHUB_TOKEN" \\
+  -H "Content-Type: application/json" \\
+  -d '{"body": "@coderabbitai 修正完了：[修正内容]。この課題のみを解決済みにしてください。", "in_reply_to": [COMMENT_ID]}'
 
-#### 📋 使用手順
-1. **適切なパターンを選択**: 対応状況に応じて「対応不要」「対応完了」「要確認」から選択
-2. **メッセージをカスタマイズ**: `[技術的根拠]`や`[修正内容]`を具体的な内容に置き換え
-3. **curlコマンドを実行**: ターミナルでコマンドを実行してCodeRabbitに返信
+# 対応不要の場合  
+curl -X POST "https://api.github.com/repos/[OWNER]/[REPO]/pulls/[PR_NUMBER]/comments" \\
+  -H "Authorization: token $GITHUB_TOKEN" \\
+  -H "Content-Type: application/json" \\
+  -d '{"body": "@coderabbitai 対応不要：[技術的根拠]。この課題のみを解決済みにしてください。", "in_reply_to": [COMMENT_ID]}'
 
-#### ⚙️ APIの仕組み
-- **Pull Request Comments API** (`/pulls/{pr_number}/comments`) を使用
-- `in_reply_to` フィールドで元のコメントIDを指定
-- GitHub上でコメントツリーとして表示されます
+# 要確認の場合
+curl -X POST "https://api.github.com/repos/[OWNER]/[REPO]/pulls/[PR_NUMBER]/comments" \\
+  -H "Authorization: token $GITHUB_TOKEN" \\
+  -H "Content-Type: application/json" \\
+  -d '{"body": "@coderabbitai 確認要望：[確認内容]。詳細説明をお願いします。", "in_reply_to": [COMMENT_ID]}'
+```
 
-**注意**: curlコマンドには適切なGitHubトークンが設定されていることを確認してください。
+**使用手順**: 各コメントの「CodeRabbit返信用」セクションからコメントIDを取得し、上記テンプレートの `[COMMENT_ID]` を置換して実行してください。
 
 **対応不要な指摘について**:
 対応不要と判断した指摘については、以下の形式で理由を記載してください:
