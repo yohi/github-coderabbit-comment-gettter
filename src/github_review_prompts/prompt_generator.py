@@ -326,8 +326,7 @@ class AIPromptGenerator:
             f"# トークン: {github_token[:10]}...（自動設定済み）",
             "```",
             "",
-            "#### ❌ 対応不要の場合",
-            "**重要**: curlコマンド実行と同時に、該当ソースファイルにTODOコメントを追加してください。",
+            "#### ❌ 対応不要（完全に不要）の場合",
             "```bash",
             "curl -X POST \"https://api.github.com/repos/[OWNER]/[REPO]/pulls/[PR_NUMBER]/comments\" \\\\",
             f"  -H \"Authorization: token {github_token}\" \\\\",
@@ -338,9 +337,22 @@ class AIPromptGenerator:
             "    \"in_reply_to\": [COMMENT_ID]",
             "  }'",
             "```",
+            "",
+            "#### 📅 将来対応予定（このフェーズでは対応しない）の場合",
+            "**重要**: curlコマンド実行と同時に、該当ソースファイルにTODOコメントを追加してください。",
+            "```bash",
+            "curl -X POST \"https://api.github.com/repos/[OWNER]/[REPO]/pulls/[PR_NUMBER]/comments\" \\\\",
+            f"  -H \"Authorization: token {github_token}\" \\\\",
+            "  -H \"Accept: application/vnd.github.v3+json\" \\\\",
+            "  -H \"Content-Type: application/json\" \\\\",
+            "  -d '{",
+            "    \"body\": \"@coderabbitai 将来対応予定：このフェーズでは対応しませんが、[次のフェーズ/バージョン]で対応予定です。適切と判断される場合は**この特定の課題のみ**を解決済みにしてください。他の課題は変更しないでください。\",",
+            "    \"in_reply_to\": [COMMENT_ID]",
+            "  }'",
+            "```",
             "**ソースコード修正**: 指摘箇所に以下のTODOコメントを追加",
             "```",
-            "// TODO: CodeRabbit指摘 - [技術的根拠により対応不要] - [YYYY-MM-DD]",
+            "// TODO: CodeRabbit指摘 - [次フェーズで対応予定] - [YYYY-MM-DD]",
             "```",
             "",
             "#### 🤔 要確認の場合",
@@ -356,7 +368,6 @@ class AIPromptGenerator:
             "```",
             "",
             "#### ⚠️ 指摘間違いの場合",
-            "**重要**: curlコマンド実行と同時に、該当ソースファイルにTODOコメントを追加してください。",
             "```bash",
             "curl -X POST \"https://api.github.com/repos/[OWNER]/[REPO]/pulls/[PR_NUMBER]/comments\" \\\\",
             f"  -H \"Authorization: token {github_token}\" \\\\",
@@ -367,16 +378,12 @@ class AIPromptGenerator:
             "    \"in_reply_to\": [COMMENT_ID]",
             "  }'",
             "```",
-            "**ソースコード修正**: 指摘箇所に以下のTODOコメントを追加",
-            "```",
-            "// TODO: CodeRabbit指摘間違い - [理由] - [YYYY-MM-DD]",
-            "```",
             "",
             "**使用方法**:",
             "1. 各TODO項目の「コメントID」を確認",
             "2. 上記テンプレートの `[OWNER]`, `[REPO]`, `[PR_NUMBER]`, `[COMMENT_ID]` を実際の値に置換",
             "3. `[技術的根拠を記載]` 部分に具体的な理由を記入",
-            "4. **対応不要・指摘間違いの場合**: 該当ソースファイルにTODOコメントを追加",
+            "4. **📅 将来対応予定の場合のみ**: 該当ソースファイルにTODOコメントを追加",
             "5. curlコマンドを実行",
             "",
             "**技術的根拠の例**:",
@@ -416,13 +423,14 @@ class AIPromptGenerator:
 
 **CodeRabbit返信パターン**:
 - ✅ **対応完了**: 修正のみ実施、@coderabbitaiへの完了報告は不要
-- ❌ **対応不要**: 以下の2つのアクションを実行
-  1. CodeRabbitに返信: `@coderabbitai 対応不要：[技術的根拠]。適切と判断される場合は**この特定の課題のみ**を解決済みにしてください。他の課題は変更しないでください。`
-  2. **ソースコードにTODOコメント追加**: 該当ファイルの指摘箇所に `// TODO: CodeRabbit指摘 - [技術的根拠により対応不要] - [日付]` を追加
+- ❌ **対応不要（完全に不要）**: CodeRabbitに返信のみ
+  - 返信: `@coderabbitai 対応不要：[技術的根拠]。適切と判断される場合は**この特定の課題のみ**を解決済みにしてください。他の課題は変更しないでください。`
+- 📅 **将来対応予定**: 以下の2つのアクションを実行
+  1. CodeRabbitに返信: `@coderabbitai 将来対応予定：このフェーズでは対応しませんが、[次のフェーズ/バージョン]で対応予定です。`
+  2. **ソースコードにTODOコメント追加**: 該当ファイルの指摘箇所に `// TODO: CodeRabbit指摘 - [次フェーズで対応予定] - [日付]` を追加
 - 🤔 **要確認**: `@coderabbitai 確認要望：[確認内容]。詳細説明をお願いします。`
-- ⚠️ **指摘間違い**: 以下の2つのアクションを実行
-  1. CodeRabbitに返信: `@coderabbitai この指摘は[具体的な理由]により間違いと判断します。[正しい技術的説明]。妥当と判断される場合は**この特定の課題のみ**を解決済みにしてください。他の課題は変更しないでください。`
-  2. **ソースコードにTODOコメント追加**: 該当ファイルの指摘箇所に `// TODO: CodeRabbit指摘間違い - [理由] - [日付]` を追加
+- ⚠️ **指摘間違い**: CodeRabbitに返信のみ
+  - 返信: `@coderabbitai この指摘は[具体的な理由]により間違いと判断します。[正しい技術的説明]。`
 
 **重要**: 修正完了時の@coderabbitaiへの報告は不要です。課題の解決判断はCodeRabbitに委ねます。**一括での課題解決は禁止**です。
 
