@@ -529,7 +529,7 @@ def main():
     output.append("```")
     output.append("**ソースコード修正**: 指摘箇所に以下のTODOコメントを追加")
     output.append("```")
-    output.append("// TODO: CodeRabbit指摘 - [次フェーズで対応予定] - [YYYY-MM-DD]")
+    output.append("// TODO: [次フェーズで対応予定] - [YYYY-MM-DD]")
     output.append("```")
     output.append("")
     output.append("#### 🤔 要確認の場合")

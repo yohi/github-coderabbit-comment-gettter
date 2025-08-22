@@ -352,7 +352,7 @@ class AIPromptGenerator:
             "```",
             "**ソースコード修正**: 指摘箇所に以下のTODOコメントを追加",
             "```",
-            "// TODO: CodeRabbit指摘 - [次フェーズで対応予定] - [YYYY-MM-DD]",
+            "// TODO: [次フェーズで対応予定] - [YYYY-MM-DD]",
             "```",
             "",
             "#### 🤔 要確認の場合",
@@ -396,16 +396,16 @@ class AIPromptGenerator:
             "",
             "**TODOコメント例**:",
             "```javascript",
-            "// TODO: CodeRabbit指摘 - パフォーマンス要件を満たしており変更不要 - 2025-01-15",
+            "// TODO: パフォーマンス最適化検討 - 2025-01-15",
             "function processData(data) {",
             "  // 現在のO(n)実装で十分",
             "  return data.map(item => transform(item));",
             "}",
             "```",
             "```python",
-            "# TODO: CodeRabbit指摘間違い - この関数は非同期処理が必要 - 2025-01-15",
-            "def sync_function():",
-            "    # 実際は同期処理で正しい",
+            "# TODO: 非同期処理対応 - v2.0で実装予定 - 2025-01-15",
+            "def process_data():",
+            "    # 現在は同期処理、将来非同期化予定",
             "    return calculate_result()",
             "```",
             ""
@@ -427,7 +427,7 @@ class AIPromptGenerator:
   - 返信: `@coderabbitai 対応不要：[技術的根拠]。適切と判断される場合は**この特定の課題のみ**を解決済みにしてください。他の課題は変更しないでください。`
 - 📅 **将来対応予定**: 以下の2つのアクションを実行
   1. CodeRabbitに返信: `@coderabbitai 将来対応予定：このフェーズでは対応しませんが、[次のフェーズ/バージョン]で対応予定です。`
-  2. **ソースコードにTODOコメント追加**: 該当ファイルの指摘箇所に `// TODO: CodeRabbit指摘 - [次フェーズで対応予定] - [日付]` を追加
+  2. **ソースコードにTODOコメント追加**: 該当ファイルの指摘箇所に `// TODO: [次フェーズで対応予定] - [日付]` を追加
 - 🤔 **要確認**: `@coderabbitai 確認要望：[確認内容]。詳細説明をお願いします。`
 - ⚠️ **指摘間違い**: CodeRabbitに返信のみ
   - 返信: `@coderabbitai この指摘は[具体的な理由]により間違いと判断します。[正しい技術的説明]。`
