@@ -563,18 +563,18 @@ class CLIInterface:
 
 ### Git操作手順
 1. **ステージング**: 変更したファイルのみを個別に `git add <ファイル名>` でステージング
-2. **コミット**: `git commit -m "CodeRabbit review comments addressed - [PR番号]"` でコミット
+2. **コミット**: `git commit -m "CodeRabbitレビューコメント対応 - [PR番号]"` でコミット
 3. **プッシュ**: `git push` でリモートリポジトリに反映
 
 ⚠️ **注意**: `git add .` は使用しないでください。関係のないファイルまでコミットされる危険があります。
 
 ### コミットメッセージ例
 ```
-CodeRabbit review comments addressed - #123
+CodeRabbitレビューコメント対応 - #123
 
-- Fixed potential security issue in auth module
-- Refactored database connection handling
-- Updated error handling as suggested
+- 認証モジュールの潜在的セキュリティ問題を修正
+- データベース接続処理をリファクタリング
+- 提案に従いエラーハンドリングを更新
 ```
 
 **注意**: Git操作実行前に作業内容を簡潔にサマリーしてください。"""
@@ -601,18 +601,18 @@ CodeRabbit review comments addressed - #123
 
 ### Git操作手順
 1. **ステージング**: 変更したファイルのみを個別に `git add <ファイル名>` でステージング
-2. **コミット**: `git commit -m "CodeRabbit review comments addressed - [PR番号]"` でコミット
+2. **コミット**: `git commit -m "CodeRabbitレビューコメント対応 - [PR番号]"` でコミット
 3. **プッシュ**: `git push` でリモートリポジトリに反映
 
 ⚠️ **注意**: `git add .` は使用しないでください。関係のないファイルまでコミットされる危険があります。
 
 ### コミットメッセージ例
 ```
-CodeRabbit review comments addressed - #123
+CodeRabbitレビューコメント対応 - #123
 
-- Fixed potential security issue in auth module
-- Refactored database connection handling
-- Updated error handling as suggested
+- 認証モジュールの潜在的セキュリティ問題を修正
+- データベース接続処理をリファクタリング
+- 提案に従いエラーハンドリングを更新
 ```
 
 **注意**: Git操作実行前に作業内容を簡潔にサマリーしてください。"""
