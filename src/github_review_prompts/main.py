@@ -163,8 +163,8 @@ class UnifiedCLI:
                 'head_branch': pr_basic_info.get('head', {}).get('ref'),
                 'base_branch': pr_basic_info.get('base', {}).get('ref'),
                 'owner': pr_info.owner,
-                'repo': pr_info.repository,
-                'number': pr_info.pr_number
+                'repo': pr_info.repo,
+                'number': pr_info.pull_number
             }
             
             # フィルタリング
