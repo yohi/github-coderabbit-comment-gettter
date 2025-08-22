@@ -568,24 +568,13 @@ def main():
                         output.append(f"- 以下のcurlコマンドを手動で実行してください")
                         output.append("")
                         
-                        # curlコマンドを直接プロンプトに埋め込み
-                        comment_curl_commands = generate_coderabbit_curl_commands_for_comment(
-                            owner, repo, pr_number, comment_id, token
-                        )
-                        output.append("**🔧 返信用curlコマンド**:")
-                        output.append("```bash")
-                        output.append(comment_curl_commands)
-                        output.append("```")
+                        # 手動実行時はコメントIDのみ表示（curlコマンドは全体のヘッダーに含まれているため）
+                        output.append(f"- **返信用コメントID**: {comment_id}")
+                        output.append("- **手動実行**: 上記のcurlコマンドテンプレートを使用してください")
                         output.append("")
                 else:
-                    # curlコマンドを直接プロンプトに埋め込み
-                    comment_curl_commands = generate_coderabbit_curl_commands_for_comment(
-                        owner, repo, pr_number, comment_id, token
-                    )
-                    output.append("**🔧 返信用curlコマンド**:")
-                    output.append("```bash")
-                    output.append(comment_curl_commands)
-                    output.append("```")
+                    # 返信情報のみ表示（curlコマンドは全体のヘッダーに含まれているため個別表示不要）
+                    output.append(f"**返信用コメントID**: {comment_id}")
                     output.append("")
             
             output.append("---")
