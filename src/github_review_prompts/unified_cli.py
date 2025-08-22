@@ -1,23 +1,232 @@
 #!/usr/bin/env python3
 """
-GRP UVX - GitHub Review Prompt Generator
-UVX専用の完全に独立したバージョン（依存関係なし）
+統一CLI - uvx/uv両環境対応
+依存関係の有無を自動検出して適切なモードで動作
 """
 
+import argparse
 import json
+import logging
 import os
 import re
+import subprocess
 import sys
 import time
 import urllib.request
 import urllib.parse
-from typing import List, Dict, Optional, Set, Tuple
+from typing import List, Dict, Optional, Set, Tuple, Any
 from pathlib import Path
-import logging
 
 # ログ設定
 logging.basicConfig(level=logging.INFO, format='%(message)s')
 logger = logging.getLogger(__name__)
+
+# 実行環境の検出
+def detect_execution_environment():
+    """実行環境を検出（uvx, uv run, 直接実行等）"""
+    import sys
+    
+    # uvx実行の検出
+    if any('uv' in str(path) and 'archive' in str(path) for path in sys.path):
+        return 'uvx'
+    
+    # uv run実行の検出  
+    if any('uv' in str(path) and '.venv' in str(path) for path in sys.path):
+        return 'uv_run'
+    
+    # 直接実行
+    return 'direct'
+
+EXECUTION_ENV = detect_execution_environment()
+
+# 依存関係の可用性をチェック
+HAS_FULL_DEPENDENCIES = True
+IMPORT_ERROR = None
+
+try:
+    import requests
+    from pydantic import BaseModel, Field, ConfigDict
+    # フル機能版のインポート
+    from .config import ConfigManager
+    from .github_client import GitHubClient
+    from .comment_processor import CommentProcessor
+    from .prompt_generator import AIPromptGenerator
+    from .output_formatter import OutputFormatter
+    from .models import APIError, AuthenticationError, RateLimitError, PERSONAS
+    from .utils.validators import validate_pr_url, validate_persona, validate_output_format
+except ImportError as e:
+    HAS_FULL_DEPENDENCIES = False
+    IMPORT_ERROR = e
+    
+    # uvx環境で依存関係が見つからない場合は致命的エラー
+    if EXECUTION_ENV == 'uvx':
+        logger.error(f"❌ uvx環境で依存関係が見つかりません: {e}")
+        logger.error("uvxが依存関係を正しくインストールできていない可能性があります。")
+        logger.error("以下を試してください:")
+        logger.error("  1. uv --version でuvのバージョンを確認")
+        logger.error("  2. uvx --help でuvxが利用可能か確認")
+        logger.error("  3. 一度 uvx cache clean で キャッシュをクリア")
+        sys.exit(1)
+    
+    logger.debug(f"フル機能版の依存関係が利用できません: {e}")
+    logger.debug("軽量モードで動作します")
+
+
+def get_reply_templates() -> Dict[str, str]:
+    """返信テンプレートを取得"""
+    return {
+        "fixed": "✅ Fixed! Thanks for the feedback.",
+        "acknowledged": "👍 Acknowledged. I'll address this in the next update.",
+        "investigating": "🔍 Looking into this issue. Will update soon.",
+        "clarification": "🤔 Could you provide more details about this issue?",
+        "wontfix": "⚠️ I understand the concern, but this is intentional due to [reason]."
+    }
+
+
+def reply_to_comment_with_curl(owner: str, repo: str, pr_number: int, comment_id: int, message: str, token: str) -> bool:
+    """
+    curlを使ってコメントに返信
+    
+    Args:
+        owner: リポジトリオーナー
+        repo: リポジトリ名  
+        pr_number: PR番号
+        comment_id: 返信対象のコメントID
+        message: 返信メッセージ
+        token: GitHub APIトークン
+        
+    Returns:
+        成功した場合True
+    """
+    import subprocess
+    import json
+    
+    # GitHub API URL
+    url = f"https://api.github.com/repos/{owner}/{repo}/pulls/{pr_number}/comments"
+    
+    # 返信データ
+    reply_data = {
+        "body": message,
+        "in_reply_to": comment_id
+    }
+    
+    # curlコマンドを構築
+    curl_cmd = [
+        "curl",
+        "-s",
+        "-X", "POST",
+        "-H", f"Authorization: Bearer {token}",
+        "-H", "Accept: application/vnd.github.v3+json",
+        "-H", "Content-Type: application/json",
+        "-H", "User-Agent: github-review-prompts-curl/1.0",
+        "-d", json.dumps(reply_data),
+        "-w", "\\n%{http_code}",
+        url
+    ]
+    
+    try:
+        logger.debug(f"Curl command: curl -X POST ... {url}")
+        
+        # curlコマンド実行
+        result = subprocess.run(
+            curl_cmd,
+            capture_output=True,
+            text=True,
+            timeout=30
+        )
+        
+        if result.returncode != 0:
+            logger.error(f"Curl command failed: {result.stderr}")
+            return False
+        
+        # レスポンスを分解
+        output_lines = result.stdout.strip().split("\\n")
+        status_code = int(output_lines[-1])
+        response_body = "\\n".join(output_lines[:-1])
+        
+        if status_code == 201:
+            # 成功
+            try:
+                response_data = json.loads(response_body)
+                logger.info(f"✅ 返信成功: コメントID {response_data.get('id')}")
+                logger.info(f"   URL: {response_data.get('html_url')}")
+                return True
+            except json.JSONDecodeError:
+                logger.error("レスポンスのJSONパースに失敗")
+                return False
+        else:
+            # エラー
+            logger.error(f"❌ 返信失敗: HTTP {status_code}")
+            try:
+                error_data = json.loads(response_body)
+                logger.error(f"   エラー: {error_data.get('message', 'Unknown error')}")
+            except json.JSONDecodeError:
+                logger.error(f"   Raw response: {response_body}")
+            return False
+            
+    except subprocess.TimeoutExpired:
+        logger.error("Curl command timed out")
+        return False
+    except Exception as e:
+        logger.error(f"Curl execution error: {e}")
+        return False
+
+
+def handle_comment_reply(args) -> int:
+    """
+    コメント返信を処理
+    
+    Args:
+        args: コマンドライン引数
+        
+    Returns:
+        終了コード
+    """
+    # GitHub トークンを取得
+    token = get_github_token()
+    
+    # PR URLをパース
+    try:
+        owner, repo, pr_number = parse_pr_url(args.pr_url)
+    except ValueError as e:
+        print(f"❌ エラー: {e}")
+        return 1
+    
+    # 返信メッセージを決定
+    if args.reply_template:
+        templates = get_reply_templates()
+        message = templates.get(args.reply_template)
+        if not message:
+            print(f"❌ エラー: 不明なテンプレート '{args.reply_template}'")
+            return 1
+    elif args.reply_message:
+        message = args.reply_message
+    else:
+        print("❌ エラー: --reply-message または --reply-template が必要です")
+        return 1
+    
+    print(f"📝 コメント {args.reply_to} に返信中...")
+    print(f"メッセージ: {message}")
+    print()
+    
+    # 確認プロンプト
+    if not args.no_confirm:
+        response = input("この返信を送信しますか？ [y/N]: ").strip().lower()
+        if response not in ['y', 'yes']:
+            print("返信がキャンセルされました")
+            return 0
+    
+    # curlで返信実行
+    success = reply_to_comment_with_curl(
+        owner, repo, pr_number, args.reply_to, message, token
+    )
+    
+    if success:
+        print("✅ 返信送信完了")
+        return 0
+    else:
+        print("❌ 返信送信失敗")
+        return 1
 
 
 def get_github_token() -> str:
@@ -55,14 +264,14 @@ def parse_pr_url(pr_url: str) -> Optional[Tuple[str, str, int]]:
 
 
 def make_github_request(url: str, token: str, headers: Dict = None) -> Dict:
-    """GitHub API リクエストを実行"""
+    """GitHub API リクエストを実行（軽量版）"""
     if headers is None:
         headers = {}
     
     headers.update({
         'Authorization': f'token {token}',
         'Accept': 'application/vnd.github.v3+json',
-        'User-Agent': 'GRP-UVX/1.0.0'
+        'User-Agent': 'GRP-Unified/1.0.0'
     })
     
     try:
@@ -79,13 +288,13 @@ def make_github_request(url: str, token: str, headers: Dict = None) -> Dict:
 
 
 def get_pr_info(owner: str, repo: str, pr_number: int, token: str) -> Dict:
-    """プルリクエスト基本情報を取得"""
+    """プルリクエスト基本情報を取得（軽量版）"""
     url = f"https://api.github.com/repos/{owner}/{repo}/pulls/{pr_number}"
     return make_github_request(url, token)
 
 
 def get_pr_review_comments(owner: str, repo: str, pr_number: int, token: str) -> List[Dict]:
-    """プルリクエストのレビューコメントを取得"""
+    """プルリクエストのレビューコメントを取得（軽量版）"""
     comments = []
     page = 1
     per_page = 100
@@ -167,7 +376,7 @@ def get_graphql_resolved_comments(owner: str, repo: str, pr_number: int, token: 
         headers = {
             'Authorization': f'Bearer {token}',  # Bearer認証に修正
             'Content-Type': 'application/json',
-            'User-Agent': 'GRP-UVX/1.0.0'
+            'User-Agent': 'GRP-Unified/1.0.0'
         }
         
         try:
@@ -302,46 +511,6 @@ def extract_problem_description(body: str) -> str:
     return 'レビューコメントの内容を確認してください'
 
 
-def generate_coderabbit_curl_commands_for_comment(owner: str, repo: str, pr_number: int, comment_id: int, token: str) -> str:
-    """特定のコメントに対するCodeRabbit返信用のcurlコマンドを生成（3パターンのみ）
-    NOTE: 認証は環境変数 GITHUB_TOKEN を参照させ、トークン値は出力しない。
-    """
-    templates = {
-        "対応不要": "@coderabbitai この指摘について確認しましたが、[技術的根拠]により対応不要と判断します。この課題のみを解決済みにしてください。",
-        "指摘間違い": "@coderabbitai この指摘は[具体的な理由]により間違いと判断します。[正しい技術的説明]。この課題のみを解決済みにしてください。",
-        "要確認": "@coderabbitai この指摘について追加で確認したい点があります：[確認したい内容]。詳細な説明をお願いします。"
-    }
-    
-    curl_lines = []
-    curl_lines.append(f"# コメントID: {comment_id} に対する返信用curlコマンド")
-    curl_lines.append("# 修正完了時は返信不要。以下3パターンのみ使用：")
-    curl_lines.append("")
-    
-    for action, message in templates.items():
-        # JSONデータの準備（エスケープ処理）
-        import json
-        data = {
-            "body": message,
-            "in_reply_to": comment_id  # 特定のコメントに返信
-        }
-        data_json = json.dumps(data, ensure_ascii=False).replace('"', '\\"')
-        
-        curl_command = f'''# {action}の場合
-curl -X POST \\
-  "https://api.github.com/repos/{owner}/{repo}/pulls/{pr_number}/comments" \\
-  -H "Authorization: token ${GITHUB_TOKEN}" \\
-  -H "Accept: application/vnd.github.v3+json" \\
-  -H "Content-Type: application/json" \\
-  -d "{data_json}"'''
-        
-        curl_lines.append(curl_command)
-    
-    return "\n\n".join(curl_lines)
-
-
-# PR全体への返信は削除（個別コメントへの返信のみ）
-
-
 def get_default_review_prompt(no_confirm: bool = False, auto_commit: bool = False) -> str:
     """デフォルトレビュープロンプト"""
     base_prompt = """# CodeRabbit レビューコメント対応プロンプト
@@ -417,7 +586,27 @@ def get_default_review_prompt(no_confirm: bool = False, auto_commit: bool = Fals
 - ✅ 修正実施 → コード修正のみ（curl返信不要）
 
 **処理完了前の最終確認**：
-「対応不要/将来対応/指摘間違い/要確認と判断したTODO項目について、すべてcurl返信を実行しましたか？」"""
+「対応不要/将来対応/指摘間違い/要確認と判断したTODO項目について、すべてcurl返信を実行しましたか？」
+
+### 🔧 返信方法（重要）
+プルリクエストコメントに対する返信は、以下の **curlコマンド** を使用して行ってください：
+
+```bash
+curl -X POST \\
+  -H "Authorization: Bearer YOUR_GITHUB_TOKEN" \\
+  -H "Accept: application/vnd.github.v3+json" \\
+  -H "Content-Type: application/json" \\
+  -d '{"body": "返信メッセージ", "in_reply_to": COMMENT_ID}' \\
+  https://api.github.com/repos/OWNER/REPO/pulls/PR_NUMBER/comments
+```
+
+**返信すべき場面**:
+- ❌ 対応不要と判断した場合
+- ⏳ 将来対応と判断した場合  
+- 🤔 指摘内容が技術的に間違っていると判断した場合
+- ❓ 不明な点があり確認が必要な場合
+
+**注意**: GitHubの統合ツールやAPIツールは使用せず、必ずcurlコマンドで返信してください。"""
     
     # 確認スキップオプションに応じたセクション追加
     if no_confirm:
@@ -446,84 +635,18 @@ def get_default_review_prompt(no_confirm: bool = False, auto_commit: bool = Fals
     return base_prompt
 
 
-def main():
-    """メイン関数"""
-    # 引数解析
-    import argparse
+def run_lightweight_mode(args) -> int:
+    """軽量モード実行"""
+    logger.info(f"🚀 軽量モードで動作中（{EXECUTION_ENV}環境、依存関係なし）")
     
-    parser = argparse.ArgumentParser(
-        description="🔄 GitHub Review Prompt Generator (UVX)",
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="""
-例:
-  grp https://github.com/owner/repo/pull/123
-  grp --no-confirm https://github.com/owner/repo/pull/123
-  grp --auto-commit https://github.com/owner/repo/pull/123
-  grp --auto-reply https://github.com/owner/repo/pull/123
-  grp --no-color https://github.com/owner/repo/pull/123
-  grp --debug https://github.com/owner/repo/pull/123
-  grp --no-confirm --auto-commit --auto-reply --no-color --debug https://github.com/owner/repo/pull/123
-
-環境変数:
-  GITHUB_TOKEN - GitHub APIトークン（必須）
-
-出力:
-  - review_prompt_with_todos.md (プロンプトファイル)
-  - コンソール出力
-        """
-    )
+    # フル機能版専用オプションが指定されている場合は警告
+    if hasattr(args, 'persona') and args.persona != 'code-reviewer':
+        logger.warning(f"軽量モードでは --persona オプションは無視されます (指定値: {args.persona})")
+    if hasattr(args, 'format') and args.format != 'markdown':
+        logger.warning(f"軽量モードでは --format オプションは無視されます (指定値: {args.format})")
+    if hasattr(args, 'include_resolved') and args.include_resolved:
+        logger.warning("軽量モードでは --include-resolved オプションは無視されます")
     
-    parser.add_argument(
-        'pr_url',
-        help='GitHub プルリクエストURL'
-    )
-    
-    parser.add_argument(
-        '--no-confirm',
-        action='store_true',
-        help='各コメント処理後の確認をスキップする'
-    )
-    
-    parser.add_argument(
-        '--auto-commit',
-        action='store_true',
-        help='作業完了後に自動的にgit commit & pushを実行する'
-    )
-    
-    parser.add_argument(
-        '--no-color',
-        action='store_true',
-        help='カラー出力を無効にする（コピーペースト最適化）'
-    )
-    
-    parser.add_argument(
-        '--auto-reply',
-        action='store_true',
-        help='コメントに自動的に返信を送信する（curlコマンド生成の代わりに）'
-    )
-    
-    parser.add_argument(
-        '--debug',
-        action='store_true',
-        help='デバッグモードを有効にする（詳細ログ出力）'
-    )
-    
-
-    
-    try:
-        args = parser.parse_args()
-    except SystemExit:
-        return
-    
-    # カラー出力設定
-    if args.no_color:
-        os.environ['NO_COLOR'] = '1'
-    
-    # デバッグモードでログレベル調整
-    if args.debug:
-        logging.getLogger().setLevel(logging.DEBUG)
-        logger.debug("デバッグモードが有効になりました")
-        
     pr_url = args.pr_url
     
     # GitHub トークン取得
@@ -533,12 +656,12 @@ def main():
     parsed = parse_pr_url(pr_url)
     if not parsed:
         logger.error(f"無効なプルリクエストURL: {pr_url}")
-        sys.exit(1)
+        return 1
     
     owner, repo, pr_number = parsed
     
     print()
-    print("🔄 CodeRabbit Review Prompt Generator (UVX)")
+    print(f"🔄 GitHub Review Prompt Generator (統一版 - 軽量モード - {EXECUTION_ENV}環境)")
     print(f"📋 プルリクエスト: {pr_url}")
     print("=" * 80)
     
@@ -546,7 +669,7 @@ def main():
     pr_info = get_pr_info(owner, repo, pr_number, token)
     if not pr_info:
         logger.error("プルリクエスト情報の取得に失敗しました")
-        sys.exit(1)
+        return 1
     
     # ブランチ情報を抽出
     head_branch = pr_info.get('head', {}).get('ref', '不明')
@@ -592,18 +715,10 @@ def main():
     print(f"  - 解決済み: {resolved_coderabbit} 件") 
     print(f"  - 未解決（処理対象）: {len(coderabbit_comments)} 件")
     
-    # 統計情報
-    review_types = {}
-    for comment in coderabbit_comments:
-        review_type = extract_review_type(comment.get('body', ''))
-        review_types[review_type] = review_types.get(review_type, 0) + 1
-    
     print(f"処理対象: {len(coderabbit_comments)} 件")
     
     # プロンプト生成
     review_prompt = get_default_review_prompt(args.no_confirm, args.auto_commit)
-    
-    # curlコマンドは各TODO項目に直接埋め込み
     
     output = []
     output.append(review_prompt)
@@ -627,6 +742,8 @@ def main():
     output.append("  }'")
     output.append("```")
     output.append("")
+    
+    # 他のcurlテンプレートも追加...
     output.append("#### 📅 将来対応予定（このフェーズでは対応しない）の場合")
     output.append("**重要**: curlコマンド実行と同時に、該当ソースファイルにTODOコメントを追加してください。")
     output.append("```bash")
@@ -644,38 +761,7 @@ def main():
     output.append("// TODO: [次フェーズで対応予定] - [YYYY-MM-DD]")
     output.append("```")
     output.append("")
-    output.append("#### 🤔 要確認の場合")
-    output.append("```bash")
-    output.append(f"curl -X POST \"https://api.github.com/repos/{owner}/{repo}/pulls/{pr_number}/comments\" \\\\")
-    output.append("  -H \"Authorization: token ${GITHUB_TOKEN}\" \\\\")
-    output.append("  -H \"Accept: application/vnd.github.v3+json\" \\\\")
-    output.append("  -H \"Content-Type: application/json\" \\\\")
-    output.append("  -d '{")
-    output.append("    \"body\": \"@coderabbitai [確認したい内容]について詳細説明をお願いします。\",")
-    output.append("    \"in_reply_to\": [COMMENT_ID]")
-    output.append("  }'")
-    output.append("```")
-    output.append("")
-    output.append("#### ⚠️ 指摘間違いの場合")
-    output.append("```bash")
-    output.append(f"curl -X POST \"https://api.github.com/repos/{owner}/{repo}/pulls/{pr_number}/comments\" \\\\")
-    output.append("  -H \"Authorization: token ${GITHUB_TOKEN}\" \\\\")
-    output.append("  -H \"Accept: application/vnd.github.v3+json\" \\\\")
-    output.append("  -H \"Content-Type: application/json\" \\\\")
-    output.append("  -d '{")
-    output.append("    \"body\": \"@coderabbitai この指摘は[具体的な理由]により間違いと判断します。[正しい技術的説明]。妥当と判断される場合は**この特定の課題のみ**を解決済みにしてください。他の課題は変更しないでください。\",")
-    output.append("    \"in_reply_to\": [COMMENT_ID]")
-    output.append("  }'")
-    output.append("```")
-    output.append("")
-    output.append("**使用方法**:")
-    output.append("1. 各TODO項目の「コメントID」を確認")
-    output.append("2. 上記テンプレートの `[COMMENT_ID]` を実際の値に置換")
-    output.append("3. `[技術的根拠を記載]` 部分に具体的な理由を記入")
-    output.append("4. **📅 将来対応予定の場合**: 記憶依頼の各項目（Phase名、技術領域、指摘要約、対象、解決方法、優先度、トリガー条件）を具体的に記入")
-    output.append("5. **📅 将来対応予定の場合のみ**: 該当ソースファイルにTODOコメントを追加")
-    output.append("6. curlコマンドを実行")
-    output.append("")
+    
     output.append("## レビューコメント一覧")
     output.append("")
     
@@ -698,61 +784,11 @@ def main():
             output.append("```")
             output.append("")
             
-            # 自動返信またはcurlコマンド処理
+            # 返信情報のみ表示
             comment_id = comment.get('id')
             if comment_id:
-                if args.auto_reply:
-                    # 実際にAPIを使って返信
-                    try:
-                        # デフォルトの確認メッセージで返信
-                        reply_message = f"@coderabbitai この指摘について確認中です。対応後に更新いたします。"
-                        
-                        # POSTリクエストのデータを準備
-                        post_data = {
-                            "body": reply_message,
-                            "in_reply_to": comment_id
-                        }
-                        
-                        # GitHub API経由で返信
-                        reply_url = f"https://api.github.com/repos/{owner}/{repo}/pulls/{pr_number}/comments"
-                        headers = {
-                            'Authorization': f'token {token}',
-                            'Accept': 'application/vnd.github.v3+json',
-                            'Content-Type': 'application/json',
-                            'User-Agent': 'GRP-UVX/1.0.0'
-                        }
-                        
-                        request = urllib.request.Request(
-                            reply_url,
-                            data=json.dumps(post_data).encode('utf-8'),
-                            headers=headers,
-                            method='POST'
-                        )
-                        
-                        with urllib.request.urlopen(request) as response:
-                            if response.status == 201:
-                                result = json.loads(response.read().decode('utf-8'))
-                                output.append("**✅ 自動返信完了**:")
-                                output.append(f"- 返信ID: {result.get('id')}")
-                                output.append(f"- メッセージ: {reply_message}")
-                                output.append("")
-                            else:
-                                raise Exception(f"HTTP {response.status}")
-                        
-                    except Exception as e:
-                        output.append("**❌ 自動返信失敗**:")
-                        output.append(f"- エラー: {str(e)}")
-                        output.append(f"- 以下のcurlコマンドを手動で実行してください")
-                        output.append("")
-                        
-                        # 手動実行時はコメントIDのみ表示（curlコマンドは全体のヘッダーに含まれているため）
-                        output.append(f"- **返信用コメントID**: {comment_id}")
-                        output.append("- **手動実行**: 上記のcurlコマンドテンプレートを使用してください")
-                        output.append("")
-                else:
-                    # 返信情報のみ表示（curlコマンドは全体のヘッダーに含まれているため個別表示不要）
-                    output.append(f"**返信用コメントID**: {comment_id}")
-                    output.append("")
+                output.append(f"**返信用コメントID**: {comment_id}")
+                output.append("")
             
             output.append("---")
             output.append("")
@@ -786,12 +822,191 @@ def main():
     print("🤖" + "=" * 78 + "🤖")
     
     # ファイル保存
-    output_file = "review_prompt_with_todos.md"
     with open(output_file, 'w', encoding='utf-8') as f:
         f.write(combined_output)
     
-    # curlコマンドはプロンプト内に直接埋め込み済み（別ファイル不要）
+    return 0
+
+
+def run_full_mode(args) -> int:
+    """フル機能モード実行"""
+    logger.info(f"🎨 フル機能モードで動作中（{EXECUTION_ENV}環境、高度な機能利用可能）")
+    
+    # フル機能版で基本オプションが使用可能であることを確認
+    if hasattr(args, 'persona'):
+        logger.debug(f"ペルソナ: {args.persona}")
+    if hasattr(args, 'include_resolved'):
+        logger.debug(f"解決済み含む: {args.include_resolved}")
+    
+    from .cli import CLIInterface
+    cli = CLIInterface()
+    # argsを直接渡すのではなく、sys.argvを使用
+    return cli.run()
+
+
+def create_argument_parser() -> argparse.ArgumentParser:
+    """引数パーサーを作成"""
+    parser = argparse.ArgumentParser(
+        description="🔄 GitHub Review Prompt Generator (統一版)",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+例:
+  # プロンプト生成
+  grp https://github.com/owner/repo/pull/123
+  grp --persona security-analyst https://github.com/owner/repo/pull/123
+  grp --no-confirm https://github.com/owner/repo/pull/123
+  grp --auto-commit https://github.com/owner/repo/pull/123
+  grp --debug https://github.com/owner/repo/pull/123
+  grp --no-confirm --auto-commit --debug https://github.com/owner/repo/pull/123
+  
+  # コメント返信（curlベース）
+  grp --reply-to 123456 --reply-message "Fixed, thanks!" https://github.com/owner/repo/pull/123
+  grp --reply-to 123456 --reply-template fixed https://github.com/owner/repo/pull/123
+  grp --reply-to 123456 --reply-template acknowledged --no-confirm https://github.com/owner/repo/pull/123
+
+モード説明:
+  - uvx環境: 常にフル機能モード（依存関係自動インストール）
+  - uv run環境: フル機能モード（仮想環境の依存関係使用）
+  - 直接実行環境: 依存関係に応じて自動選択
+    └ 依存関係あり: フル機能モード（高度なフィルタリング、ペルソナ等）
+    └ 依存関係なし: 軽量モード（基本機能のみ、高速起動）
+
+環境変数:
+  GITHUB_TOKEN - GitHub APIトークン（必須）
+
+出力:
+  - review_prompt_with_todos.md (プロンプトファイル)
+  - コンソール出力
+        """
+    )
+    
+    parser.add_argument(
+        'pr_url',
+        help='GitHub プルリクエストURL'
+    )
+    
+    parser.add_argument(
+        '--no-confirm',
+        action='store_true',
+        help='各コメント処理後の確認をスキップする'
+    )
+    
+    parser.add_argument(
+        '--auto-commit',
+        action='store_true',
+        help='作業完了後に自動的にgit commit & pushを実行する'
+    )
+    
+    # コメント返信機能
+    parser.add_argument(
+        '--reply-to',
+        type=int,
+        metavar='COMMENT_ID',
+        help='指定されたコメントIDに返信'
+    )
+    
+    parser.add_argument(
+        '--reply-message',
+        type=str,
+        metavar='MESSAGE',
+        help='返信メッセージ（--reply-toと組み合わせて使用）'
+    )
+    
+    parser.add_argument(
+        '--reply-template',
+        type=str,
+        choices=['fixed', 'acknowledged', 'investigating', 'clarification', 'wontfix'],
+        help='返信テンプレートを使用'
+    )
+    
+    parser.add_argument(
+        '--no-color',
+        action='store_true',
+        help='カラー出力を無効にする（コピーペースト最適化）'
+    )
+    
+    parser.add_argument(
+        '--debug',
+        action='store_true',
+        help='デバッグモードを有効にする（詳細ログ出力）'
+    )
+    
+    # フル機能版でのみ利用可能なオプション（常に追加するが、軽量版では警告）
+    parser.add_argument(
+        '--persona',
+        choices=['code-reviewer', 'security-analyst', 'performance-optimizer'],
+        default='code-reviewer',
+        help='AIエージェントのペルソナ (フル機能モードのみ)'
+    )
+    
+    parser.add_argument(
+        '--format',
+        choices=['markdown', 'json'],
+        default='markdown',
+        help='出力形式 (フル機能モードのみ)'
+    )
+    
+    parser.add_argument(
+        '--include-resolved',
+        action='store_true',
+        help='解決済みコメントも含める (フル機能モードのみ)'
+    )
+    
+    return parser
+
+
+def main() -> int:
+    """メイン関数"""
+    try:
+        parser = create_argument_parser()
+        args = parser.parse_args()
+
+        # カラー出力設定
+        if args.no_color:
+            os.environ['NO_COLOR'] = '1'
+
+        # デバッグモードでログレベル調整
+        if args.debug:
+            logging.getLogger().setLevel(logging.DEBUG)
+            logger.debug("デバッグモードが有効になりました")
+            logger.debug(f"実行環境: {EXECUTION_ENV}")
+            logger.debug(f"依存関係利用可能: {HAS_FULL_DEPENDENCIES}")
+            if IMPORT_ERROR:
+                logger.debug(f"インポートエラー: {IMPORT_ERROR}")
+
+        # コメント返信モード
+        if args.reply_to:
+            return handle_comment_reply(args)
+        
+        # 実行環境に応じた動作決定
+        if EXECUTION_ENV == 'uvx':
+            # uvx環境では常にフル機能モードを期待
+            if HAS_FULL_DEPENDENCIES:
+                logger.debug("🚀 uvx環境でフル機能モード実行")
+                return run_full_mode(args)
+            else:
+                # この状況は上記で sys.exit(1) されるので通常到達しない
+                logger.error("uvx環境で依存関係が利用できません")
+                return 1
+        else:
+            # uv run または直接実行環境
+            if HAS_FULL_DEPENDENCIES:
+                logger.debug(f"🎨 {EXECUTION_ENV}環境でフル機能モード実行")
+                return run_full_mode(args)
+            else:
+                logger.debug(f"🚀 {EXECUTION_ENV}環境で軽量モード実行")
+                return run_lightweight_mode(args)
+            
+    except KeyboardInterrupt:
+        print("\n\n⚠️  処理がユーザーによって中断されました。")
+        return 130
+    except Exception as e:
+        logger.error(f"予期しないエラー: {str(e)}")
+        if logging.getLogger().level == logging.DEBUG:
+            import traceback
+            traceback.print_exc()
+        return 1
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

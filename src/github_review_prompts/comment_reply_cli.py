@@ -11,9 +11,7 @@ import os
 import sys
 from typing import Dict, List, Optional
 
-from .github_client import GitHubClient
-from .models import APIError, AuthenticationError, GitHubPRInfo
-from .utils.parsers import parse_pr_url
+from .curl_reply import GitHubCurlReply, CurlReplyError, parse_pr_url
 
 
 def setup_logging(debug: bool = False) -> None:
@@ -201,7 +199,7 @@ def load_batch_replies(file_path: str) -> List[Dict[str, any]]:
         raise ValueError(f"ファイル読み込みエラー: {e}")
 
 
-def cmd_reply(args, client: GitHubClient, pr_info: GitHubPRInfo) -> None:
+def cmd_reply(args, client: GitHubCurlReply, owner: str, repo: str, pr_number: int) -> None:
     """単一コメント返信コマンド"""
     message = get_message_content(args.message, args.template, args.file)
     
@@ -213,16 +211,16 @@ def cmd_reply(args, client: GitHubClient, pr_info: GitHubPRInfo) -> None:
         return
     
     try:
-        result = client.reply_to_comment(pr_info, args.comment_id, message)
+        result = client.reply_to_review_comment(owner, repo, args.comment_id, message)
         print(f"✅ 返信コメント作成成功!")
         print(f"   コメントID: {result.get('id')}")
         print(f"   URL: {result.get('html_url')}")
-    except APIError as e:
+    except CurlReplyError as e:
         print(f"❌ 返信失敗: {e}")
         sys.exit(1)
 
 
-def cmd_batch_reply(args, client: GitHubClient, pr_info: GitHubPRInfo) -> None:
+def cmd_batch_reply(args, client: GitHubCurlReply, owner: str, repo: str, pr_number: int) -> None:
     """一括返信コマンド"""
     replies = load_batch_replies(args.replies_file)
     
@@ -244,7 +242,7 @@ def cmd_batch_reply(args, client: GitHubClient, pr_info: GitHubPRInfo) -> None:
         sys.exit(1)
 
 
-def cmd_create(args, client: GitHubClient, pr_info: GitHubPRInfo) -> None:
+def cmd_create(args, client: GitHubCurlReply, owner: str, repo: str, pr_number: int) -> None:
     """新規コメント作成コマンド"""
     message = get_message_content(args.message, None, args.file)
     
@@ -257,16 +255,17 @@ def cmd_create(args, client: GitHubClient, pr_info: GitHubPRInfo) -> None:
         return
     
     try:
-        result = client.create_comment(pr_info, message, args.path, args.line, args.side)
-        print(f"✅ コメント作成成功!")
+        # PRコメントとして作成（ファイル固有のコメントではなく）
+        result = client.create_pr_comment(owner, repo, pr_number, message)
+        print(f"✅ 新規コメント作成成功!")
         print(f"   コメントID: {result.get('id')}")
         print(f"   URL: {result.get('html_url')}")
-    except APIError as e:
+    except CurlReplyError as e:
         print(f"❌ コメント作成失敗: {e}")
         sys.exit(1)
 
 
-def cmd_update(args, client: GitHubClient, pr_info: GitHubPRInfo) -> None:
+def cmd_update(args, client: GitHubCurlReply, owner: str, repo: str, pr_number: int) -> None:
     """コメント更新コマンド"""
     message = get_message_content(args.message, None, args.file)
     

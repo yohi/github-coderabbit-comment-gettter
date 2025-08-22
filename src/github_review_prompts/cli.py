@@ -669,12 +669,11 @@ git checkout -b {head_branch} fork/{head_branch}"""
 
         for i, prompt in enumerate(prompts, 1):
             # プロンプトから基本情報を抽出
-            location_info = prompt.get('location', {})
-            file_path = location_info.get('file_path', 'Unknown')
-            line_number = location_info.get('line', 'Unknown')
+            file_path = getattr(prompt, 'file_path', 'Unknown')
+            line_number = getattr(prompt, 'line_number', 'Unknown')
 
             # コメント本体から情報を抽出
-            comment_body = prompt.get('prompt_text', '')
+            comment_body = getattr(prompt, 'content', '')
 
             # レビュー種類を判定
             review_type = self._extract_review_type(comment_body)
@@ -686,7 +685,7 @@ git checkout -b {head_branch} fork/{head_branch}"""
             problem_description = self._extract_problem_description(comment_body)
 
             todos_content += f"""### TODO #{i}: {title}
-**ID**: {prompt.get('id', 'Unknown')}
+**ID**: {getattr(prompt, 'comment_id', 'Unknown')}
 **ファイル**: `{file_path}`
 **行**: {line_number}
 **種類**: {review_type}
