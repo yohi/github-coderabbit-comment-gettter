@@ -252,15 +252,16 @@ def extract_problem_description(body: str) -> str:
 
 
 def generate_coderabbit_curl_commands_for_comment(owner: str, repo: str, pr_number: int, comment_id: int, token: str) -> str:
-    """特定のコメントに対するCodeRabbit返信用のcurlコマンドを生成"""
+    """特定のコメントに対するCodeRabbit返信用のcurlコマンドを生成（3パターンのみ）"""
     templates = {
-        "対応不要": f"@coderabbitai この指摘について確認しましたが、[技術的根拠]により対応不要と判断します。問題がなければこの課題を解決済みにしてください。ただし、この課題のみを解決済みにし、他の課題をすべて解決済みにしないよう注意してください。",
-        "対応完了": f"@coderabbitai ご指摘いただいた点を修正しました。[修正内容]を実施済みです。問題がなければこの課題を解決済みにしてください。ただし、この課題のみを解決済みにし、他の課題をすべて解決済みにしないよう注意してください。",
+        "対応不要": f"@coderabbitai この指摘について確認しましたが、[技術的根拠]により対応不要と判断します。この課題のみを解決済みにしてください。",
+        "指摘間違い": f"@coderabbitai この指摘は[具体的な理由]により間違いと判断します。[正しい技術的説明]。この課題のみを解決済みにしてください。",
         "要確認": f"@coderabbitai この指摘について追加で確認したい点があります：[確認したい内容]。詳細な説明をお願いします。"
     }
     
     curl_lines = []
     curl_lines.append(f"# コメントID: {comment_id} に対する返信用curlコマンド")
+    curl_lines.append("# 修正完了時は返信不要。以下3パターンのみ使用：")
     curl_lines.append("")
     
     for action, message in templates.items():
@@ -285,35 +286,7 @@ curl -X POST \\
     return "\n\n".join(curl_lines)
 
 
-def generate_general_coderabbit_curl_commands(owner: str, repo: str, pr_number: int, token: str) -> str:
-    """PR全体への一般的なCodeRabbit返信用のcurlコマンドを生成"""
-    templates = {
-        "全体完了": f"@coderabbitai すべてのレビューコメントを確認し、必要な対応を完了しました。各コメントに個別に返信していますので、ご確認ください。",
-        "部分対応": f"@coderabbitai レビューコメントを確認しました。対応が必要な項目について修正を行い、対応不要と判断した項目については個別に理由をお伝えしています。"
-    }
-    
-    curl_lines = []
-    curl_lines.append("# PR全体に対する返信用curlコマンド（必要に応じて使用）")
-    curl_lines.append("")
-    
-    for action, message in templates.items():
-        import json
-        data = {
-            "body": message
-        }
-        data_json = json.dumps(data, ensure_ascii=False).replace('"', '\\"')
-        
-        curl_command = f'''# {action}の場合
-curl -X POST \\
-  "https://api.github.com/repos/{owner}/{repo}/issues/{pr_number}/comments" \\
-  -H "Authorization: token {token}" \\
-  -H "Accept: application/vnd.github.v3+json" \\
-  -H "Content-Type: application/json" \\
-  -d "{data_json}"'''
-        
-        curl_lines.append(curl_command)
-    
-    return "\n\n".join(curl_lines)
+# PR全体への返信は削除（個別コメントへの返信のみ）
 
 
 def get_default_review_prompt(no_confirm: bool = False, auto_commit: bool = False) -> str:
@@ -341,27 +314,20 @@ def get_default_review_prompt(no_confirm: bool = False, auto_commit: bool = Fals
 各コメントに対して以下の形式で回答してください：
 
 **コメント [番号]: [要約]**
-- 判断: [✅/❌/🤔]
+- 判断: [✅修正実施/❌対応不要/⚠️指摘間違い/🤔要確認]
 - 理由: [技術的根拠]
 - 対応: [具体的な行動]
-- 返信: [@coderabbitaiへの返信内容（対応完了・対応不要の場合）]
+- 返信: [curl返信が必要な場合のみ]
 
-### 返信テンプレート
+### curl返信が必要な3パターン
 
-**✅ 対応完了時**:
-```
-@coderabbitai ご指摘いただいた点を修正しました。[修正内容]を実施済みです。問題がなければこの課題を解決済みにしてください。ただし、この課題のみを解決済みにし、他の課題をすべて解決済みにしないよう注意してください。
-```
+**❌ 対応不要**: `@coderabbitai [技術的根拠]により対応不要と判断します。この課題のみを解決済みにしてください。`
 
-**❌ 対応不要時**:
-```
-@coderabbitai この指摘について確認しましたが、[技術的根拠]により対応不要と判断します。問題がなければこの課題を解決済みにしてください。ただし、この課題のみを解決済みにし、他の課題をすべて解決済みにしないよう注意してください。
-```
+**⚠️ 指摘間違い**: `@coderabbitai この指摘は[具体的な理由]により間違いと判断します。[正しい技術的説明]。この課題のみを解決済みにしてください。`
 
-**🤔 追加確認時**:
-```
-@coderabbitai この指摘について追加で確認したい点があります：[確認したい内容]。詳細な説明をお願いします。
-```"""
+**🤔 要確認**: `@coderabbitai [確認したい内容]について詳細説明をお願いします。`
+
+**注意**: 修正完了時は返信不要です。"""
     
     # 確認スキップオプションに応じたセクション追加
     if no_confirm:
@@ -379,24 +345,8 @@ def get_default_review_prompt(no_confirm: bool = False, auto_commit: bool = Fals
     # Git自動コミットオプションに応じたセクション追加
     if auto_commit:
         base_prompt += """
-## 🔄 Git自動操作設定
-**自動コミット・プッシュモード**: すべてのレビューコメント対応完了後、以下を自動実行してください：
-
-### Git操作手順
-1. **ステージング**: `git add .` で変更ファイルをステージング
-2. **コミット**: `git commit -m "CodeRabbit review comments addressed - [PR番号]"` でコミット
-3. **プッシュ**: `git push` でリモートリポジトリに反映
-
-### コミットメッセージ例
-```
-CodeRabbit review comments addressed - #123
-
-- Fixed potential security issue in auth module
-- Refactored database connection handling
-- Updated error handling as suggested
-```
-
-**注意**: Git操作実行前に作業内容を簡潔にサマリーしてください。
+## 🔄 Git自動操作
+**自動コミット・プッシュモード**: 全対応完了後、`git add . && git commit -m "CodeRabbit review addressed" && git push` を実行
 """
     
     base_prompt += """
@@ -419,14 +369,16 @@ def main():
   grp https://github.com/owner/repo/pull/123
   grp --no-confirm https://github.com/owner/repo/pull/123
   grp --auto-commit https://github.com/owner/repo/pull/123
+  grp --auto-reply https://github.com/owner/repo/pull/123
   grp --no-color https://github.com/owner/repo/pull/123
-  grp --no-confirm --auto-commit --no-color https://github.com/owner/repo/pull/123
+  grp --no-confirm --auto-commit --auto-reply --no-color https://github.com/owner/repo/pull/123
 
 環境変数:
   GITHUB_TOKEN - GitHub APIトークン（必須）
 
 出力:
   - review_prompt_with_todos.md (プロンプトファイル)
+  - curl_commands.txt (返信用curlコマンド)
   - コンソール出力
         """
     )
@@ -453,6 +405,14 @@ def main():
         action='store_true',
         help='カラー出力を無効にする（コピーペースト最適化）'
     )
+    
+    parser.add_argument(
+        '--auto-reply',
+        action='store_true',
+        help='コメントに自動的に返信を送信する（curlコマンド生成の代わりに）'
+    )
+    
+
     
     try:
         args = parser.parse_args()
@@ -524,54 +484,26 @@ def main():
         review_type = extract_review_type(comment.get('body', ''))
         review_types[review_type] = review_types.get(review_type, 0) + 1
     
-    print(f"CodeRabbit コメントを {len(coderabbit_comments)} 件処理しました")
-    print()
-    print("レビュー種別の内訳:")
-    for review_type, count in review_types.items():
-        print(f"  {review_type}: {count}")
-    print()
+    print(f"処理対象: {len(coderabbit_comments)} 件")
     
     # プロンプト生成
     review_prompt = get_default_review_prompt(args.no_confirm, args.auto_commit)
     
-    # PR全体への一般的なcurlコマンドを生成
-    general_curl_commands = generate_general_coderabbit_curl_commands(owner, repo, pr_number, token)
+    # curlコマンド用の別ファイル準備
+    curl_commands = []
+    
+    # 個別コメント用のcurlコマンドのみ生成（全体報告は削除）
     
     output = []
     output.append(review_prompt)
     output.append("")
     output.append("")
-    output.append("## 🔧 PR全体への返信用curlコマンド")
+    
+    output.append("## 🔧 返信用コマンド")
     output.append("")
-    output.append("レビュー対応完了後、必要に応じて以下のcurlコマンドを使用してください：")
-    output.append("")
-    output.append(general_curl_commands)
-    output.append("")
+    output.append("対応不要・指摘間違い・要確認時の返信は `curl_commands.txt` を参照")
     output.append("")
     output.append("## レビューコメント一覧")
-    output.append("")
-    output.append(f"**プルリクエスト**: {owner}/{repo}#{pr_number}")
-    output.append(f"**URL**: {pr_url}")
-    output.append(f"**タイトル**: {pr_info.get('title', 'タイトル不明')}")
-    output.append(f"**作成者**: @{pr_info.get('user', {}).get('login', '不明')}")
-    output.append("")
-    output.append("### 📂 ブランチ情報")
-    output.append(f"**ソースブランチ**: `{head_repo}:{head_branch}`")
-    output.append(f"**ターゲットブランチ**: `{base_repo}:{base_branch}`")
-    output.append("")
-    output.append("### 🔄 作業開始コマンド")
-    output.append("```bash")
-    # 同じリポジトリかどうかで分岐
-    if head_repo == f"{owner}/{repo}":
-        output.append(f"# ローカルでソースブランチにチェックアウト")
-        output.append(f"git checkout {head_branch}")
-        output.append(f"git pull origin {head_branch}")
-    else:
-        output.append(f"# フォークからのPRの場合")
-        output.append(f"git remote add fork https://github.com/{head_repo}.git")
-        output.append(f"git fetch fork {head_branch}")
-        output.append(f"git checkout -b {head_branch} fork/{head_branch}")
-    output.append("```")
     output.append("")
     
     if not coderabbit_comments:
@@ -586,29 +518,83 @@ def main():
             problem = extract_problem_description(comment.get('body', ''))
             
             output.append(f"### TODO #{i}: {title}")
-            output.append(f"**ID**: {comment.get('id', 'Unknown')}")
-            output.append(f"**ファイル**: `{comment.get('path', 'Unknown')}`")
-            output.append(f"**行**: {comment.get('line', 'Unknown')}")
-            output.append(f"**種類**: {review_type}")
-            output.append(f"**問題**: {problem}")
+            output.append(f"**ファイル**: `{comment.get('path', 'Unknown')}` (行: {comment.get('line', 'Unknown')})")
             output.append("")
-            output.append("**元のコメント**:")
             output.append("```")
             output.append(comment.get('body', '').strip())
             output.append("```")
             output.append("")
             
-            # 個別のcurlコマンドを生成
+            # 自動返信またはcurlコマンド処理
             comment_id = comment.get('id')
             if comment_id:
-                comment_curl_commands = generate_coderabbit_curl_commands_for_comment(
-                    owner, repo, pr_number, comment_id, token
-                )
-                output.append("**🔧 このコメントへの返信用curlコマンド**:")
-                output.append("```bash")
-                output.append(comment_curl_commands)
-                output.append("```")
-                output.append("")
+                if args.auto_reply:
+                    # 実際にAPIを使って返信
+                    try:
+                        # デフォルトの確認メッセージで返信
+                        reply_message = f"@coderabbitai この指摘について確認中です。対応後に更新いたします。"
+                        
+                        # POSTリクエストのデータを準備
+                        post_data = {
+                            "body": reply_message,
+                            "in_reply_to": comment_id
+                        }
+                        
+                        # GitHub API経由で返信
+                        reply_url = f"https://api.github.com/repos/{owner}/{repo}/pulls/{pr_number}/comments"
+                        headers = {
+                            'Authorization': f'token {token}',
+                            'Accept': 'application/vnd.github.v3+json',
+                            'Content-Type': 'application/json',
+                            'User-Agent': 'GRP-UVX/1.0.0'
+                        }
+                        
+                        request = urllib.request.Request(
+                            reply_url,
+                            data=json.dumps(post_data).encode('utf-8'),
+                            headers=headers,
+                            method='POST'
+                        )
+                        
+                        with urllib.request.urlopen(request) as response:
+                            if response.status == 201:
+                                result = json.loads(response.read().decode('utf-8'))
+                                output.append("**✅ 自動返信完了**:")
+                                output.append(f"- 返信ID: {result.get('id')}")
+                                output.append(f"- メッセージ: {reply_message}")
+                                output.append("")
+                            else:
+                                raise Exception(f"HTTP {response.status}")
+                        
+                    except Exception as e:
+                        output.append("**❌ 自動返信失敗**:")
+                        output.append(f"- エラー: {str(e)}")
+                        output.append(f"- curl_commands.txt のコメント #{i} の部分を参照してください")
+                        output.append("")
+                        
+                        # curlコマンドを別ファイル用に保存
+                        comment_curl_commands = generate_coderabbit_curl_commands_for_comment(
+                            owner, repo, pr_number, comment_id, token
+                        )
+                        curl_commands.append(f"# コメント #{i}: {title}")
+                        curl_commands.append(comment_curl_commands)
+                        curl_commands.append("")
+                        curl_commands.append("=" * 80)
+                        curl_commands.append("")
+                else:
+                    # curlコマンドを別ファイルに追加
+                    comment_curl_commands = generate_coderabbit_curl_commands_for_comment(
+                        owner, repo, pr_number, comment_id, token
+                    )
+                    curl_commands.append(f"# コメント #{i}: {title}")
+                    curl_commands.append(comment_curl_commands)
+                    curl_commands.append("")
+                    curl_commands.append("=" * 80)
+                    curl_commands.append("")
+                    
+                    # プロンプトには簡潔な参照のみ
+                    output.append(f"**🔧 返信**: curl_commands.txt のコメント #{i} を参照")
+                    output.append("")
             
             output.append("---")
             output.append("")
@@ -645,6 +631,13 @@ def main():
     output_file = "review_prompt_with_todos.md"
     with open(output_file, 'w', encoding='utf-8') as f:
         f.write(combined_output)
+    
+    # curlコマンドファイルの保存
+    if curl_commands:
+        curl_file = "curl_commands.txt"
+        with open(curl_file, 'w', encoding='utf-8') as f:
+            f.write("\n".join(curl_commands))
+        print(f"📄 curlコマンドファイル: {curl_file}")
 
 
 if __name__ == "__main__":

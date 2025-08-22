@@ -317,8 +317,8 @@ class AIPromptGenerator:
 **対応手順**: ① 各指摘を検証 ② 必要に応じて修正 ③ CodeRabbitに返信 ④ 完了後コミット・プッシュ
 
 **CodeRabbit返信パターン**:
-- ✅ **対応完了**: `@coderabbitai 修正完了：[修正内容]。この課題のみ解決済みにしてください。`
-- ❌ **対応不要**: `@coderabbitai 対応不要：[技術的根拠]。この課題のみ解決済みにしてください。`  
+- ✅ **対応完了**: 修正のみ実施、返信は不要
+- ❌ **対応不要**: `@coderabbitai 対応不要：[技術的根拠]。**重要な指示**: このコメントスレッド（ID: [COMMENT_ID]）のみをresolvedにマーク。他は変更しない。GitHubのreview thread statusを更新。一括操作禁止。`  
 - 🤔 **要確認**: `@coderabbitai 確認要望：[確認内容]。詳細説明をお願いします。`
 
 ### 🔧 curlコマンドでの返信方法
@@ -326,18 +326,14 @@ class AIPromptGenerator:
 **環境変数設定**: 先に `export GITHUB_TOKEN="your_token"` を設定してください。
 
 #### 📋 curlコマンドテンプレート
-```bash
-# 対応完了の場合
-curl -X POST "https://api.github.com/repos/[OWNER]/[REPO]/pulls/[PR_NUMBER]/comments" \\
-  -H "Authorization: token $GITHUB_TOKEN" \\
-  -H "Content-Type: application/json" \\
-  -d '{"body": "@coderabbitai 修正完了：[修正内容]。この課題のみを解決済みにしてください。", "in_reply_to": [COMMENT_ID]}'
+**注意**: 修正完了時は返信不要です。以下は対応不要・確認事項の場合のみ使用してください。
 
+```bash
 # 対応不要の場合  
 curl -X POST "https://api.github.com/repos/[OWNER]/[REPO]/pulls/[PR_NUMBER]/comments" \\
   -H "Authorization: token $GITHUB_TOKEN" \\
   -H "Content-Type: application/json" \\
-  -d '{"body": "@coderabbitai 対応不要：[技術的根拠]。この課題のみを解決済みにしてください。", "in_reply_to": [COMMENT_ID]}'
+  -d '{"body": "@coderabbitai 対応不要：[技術的根拠]。\n\n**重要な指示**：\n1. この特定のコメントスレッド（ID: [COMMENT_ID]）のみを「resolved」にマークしてください\n2. 他のコメントスレッドは一切変更しないでください\n3. GitHubのreview thread statusを「resolved」に更新してください\n4. 一括での解決済み操作は行わないでください", "in_reply_to": [COMMENT_ID]}'
 
 # 要確認の場合
 curl -X POST "https://api.github.com/repos/[OWNER]/[REPO]/pulls/[PR_NUMBER]/comments" \\
