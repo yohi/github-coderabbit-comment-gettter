@@ -142,6 +142,12 @@ class UnifiedCLI:
     def _handle_generate(self, args, token: str) -> int:
         """フル機能版 generate の処理（従来フォーマット）"""
         try:
+            # 進行状況表示
+            print()
+            print(f"🔄 GitHub Review Prompt Generator (統一版)")
+            print(f"📋 プルリクエスト: {args.pr_url}")
+            print("=" * 80)
+            
             # 設定管理
             config = ConfigManager()
             
@@ -152,8 +158,12 @@ class UnifiedCLI:
             pr_info = github_client.parse_pr_url(args.pr_url)
             
             # PR基本情報とコメント取得
+            print("📍 PR基本情報を取得中...")
             pr_basic_info = github_client.get_pr_basic_info(pr_info)
+            
+            print("💬 レビューコメントを取得中...")
             comments = github_client.get_pr_review_comments(pr_info)
+            print(f"📊 取得したコメント数: {len(comments)} 件")
             
             # プロンプト用のPR情報を構築
             pr_dict = {
@@ -167,17 +177,26 @@ class UnifiedCLI:
                 'number': pr_info.pull_number
             }
             
-            # フィルタリング
+            # フィルタリング処理
+            original_count = len(comments)
             if args.author:
                 comments = [c for c in comments if c.get('user', {}).get('login') == args.author]
+                print(f"🔍 作者フィルタ適用: {args.author} → {len(comments)} 件")
             
             if args.since:
                 # 日付フィルタリング実装
+                print(f"📅 日付フィルタ: {args.since} 以降")
                 pass
             
             if args.file_pattern:
                 pattern = re.compile(args.file_pattern)
                 comments = [c for c in comments if c.get('path') and pattern.search(c['path'])]
+                print(f"📁 ファイルパターンフィルタ適用: {args.file_pattern} → {len(comments)} 件")
+            
+            if original_count != len(comments):
+                print(f"📋 最終処理対象: {len(comments)} 件 (元: {original_count} 件)")
+            
+            print("🤖 プロンプト生成中...")
             
             # プロンプト生成オプション
             options = {
@@ -191,7 +210,7 @@ class UnifiedCLI:
             prompt = self.prompt_engine.generate_main_prompt(comments, pr_dict, options)
             
             # 出力
-            self._output_result(prompt, args.output, args.append)
+            self._output_result(prompt, pr_dict, comments, args.output, args.append)
             
             logger.info(f"プロンプトを生成しました ({len(comments)} コメント)")
             return 0
@@ -247,17 +266,51 @@ class UnifiedCLI:
         else:
             raise ValueError("メッセージ、テンプレート、またはファイルのいずれかを指定してください")
     
-    def _output_result(self, content: str, output_file: str = None, append: bool = False):
-        """結果を出力"""
-        if output_file:
+    def _output_result(self, content: str, pr_dict: Dict, comments: List[Dict], output_file: str = None, append: bool = False):
+        """美しい結果出力（従来フォーマット）"""
+        # デフォルトのファイル名
+        if not output_file:
+            output_file = "review_prompt_with_todos.md"
+        
+        # 統計情報の表示
+        print()
+        print("=" * 80)
+        print("✅ レビュープロンプトとTODOリストを生成しました")
+        print(f"📄 ファイル保存: {output_file}")
+        print(f"📋 処理対象コメント: {len(comments)} 件")
+        print(f"🔗 プルリクエスト: {pr_dict.get('title', 'N/A')}")
+        print()
+        
+        # プロンプト用コピー範囲の明確な開始マーカー
+        print("🤖" + "=" * 78 + "🤖")
+        print("📋 AI AGENT PROMPT - コピーペースト用範囲 (開始)")
+        print("💡 以下の内容をコピーしてAIチャットに貼り付けてください")
+        print("🤖" + "=" * 78 + "🤖")
+        print()
+        
+        # プロンプト内容を出力
+        print(content)
+        
+        # プロンプト用コピー範囲の明確な終了マーカー
+        print()
+        print("🤖" + "=" * 78 + "🤖")
+        print("📋 AI AGENT PROMPT - コピーペースト用範囲 (終了)")
+        print("💡 上記の内容をコピーしてAIチャットに貼り付けてください")
+        print("🤖" + "=" * 78 + "🤖")
+        print()
+        
+        # ファイル保存
+        try:
             mode = 'a' if append else 'w'
             with open(output_file, mode, encoding='utf-8') as f:
                 f.write(content)
                 if append:
                     f.write('\n\n---\n\n')
-            logger.info(f"結果を {output_file} に出力しました")
-        else:
-            print(content)
+            print(f"📁 プロンプトファイルを保存しました: {output_file}")
+        except Exception as e:
+            logger.error(f"ファイル保存に失敗しました: {e}")
+        
+        print("=" * 80)
 
 
 def main() -> int:
