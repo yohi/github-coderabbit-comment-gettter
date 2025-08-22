@@ -60,7 +60,7 @@ curl -X POST \\
 **返信例**:
 ```bash
 curl -X POST \\
-  -H "Authorization: Bearer ${GITHUB_TOKEN}" \\
+  -H "Authorization: Bearer ${{GITHUB_TOKEN}}" \\
   -H "Accept: application/vnd.github.v3+json" \\
   -H "Content-Type: application/json" \\
   -d '{"body": "@coderabbitai この指摘について検証しましたが、現在の実装で問題ありません。理由：[技術的根拠]", "in_reply_to": 123456789}' \\
@@ -108,7 +108,7 @@ CodeRabbitレビューコメント対応 - #123
 **セキュリティ > 機能性 > 可読性** の順で優先度を判断し、迷った場合は保守的な対応を選択してください。
 
 ## 🚨 セキュリティ第一原則
-1. **トークン露出禁止**: 認証情報は必ず ${GITHUB_TOKEN} 形式使用
+1. **トークン露出禁止**: 認証情報は必ず ${{GITHUB_TOKEN}} 形式使用
 2. **安全なGit操作**: 変更ファイルのみ個別add（git add .禁止）
 
 ## ⚡ 3段階優先度システム
