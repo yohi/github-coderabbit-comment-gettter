@@ -131,3 +131,10 @@ exclude_lines = [
     "if __name__ == .__main__.:",
     "if TYPE_CHECKING:",
 ]
+
+[dependency-groups]
+dev = [
+    "pre-commit>=4.3.0",
+    "psutil>=7.0.0",
+    "pytest>=8.4.1",
+]
