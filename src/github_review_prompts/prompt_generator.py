@@ -1,6 +1,7 @@
 """AI プロンプト生成（ペルソナ対応）"""
 
 import logging
+import time
 from typing import Dict, List, Optional, Any
 from datetime import datetime
 
@@ -305,12 +306,10 @@ class AIPromptGenerator:
         if not all([pr_owner, pr_repo, pr_number, comment_id]):
             return None
         
-        # 簡潔な返信情報
+        # 簡潔な返信情報（curlコマンドへの参照は削除）
         return f"""**コメントID**: {comment_id}
 **APIエンドポイント**: `POST /repos/{pr_owner}/{pr_repo}/pulls/{pr_number}/comments`
-**返信方法**: `in_reply_to: {comment_id}` でこのコメントに直接返信可能
-
-*詳細なcurlコマンドは最下部の「CodeRabbit返信用curlコマンド」セクションを参照*"""
+**返信方法**: `in_reply_to: {comment_id}` でこのコメントに直接返信可能"""
     
     def _generate_footer(self) -> str:
         """フッター部分を生成"""
@@ -319,31 +318,65 @@ class AIPromptGenerator:
 
 **CodeRabbit返信パターン**:
 - ✅ **対応完了**: 修正のみ実施、返信は不要
-- ❌ **対応不要**: `@coderabbitai 対応不要：[技術的根拠]。**重要な指示**: このコメントスレッド（ID: [COMMENT_ID]）のみをresolvedにマーク。他は変更しない。GitHubのreview thread statusを更新。一括操作禁止。`  
+- ❌ **対応不要**: `@coderabbitai 対応不要：[技術的根拠]。この課題のみを解決済みにしてください。`  
 - 🤔 **要確認**: `@coderabbitai 確認要望：[確認内容]。詳細説明をお願いします。`
 
-### 🔧 curlコマンドでの返信方法
+### 🔧 CodeRabbit返信用curlコマンド
 
-**環境変数設定**: 先に `export GITHUB_TOKEN="your_token"` を設定してください。
-
-#### 📋 curlコマンドテンプレート
-**注意**: 修正完了時は返信不要です。以下は対応不要・確認事項の場合のみ使用してください。
-
+**前提条件**: 
 ```bash
-# 対応不要の場合  
-curl -X POST "https://api.github.com/repos/[OWNER]/[REPO]/pulls/[PR_NUMBER]/comments" \\
-  -H "Authorization: token $GITHUB_TOKEN" \\
-  -H "Content-Type: application/json" \\
-  -d '{"body": "@coderabbitai 対応不要：[技術的根拠]。\n\n**重要な指示**：\n1. この特定のコメントスレッド（ID: [COMMENT_ID]）のみを「resolved」にマークしてください\n2. 他のコメントスレッドは一切変更しないでください\n3. GitHubのreview thread statusを「resolved」に更新してください\n4. 一括での解決済み操作は行わないでください", "in_reply_to": [COMMENT_ID]}'
-
-# 要確認の場合
-curl -X POST "https://api.github.com/repos/[OWNER]/[REPO]/pulls/[PR_NUMBER]/comments" \\
-  -H "Authorization: token $GITHUB_TOKEN" \\
-  -H "Content-Type: application/json" \\
-  -d '{"body": "@coderabbitai 確認要望：[確認内容]。詳細説明をお願いします。", "in_reply_to": [COMMENT_ID]}'
+export GITHUB_TOKEN="your_github_token_here"
 ```
 
-**使用手順**: 各コメントの「CodeRabbit返信用」セクションからコメントIDを取得し、上記テンプレートの `[COMMENT_ID]` を置換して実行してください。
+#### ❌ 対応不要の場合
+```bash
+curl -X POST "https://api.github.com/repos/[OWNER]/[REPO]/pulls/[PR_NUMBER]/comments" \\
+  -H "Authorization: token ${GITHUB_TOKEN}" \\
+  -H "Accept: application/vnd.github.v3+json" \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "body": "@coderabbitai 対応不要：[技術的根拠を記載]。この課題のみを解決済みにしてください。",
+    "in_reply_to": [COMMENT_ID]
+  }'
+```
+
+#### 🤔 要確認の場合
+```bash
+curl -X POST "https://api.github.com/repos/[OWNER]/[REPO]/pulls/[PR_NUMBER]/comments" \\
+  -H "Authorization: token ${GITHUB_TOKEN}" \\
+  -H "Accept: application/vnd.github.v3+json" \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "body": "@coderabbitai [確認したい内容]について詳細説明をお願いします。",
+    "in_reply_to": [COMMENT_ID]
+  }'
+```
+
+#### ⚠️ 指摘間違いの場合
+```bash
+curl -X POST "https://api.github.com/repos/[OWNER]/[REPO]/pulls/[PR_NUMBER]/comments" \\
+  -H "Authorization: token ${GITHUB_TOKEN}" \\
+  -H "Accept: application/vnd.github.v3+json" \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "body": "@coderabbitai この指摘は[具体的な理由]により間違いと判断します。[正しい技術的説明]。この課題のみを解決済みにしてください。",
+    "in_reply_to": [COMMENT_ID]
+  }'
+```
+
+**使用方法**:
+1. 各TODO項目の「コメントID」を確認
+2. 上記テンプレートの `[OWNER]`, `[REPO]`, `[PR_NUMBER]`, `[COMMENT_ID]` を実際の値に置換
+3. `[技術的根拠を記載]` 部分に具体的な理由を記入
+4. curlコマンドを実行
+
+**技術的根拠の例**:
+- `型安全性の観点から現在の実装が適切`
+- `パフォーマンス要件を満たしており変更不要`
+- `セキュリティリスクが存在しないため対応不要`
+- `コードの可読性を損なう可能性があるため現状維持`
+
+**重要**: 修正完了時は返信不要です。上記コマンドは対応しない場合のみ使用してください。
 
 **対応不要な指摘について**:
 対応不要と判断した指摘については、以下の形式で理由を記載してください:
@@ -365,7 +398,7 @@ curl -X POST "https://api.github.com/repos/[OWNER]/[REPO]/pulls/[PR_NUMBER]/comm
 
 ---
 
-**生成情報**: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")} | ペルソナ: {self.persona_config.role}
+**生成情報**: {time.strftime('%Y-%m-%d %H:%M:%S')} | ペルソナ: {self.persona_config.role}
 """
     
     def _sort_prompts_for_output(self, prompts: List[AIPrompt]) -> List[AIPrompt]:
@@ -400,7 +433,7 @@ curl -X POST "https://api.github.com/repos/[OWNER]/[REPO]/pulls/[PR_NUMBER]/comm
 
 ---
 
-**生成情報**: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")} | ペルソナ: {self.persona_config.role}
+**生成情報**: {time.strftime('%Y-%m-%d %H:%M:%S')} | ペルソナ: {self.persona_config.role}
 """
     
     def get_supported_personas(self) -> Dict[str, PersonaConfig]:
