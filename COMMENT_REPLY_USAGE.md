@@ -269,6 +269,7 @@ uv run grp-reply list-templates
 | `resolved` | ✅ This issue has been resolved. | 解決済み |
 | `investigating` | 🔍 Looking into this issue. Will update soon. | 調査中 |
 | `question` | ❓ I have a question about this feedback: [question] | 質問・確認 |
+| `future_phase` | ⏳ Valid point, but not for current phase. Please remember for [future phase]. | 将来Phase対応 |
 
 ### テンプレートの使用例
 
