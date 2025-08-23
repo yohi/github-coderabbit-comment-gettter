@@ -124,15 +124,33 @@ class GitHubRateLimitHandler:
                 if hasattr(response, "headers"):
                     self._update_rate_limit_info(response.headers, api_type)
 
-                # 統計更新
+                # ステータスコードによるレート制限・過負荷の検出
+                status = getattr(response, "status_code", None)
+                if status in (403, 429):
+                    wait_time = self._handle_rate_limit_error(
+                        response, api_type, retry_count=retry_count
+                    )
+                    self.logger.warning(
+                        f"レート制限/過負荷応答({status})。{wait_time}秒待機します..."
+                    )
+                    time.sleep(wait_time)
+                    self.stats["rate_limited_requests"] += 1
+                    self.stats["total_wait_time"] += wait_time
+                    retry_count += 1
+                    continue
+
+                # 統計更新（成功）
                 self.stats["total_requests"] += 1
+                self.stats["successful_requests"] += 1
 
                 return response
 
             except requests.exceptions.HTTPError as e:
                 if e.response.status_code == 403:
                     # レート制限エラーの処理
-                    wait_time = self._handle_rate_limit_error(e.response, api_type)
+                    wait_time = self._handle_rate_limit_error(
+                        e.response, api_type, retry_count=retry_count
+                    )
 
                     self.logger.warning(
                         f"レート制限に達しました。{wait_time}秒待機します..."
