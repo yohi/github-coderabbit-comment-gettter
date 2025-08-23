@@ -1,6 +1,6 @@
 [project]
 name = "github-review-prompts-ai-agent"
-version = "1.0.0"
+version = "1.4.1"
 description = "AI agent-optimized prompts extraction from GitHub PR review comments with persona support"
 authors = [
     {name = "yohi", email = "yohi@example.com"}
