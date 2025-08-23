@@ -38,7 +38,7 @@ class GitHubCurlReply:
             "curl",
             "-s",  # silent mode
             "-H",
-            f"Authorization: Bearer {os.getenv('GITHUB_TOKEN', token)}",
+            f"Authorization: Bearer {os.getenv('GITHUB_TOKEN') or token}",
             "-H",
             "Accept: application/vnd.github.v3+json",
             "-H",

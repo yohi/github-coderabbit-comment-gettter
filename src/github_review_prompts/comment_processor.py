@@ -142,7 +142,7 @@ class CommentProcessor:
         variables = {"threadId": thread_id}
 
         graphql_headers = {
-            "Authorization": f"Bearer {os.getenv('GITHUB_TOKEN', self.github_client.token)}",
+            "Authorization": f"Bearer {os.getenv('GITHUB_TOKEN') or self.github_client.token}",
             "Content-Type": "application/json",
         }
 
@@ -215,7 +215,7 @@ class CommentProcessor:
         }
 
         graphql_headers = {
-            "Authorization": f"Bearer {os.getenv('GITHUB_TOKEN', self.github_client.token)}",
+            "Authorization": f"Bearer {os.getenv('GITHUB_TOKEN') or self.github_client.token}",
             "Content-Type": "application/json",
         }
 

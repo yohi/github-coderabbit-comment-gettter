@@ -134,7 +134,7 @@ def reply_to_comment_with_curl(
         "-X",
         "POST",
         "-H",
-        f"Authorization: Bearer {os.getenv('GITHUB_TOKEN', token)}",
+        f"Authorization: Bearer {os.getenv('GITHUB_TOKEN') or token}",
         "-H",
         "Accept: application/vnd.github.v3+json",
         "-H",
@@ -291,7 +291,7 @@ def make_github_request(url: str, token: str, headers: Dict = None) -> Dict:
 
     headers.update(
         {
-            "Authorization": f"token {os.getenv('GITHUB_TOKEN', token)}",
+            "Authorization": f"token {os.getenv('GITHUB_TOKEN') or token}",
             "Accept": "application/vnd.github.v3+json",
             "User-Agent": "GRP-Unified/1.0.0",
         }
@@ -462,7 +462,7 @@ def get_graphql_resolved_comments(
         data = {"query": query, "variables": variables}
 
         headers = {
-            "Authorization": f"Bearer {os.getenv('GITHUB_TOKEN', token)}",  # Bearer認証に修正
+            "Authorization": f"Bearer {os.getenv('GITHUB_TOKEN') or token}",  # Bearer認証に修正
             "Content-Type": "application/json",
             "User-Agent": "GRP-Unified/1.0.0",
         }
