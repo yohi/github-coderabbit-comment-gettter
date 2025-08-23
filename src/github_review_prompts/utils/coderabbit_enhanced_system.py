@@ -536,7 +536,14 @@ class CodeRabbitEnhancedSystem:
             config_summary = self.config_manager.get_config_summary()
 
             # GitHub API制限状況
-            rate_limit_status = self.github_manager.rate_limiter.get_rate_limit_status()
+            rate_limit_status = {}
+            if (
+                hasattr(self.github_manager, "rate_limiter")
+                and self.github_manager.rate_limiter
+            ):
+                rate_limit_status = (
+                    self.github_manager.rate_limiter.get_rate_limit_status()
+                )
 
             return {
                 "system_status": "operational",

@@ -4,8 +4,8 @@ import logging
 import json
 import re
 from typing import Dict, List, Optional, Any, Tuple
-from datetime import datetime
-from urllib.parse import urlparse
+from datetime import datetime, timedelta
+from urllib.parse import quote_plus
 import urllib.request
 import urllib.error
 
@@ -457,7 +457,7 @@ class GitHubIssuesIntegration:
         try:
             # ラベルで検索
             search_query = f"repo:{owner}/{repo} label:outside-diff-comments label:pr-{pr_number} is:issue"
-            api_url = f"{self.api_base}/search/issues?q={search_query}"
+            api_url = f"{self.api_base}/search/issues?q={quote_plus(search_query)}"
 
             request = urllib.request.Request(
                 api_url,

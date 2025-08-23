@@ -280,6 +280,7 @@ class AIAgentOptimizer:
         priority_list = []
 
         # 多次元ソート
+        complexity_order = {"low": 0, "medium": 1, "high": 2}
         sorted_comments = sorted(
             comments,
             key=lambda x: (
@@ -300,11 +301,14 @@ class AIAgentOptimizer:
                 ),
                 # 3. 設定ファイルかどうか
                 0 if x.file_details and x.file_details.get("is_config") else 1,
-                # 4. 複雑度（逆順：簡単なものから）
-                (
-                    x.suggestion_details.get("complexity", "low")
-                    if x.suggestion_details
-                    else "low"
+                # 4. 複雑度（簡単なものから）
+                complexity_order.get(
+                    (
+                        x.suggestion_details.get("complexity", "low")
+                        if x.suggestion_details
+                        else "low"
+                    ),
+                    0,
                 ),
                 # 5. ファイルパス（アルファベット順）
                 x.file_path,

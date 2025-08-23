@@ -1,8 +1,8 @@
 """範囲外コメント解決システムのマスターコントローラー"""
 
 import logging
-from typing import Dict, List, Optional, Any, Tuple
-from datetime import datetime
+from typing import Dict, List, Optional, Any
+from datetime import datetime, timedelta
 from pathlib import Path
 
 from ..models import OutsideDiffComment
@@ -85,9 +85,9 @@ class ResolutionMasterController:
             # 1. 既存の解決状態を確認
             resolution_states = {}
             for comment in comments:
-                state = self.storage.get_resolution_status(comment.id)
+                state = self.storage.get_resolution_status(comment.id) or {}
                 resolution_states[comment.id] = state
-                comment.is_resolved = state.get("is_resolved", False)
+                comment.is_resolved = bool(state.get("is_resolved", False))
                 comment.resolution_method = state.get("method")
                 comment.resolution_notes = state.get("notes", "")
 

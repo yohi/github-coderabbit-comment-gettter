@@ -339,7 +339,7 @@ class DatabaseProgressTracker:
 
             with self._get_connection() as conn:
                 # コメントステータス更新
-                conn.execute(
+                cursor = conn.execute(
                     """
                     UPDATE comments SET
                         status = ?,
@@ -361,7 +361,7 @@ class DatabaseProgressTracker:
                     ),
                 )
 
-                if conn.rowcount == 0:
+                if cursor.rowcount == 0:
                     self.logger.warning(f"コメントが見つかりません: ID={comment_id}")
                     return False
 

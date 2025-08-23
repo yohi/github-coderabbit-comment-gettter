@@ -903,12 +903,7 @@ git log --oneline origin/[ブランチ名]..HEAD
             stats_section = self._generate_outside_diff_stats(outside_diff_comments)
 
             # 基本プロンプトと範囲外コメントセクションを統合
-            enhanced_prompt = f"""{base_prompt}
-
-{outside_diff_section}
-
-{stats_section}
-
+            guidance_block = """
 ## 📋 統合対応指針
 
 ### 🔒 セキュリティファースト原則
@@ -920,22 +915,26 @@ git log --oneline origin/[ブランチ名]..HEAD
 各範囲外コメントの対応完了時は以下の形式で報告してください：
 
 ```
-✅ 範囲外TODO #{todo_number}: {title}
-**ファイル**: {file_path}
-**行範囲**: {line_range}
-**対応内容**: {具体的な対応内容}
-**検証結果**: {影響範囲の確認結果}
+✅ 範囲外TODO #[todo_number]: [title]
+**ファイル**: [file_path]
+**行範囲**: [line_range]
+**対応内容**: [具体的な対応内容]
+**検証結果**: [影響範囲の確認結果]
 ```
 
 ### ⚠️ 対応不要の判断
 範囲外コメントでも対応不要と判断する場合：
 
 ```
-❌ 範囲外TODO #{todo_number}: {title}
-**理由**: {技術的根拠に基づく詳細な理由}
+❌ 範囲外TODO #[todo_number]: [title]
+**理由**: [技術的根拠に基づく詳細な理由]
 **判断**: 対応不要（範囲外コメント）
 ```
 """
+
+            enhanced_prompt = "\n\n".join(
+                [base_prompt, outside_diff_section, stats_section, guidance_block]
+            )
 
             self.logger.info(
                 f"範囲外コメント統合完了: {len(outside_diff_comments)}件のコメントを統合"

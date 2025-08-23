@@ -717,8 +717,9 @@ class AIResponseAnalyzer:
                     )
 
         # 自動マーク率の提案
+        total = batch_stats["total_responses"]
         auto_markable_rate = (
-            batch_stats["auto_markable_count"] / batch_stats["total_responses"] * 100
+            batch_stats["auto_markable_count"] / total * 100 if total > 0 else 0.0
         )
         if auto_markable_rate < 50:
             suggestions.append(
