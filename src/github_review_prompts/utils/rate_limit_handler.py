@@ -60,8 +60,8 @@ class GitHubRateLimitHandler:
 
         # 統計情報
         self.stats = {
-            "total_requests": 0,          # 総試行回数
-            "successful_requests": 0,     # 成功回数
+            "total_requests": 0,  # 総試行回数
+            "successful_requests": 0,  # 成功回数
             "rate_limited_requests": 0,
             "total_wait_time": 0.0,
             "last_reset_time": None,
@@ -179,10 +179,19 @@ class GitHubRateLimitHandler:
                 # 残りリクエスト数に応じた待機時間計算
                 time_until_reset = reset_time - current_time
                 if time_until_reset > 0:
-                    delay = min(
-                        max(time_until_reset / remaining, config["min_delay"]),
-                        config["max_delay"],
-                    )
+                    if remaining <= 0:
+                        delay = min(
+                            max(time_until_reset, config["min_delay"]),
+                            config["max_delay"],
+                        )
+                    else:
+                        delay = min(
+                            max(
+                                time_until_reset / max(remaining, 1),
+                                config["min_delay"],
+                            ),
+                            config["max_delay"],
+                        )
                     self.logger.info(f"レート制限予防待機: {delay:.1f}秒")
                     time.sleep(delay)
 

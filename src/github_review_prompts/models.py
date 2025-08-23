@@ -24,6 +24,15 @@ class OutsideDiffCommentSeverity(Enum):
     INFO = "info"
 
 
+class ResolutionMethod(Enum):
+    """解決方法の種類"""
+
+    MANUAL = "manual"
+    AUTOMATED = "automated"
+    SKIPPED = "skipped"
+    DUPLICATE = "duplicate"
+
+
 @dataclass
 class OutsideDiffComment:
     """範囲外コメント（diff範囲外）のデータクラス"""
@@ -49,9 +58,7 @@ class OutsideDiffComment:
 
     # 解決状態管理フィールド
     is_resolved: bool = False
-    resolution_method: Optional[str] = (
-        None  # 'manual', 'automated', 'skipped', 'duplicate'
-    )
+    resolution_method: Optional[ResolutionMethod] = None
     resolved_at: Optional[str] = None
     resolved_by: Optional[str] = None
     resolution_notes: Optional[str] = None

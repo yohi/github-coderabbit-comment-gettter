@@ -295,32 +295,35 @@ class AIResponseAnalyzer:
             "matched_patterns": [],
         }
 
-        # 各応答タイプをチェック
-        for response_type, pattern_info in self.AI_RESPONSE_PATTERNS.items():
+        # 優先順位: completion > skip > progress
+        for response_type in ["completion_report", "skip_report", "progress_report"]:
+            pattern_info = self.AI_RESPONSE_PATTERNS[response_type]
             for pattern in pattern_info["patterns"]:
                 match = pattern.search(response_text)
-                if match:
-                    detection["matched_patterns"].append(
-                        {
-                            "type": response_type,
-                            "pattern": pattern.pattern,
-                            "matched_text": match.group(0),
-                        }
-                    )
-
-                    # 状態を設定
-                    if response_type == "completion_report":
-                        detection["detected_status"] = ResolutionStatus.RESOLVED
-                        detection["detected_method"] = ResolutionMethod.AI_AUTOMATED
-                        detection["confidence"] = 0.9
-                    elif response_type == "skip_report":
-                        detection["detected_status"] = ResolutionStatus.SKIPPED
-                        detection["detected_method"] = ResolutionMethod.SKIPPED
-                        detection["confidence"] = 0.85
-                    elif response_type == "progress_report":
-                        detection["detected_status"] = ResolutionStatus.IN_PROGRESS
-                        detection["detected_method"] = ResolutionMethod.AI_AUTOMATED
-                        detection["confidence"] = 0.7
+                if not match:
+                    continue
+                detection["matched_patterns"].append(
+                    {
+                        "type": response_type,
+                        "pattern": pattern.pattern,
+                        "matched_text": match.group(0),
+                    }
+                )
+                if response_type == "completion_report":
+                    detection["detected_status"] = ResolutionStatus.RESOLVED
+                    detection["detected_method"] = ResolutionMethod.AI_AUTOMATED
+                    detection["confidence"] = 0.9
+                    return detection
+                if response_type == "skip_report":
+                    detection["detected_status"] = ResolutionStatus.SKIPPED
+                    detection["detected_method"] = ResolutionMethod.SKIPPED
+                    detection["confidence"] = 0.85
+                    return detection
+                # progress_report
+                detection["detected_status"] = ResolutionStatus.IN_PROGRESS
+                detection["detected_method"] = ResolutionMethod.AI_AUTOMATED
+                detection["confidence"] = 0.7
+                return detection
 
         return detection
 

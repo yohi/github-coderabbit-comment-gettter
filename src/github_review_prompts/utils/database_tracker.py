@@ -432,24 +432,43 @@ class DatabaseProgressTracker:
             total_comments = stats["total"]
             resolved_comments = stats["resolved"]
 
-            # PRレコードを更新または挿入
-            conn.execute(
-                """
-                INSERT OR REPLACE INTO pull_requests (
-                    pr_number, pr_url, title, created_at, updated_at,
-                    total_comments, resolved_comments
-                ) VALUES (?, ?, ?, ?, ?, ?, ?)
-            """,
-                (
-                    pr_number,
-                    pr_url,
-                    f"PR #{pr_number}",
-                    datetime.now(),
-                    datetime.now(),
-                    total_comments,
-                    resolved_comments,
-                ),
-            )
+            # 既存レコードを確認
+            existing = conn.execute(
+                "SELECT pr_url, created_at FROM pull_requests WHERE pr_number = ?",
+                (pr_number,),
+            ).fetchone()
+
+            now = datetime.now()
+            if existing:
+                conn.execute(
+                    """
+                    UPDATE pull_requests
+                    SET pr_url = COALESCE(NULLIF(?, ''), pr_url),
+                        updated_at = ?,
+                        total_comments = ?,
+                        resolved_comments = ?
+                    WHERE pr_number = ?
+                    """,
+                    (pr_url, now, total_comments, resolved_comments, pr_number),
+                )
+            else:
+                conn.execute(
+                    """
+                    INSERT INTO pull_requests (
+                        pr_number, pr_url, title, created_at, updated_at,
+                        total_comments, resolved_comments
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        pr_number,
+                        pr_url,
+                        f"PR #{pr_number}",
+                        now,
+                        now,
+                        total_comments,
+                        resolved_comments,
+                    ),
+                )
 
         except Exception as e:
             self.logger.error(f"PR統計更新エラー: {e}")
