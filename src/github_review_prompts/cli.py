@@ -7,10 +7,11 @@
 """
 
 import warnings
+
 warnings.warn(
     "このCLIは非推奨です。main.py の統一CLIを使用してください。",
     DeprecationWarning,
-    stacklevel=2
+    stacklevel=2,
 )
 
 import argparse
@@ -49,7 +50,7 @@ class CLIInterface:
 
   # ファイルに出力
   github-review-prompts -o prompts.md https://github.com/owner/repo/pull/123
-  
+
   # マークダウンファイルを自動生成
   github-review-prompts --save-file https://github.com/owner/repo/pull/123
 
@@ -76,10 +77,10 @@ class CLIInterface:
 
 ファイル生成オプション:
   デフォルトではコンソール出力のみ。以下のオプションでファイル生成可能：
-  
+
   # 指定ファイル名で保存
   github-review-prompts -o custom_name.md [PR_URL]
-  
+
   # 自動ファイル名で保存（coderabbit_review_[repo]_pr[number].md）
   github-review-prompts --save-file [PR_URL]
 
@@ -88,33 +89,30 @@ class CLIInterface:
   DEFAULT_OUTPUT_FORMAT        デフォルトの出力形式 (markdown/json)
   DEFAULT_PERSONA              デフォルトのペルソナ
   LOG_LEVEL                    ログレベル (DEBUG/INFO/WARNING/ERROR)
-            """
+            """,
         )
 
         # プルリクエストURL（一部のオプションでは任意）
-        parser.add_argument(
-            "pr_url",
-            nargs="?",
-            help="GitHub プルリクエストURL"
-        )
+        parser.add_argument("pr_url", nargs="?", help="GitHub プルリクエストURL")
 
         # 出力オプション
         output_group = parser.add_argument_group("出力オプション")
         output_group.add_argument(
-            "-o", "--output",
+            "-o",
+            "--output",
             type=str,
-            help="出力ファイルパス（未指定時はコンソールに出力）"
+            help="出力ファイルパス（未指定時はコンソールに出力）",
         )
         output_group.add_argument(
             "--format",
             choices=["markdown", "json"],
             default="markdown",
-            help="出力形式 (デフォルト: markdown)"
+            help="出力形式 (デフォルト: markdown)",
         )
         output_group.add_argument(
             "--save-file",
             action="store_true",
-            help="マークダウンファイルを自動生成する（デフォルトはコンソール出力のみ）"
+            help="マークダウンファイルを自動生成する（デフォルトはコンソール出力のみ）",
         )
 
         # AIペルソナオプション
@@ -123,94 +121,76 @@ class CLIInterface:
             "--persona",
             choices=list(PERSONAS.keys()),
             default="code-reviewer",
-            help="AIエージェントのペルソナ (デフォルト: code-reviewer)"
+            help="AIエージェントのペルソナ (デフォルト: code-reviewer)",
         )
         persona_group.add_argument(
             "--list-personas",
             action="store_true",
-            help="利用可能なペルソナの一覧を表示"
+            help="利用可能なペルソナの一覧を表示",
         )
 
         # フィルタリングオプション
         filter_group = parser.add_argument_group("フィルタリングオプション")
         filter_group.add_argument(
-            "--include-resolved",
-            action="store_true",
-            help="解決済みコメントも含める"
+            "--include-resolved", action="store_true", help="解決済みコメントも含める"
         )
         filter_group.add_argument(
             "--categories",
             nargs="+",
             choices=["security", "performance", "style", "logic", "general"],
-            help="含めるカテゴリを指定"
+            help="含めるカテゴリを指定",
         )
         filter_group.add_argument(
             "--priorities",
             nargs="+",
             choices=["high", "medium", "low"],
-            help="含める優先度を指定"
+            help="含める優先度を指定",
         )
         filter_group.add_argument(
             "--file-patterns",
             nargs="+",
-            help="含めるファイルパターンを指定（ワイルドカード対応）"
+            help="含めるファイルパターンを指定（ワイルドカード対応）",
         )
 
         # デバッグ・開発オプション
         debug_group = parser.add_argument_group("デバッグ・開発オプション")
         debug_group.add_argument(
-            "--debug",
-            action="store_true",
-            help="デバッグモードを有効にする"
+            "--debug", action="store_true", help="デバッグモードを有効にする"
         )
         debug_group.add_argument(
-            "--debug-comment",
-            type=int,
-            help="特定のコメントIDをデバッグ"
+            "--debug-comment", type=int, help="特定のコメントIDをデバッグ"
         )
         debug_group.add_argument(
             "--analyze-all",
             action="store_true",
-            help="全コメントの解決状況を分析（詳細ログ）"
+            help="全コメントの解決状況を分析（詳細ログ）",
         )
         debug_group.add_argument(
-            "--dry-run",
-            action="store_true",
-            help="実際の処理を行わずに設定を確認"
+            "--dry-run", action="store_true", help="実際の処理を行わずに設定を確認"
         )
 
         # その他のオプション
         misc_group = parser.add_argument_group("その他")
+        misc_group.add_argument("--config", type=str, help="設定ファイルパス")
         misc_group.add_argument(
-            "--config",
-            type=str,
-            help="設定ファイルパス"
-        )
-        misc_group.add_argument(
-            "--summary-only",
-            action="store_true",
-            help="サマリーレポートのみを出力"
+            "--summary-only", action="store_true", help="サマリーレポートのみを出力"
         )
         misc_group.add_argument(
             "--no-confirm",
             action="store_true",
-            help="各コメント処理後の確認をスキップする"
+            help="各コメント処理後の確認をスキップする",
         )
         misc_group.add_argument(
             "--auto-commit",
             action="store_true",
-            help="作業完了後に自動的にgit commit & pushを実行する"
+            help="作業完了後に自動的にgit commit & pushを実行する",
         )
         misc_group.add_argument(
             "--no-color",
             action="store_true",
-            help="カラー出力を無効にする（コピーペースト最適化）"
+            help="カラー出力を無効にする（コピーペースト最適化）",
         )
-        misc_group.add_argument(
-            "--version",
-            action="version",
-            version="%(prog)s 1.0.0"
-        )
+        misc_group.add_argument("--version", action="version", version="%(prog)s 1.0.0")
 
         return parser
 
@@ -239,6 +219,7 @@ class CLIInterface:
         # ファイルパス検証
         if args.output:
             from .utils.validators import validate_file_path
+
             if not validate_file_path(args.output, allow_create=True):
                 errors.append(f"無効な出力ファイルパス: {args.output}")
 
@@ -284,8 +265,8 @@ class CLIInterface:
 
             # カラー出力設定
             if parsed_args.no_color:
-                os.environ['NO_COLOR'] = '1'
-            
+                os.environ["NO_COLOR"] = "1"
+
             # 設定読み込み
             if parsed_args.config:
                 self.config_manager.config_file = parsed_args.config
@@ -320,7 +301,7 @@ class CLIInterface:
             print("\n\n⚠️  処理がユーザーによって中断されました。")
             return 130
         except Exception as e:
-            if hasattr(self, 'logger') and self.logger:
+            if hasattr(self, "logger") and self.logger:
                 self.logger.error(f"予期しないエラー: {str(e)}", exc_info=True)
             else:
                 print(f"予期しないエラー: {str(e)}", file=sys.stderr)
@@ -332,7 +313,9 @@ class CLIInterface:
         print(f"プルリクエストURL: {args.pr_url}")
         print(f"出力形式: {config.output_format}")
         print(f"ペルソナ: {config.persona}")
-        output_description = config.output_file or ('自動生成ファイル' if args.save_file else 'コンソール出力のみ')
+        output_description = config.output_file or (
+            "自動生成ファイル" if args.save_file else "コンソール出力のみ"
+        )
         print(f"出力ファイル: {output_description}")
         print(f"解決済み含む: {config.include_resolved}")
         print(f"デバッグモード: {config.debug_mode}")
@@ -371,39 +354,50 @@ class CLIInterface:
 
             # PR情報解析
             pr_info = github_client.parse_pr_url(args.pr_url)
-            self.logger.info(f"PR情報: {pr_info.owner}/{pr_info.repo}#{pr_info.pull_number}")
+            self.logger.info(
+                f"PR情報: {pr_info.owner}/{pr_info.repo}#{pr_info.pull_number}"
+            )
 
             # PR基本情報取得
             pr_basic_info = github_client.get_pr_basic_info(pr_info)
             self.logger.info(f"タイトル: {pr_basic_info.get('title', 'N/A')}")
-            if pr_basic_info.get('head_branch') and pr_basic_info.get('base_branch'):
-                head_repo = pr_basic_info.get('head_repo', 'N/A')
-                head_branch = pr_basic_info.get('head_branch', 'N/A')
-                base_repo = pr_basic_info.get('base_repo', 'N/A')
-                base_branch = pr_basic_info.get('base_branch', 'N/A')
+            if pr_basic_info.get("head_branch") and pr_basic_info.get("base_branch"):
+                head_repo = pr_basic_info.get("head_repo", "N/A")
+                head_branch = pr_basic_info.get("head_branch", "N/A")
+                base_repo = pr_basic_info.get("base_repo", "N/A")
+                base_branch = pr_basic_info.get("base_branch", "N/A")
                 self.logger.info(f"ソースブランチ: {head_repo}:{head_branch}")
                 self.logger.info(f"ターゲットブランチ: {base_repo}:{base_branch}")
 
-            # レビューコメント取得
-            self.logger.info("レビューコメント取得開始...")
-            review_comments = github_client.get_pr_review_comments(pr_info)
+            # 全コメント取得（レビューコメント + Issue コメント）
+            self.logger.info("全コメント取得開始...")
+            all_comments, comment_stats = github_client.get_all_pr_comments(pr_info)
 
             # GraphQL APIで解決済みコメント検出
             self.logger.info("解決済みコメント検出開始...")
-            resolved_ids, graphql_bodies = github_client.get_resolved_comments_via_graphql(pr_info)
+            resolved_ids, graphql_bodies = (
+                github_client.get_resolved_comments_via_graphql(pr_info)
+            )
 
             # コメント処理
             self.logger.info("コメント処理開始...")
             processor = CommentProcessor(github_client)
             prompts, stats = processor.process_comments(
-                review_comments, resolved_ids, graphql_bodies, config.include_resolved, pr_basic_info
+                all_comments,
+                resolved_ids,
+                graphql_bodies,
+                config.include_resolved,
+                pr_basic_info,
+                auto_resolve_marked=True,  # CodeRabbit解決済みマーカーの自動処理を有効化
             )
 
             # フィルタリング適用
             if args.categories or args.priorities or args.file_patterns:
                 prompts = processor.filter_prompts_by_criteria(
-                    prompts, args.categories, args.priorities,
-                    file_patterns=args.file_patterns
+                    prompts,
+                    args.categories,
+                    args.priorities,
+                    file_patterns=args.file_patterns,
                 )
 
             # プロンプト生成
@@ -417,24 +411,28 @@ class CLIInterface:
                     "repo": pr_info.repo,
                     "pull_number": pr_info.pull_number,
                     "url": pr_info.url,
-                    **pr_basic_info
+                    **pr_basic_info,
                 },
                 "persona": config.persona,
                 "include_resolved": config.include_resolved,
                 "filters": {
                     "categories": args.categories,
                     "priorities": args.priorities,
-                    "file_patterns": args.file_patterns
-                }
+                    "file_patterns": args.file_patterns,
+                },
             }
 
             # 出力内容生成
             if args.summary_only:
                 output_formatter = OutputFormatter(config.output_format)
-                content = output_formatter.create_summary_report(prompts, stats, metadata)
+                content = output_formatter.create_summary_report(
+                    prompts, stats, metadata
+                )
             else:
                 # レビュープロンプトとTODOリストを生成
-                content = self._generate_review_prompt_with_todos(prompts, pr_basic_info, pr_info, args.no_confirm, args.auto_commit)
+                content = self._generate_review_prompt_with_todos(
+                    prompts, pr_basic_info, pr_info, args.no_confirm, args.auto_commit
+                )
 
             # 出力処理
             output_formatter = OutputFormatter(config.output_format)
@@ -442,7 +440,7 @@ class CLIInterface:
 
             # ファイル出力の判定: --outputオプションまたは--save-fileオプションが指定された場合
             should_save_file = config.output_file or args.save_file
-            
+
             if should_save_file:
                 # 出力ファイル名の決定
                 if config.output_file:
@@ -452,13 +450,15 @@ class CLIInterface:
                     pr_number = pr_info.pull_number
                     repo_name = pr_info.repo
                     output_file = f"coderabbit_review_{repo_name}_pr{pr_number}.md"
-                
+
                 # ファイル出力
                 success = output_formatter.save_to_file(formatted_content, output_file)
                 if success:
                     self.logger.info(f"結果を {output_file} に保存しました")
                     # 簡潔なサマリーをコンソールに表示
-                    print(f"\\n✅ 処理完了: {stats.prompts_extracted} 件のプロンプトを抽出")
+                    print(
+                        f"\\n✅ 処理完了: {stats.prompts_extracted} 件のプロンプトを抽出"
+                    )
                     print(f"📄 出力ファイル: {output_file}")
                 else:
                     self.logger.error("ファイル保存に失敗しました")
@@ -469,7 +469,7 @@ class CLIInterface:
 
             # 分析モード（デバッグ用）
             if args.analyze_all:
-                self._display_analysis_summary(processor, stats)
+                self._display_analysis_summary(processor, stats, comment_stats)
 
             self.logger.info("処理完了")
             return 0
@@ -481,42 +481,75 @@ class CLIInterface:
             self.logger.error(f"処理中にエラーが発生: {str(e)}", exc_info=True)
             return 1
 
-    def _display_analysis_summary(self, processor: CommentProcessor, stats) -> None:
+    def _display_analysis_summary(
+        self,
+        processor: CommentProcessor,
+        stats,
+        comment_stats: Optional[Dict[str, int]] = None,
+    ) -> None:
         """分析サマリーを表示（デバッグ用）"""
         summary = processor.get_processing_summary()
 
-        print("\\n" + "="*50)
+        print("\\n" + "=" * 50)
         print("📊 詳細分析サマリー")
-        print("="*50)
+        print("=" * 50)
         print(f"総コメント数: {summary['total_comments']}")
+
+        # コメント種別の詳細表示
+        if comment_stats:
+            print(f"  - レビューコメント: {comment_stats.get('review_comments', 0)} 件")
+            print(f"  - Issue コメント: {comment_stats.get('issue_comments', 0)} 件")
+
         print(f"解決済み: {summary['resolved_comments']}")
         print(f"未解決: {summary['unresolved_comments']}")
         print(f"プロンプト抽出: {summary['prompts_extracted']}")
         print(f"成功率: {summary['success_rate']:.1%}")
         print(f"処理時間: {summary['processing_time']:.2f}秒")
 
-        if summary['errors']:
+        # 自動解決の情報を表示
+        if summary.get("auto_resolved_comments", 0) > 0:
+            print(f"\\n🤖 自動解決処理:")
+            print(f"マーカー検出による自動解決: {summary['auto_resolved_comments']} 件")
+            if summary.get("auto_resolved_details"):
+                print("解決済みコメント詳細:")
+                for detail in summary["auto_resolved_details"]:
+                    print(
+                        f"  - コメントID {detail['comment_id']}: {detail['resolved_at']}"
+                    )
+
+        if summary["errors"]:
             print(f"\\n⚠️ エラー ({len(summary['errors'])} 件):")
-            for error in summary['errors']:
+            for error in summary["errors"]:
                 print(f"  - {error}")
 
-    def _generate_review_prompt_with_todos(self, prompts, pr_basic_info, pr_info, no_confirm: bool = False, auto_commit: bool = False) -> str:
+    def _generate_review_prompt_with_todos(
+        self,
+        prompts,
+        pr_basic_info,
+        pr_info,
+        no_confirm: bool = False,
+        auto_commit: bool = False,
+    ) -> str:
         """レビュープロンプトとTODOリストを生成"""
 
         # レビュープロンプトの内容を読み込み（相対パス）
-        current_dir = Path(__file__).parent  # src/github_review_prompts/cli.py -> src/github_review_prompts/
+        current_dir = Path(
+            __file__
+        ).parent  # src/github_review_prompts/cli.py -> src/github_review_prompts/
         prompt_file = current_dir / "coderabbit_review_prompt.md"
 
         try:
-            with open(prompt_file, 'r', encoding='utf-8') as f:
+            with open(prompt_file, "r", encoding="utf-8") as f:
                 review_prompt = f.read()
         except FileNotFoundError:
             # フォールバック: デフォルトプロンプト
             review_prompt = self._get_default_review_prompt(no_confirm, auto_commit)
-        
+
         # オプション固有の指示を追加（ファイルから読み込んだプロンプトにも適用）
         if no_confirm or auto_commit:
-            review_prompt += self._get_option_specific_instructions(no_confirm, auto_commit)
+            review_prompt += self._get_option_specific_instructions(
+                no_confirm, auto_commit
+            )
 
         # TODOリストを生成（PR基本情報も含める）
         todos_section = self._generate_todos_section(prompts, pr_info, pr_basic_info)
@@ -528,7 +561,9 @@ class CLIInterface:
 
         return combined_content
 
-    def _get_default_review_prompt(self, no_confirm: bool = False, auto_commit: bool = False) -> str:
+    def _get_default_review_prompt(
+        self, no_confirm: bool = False, auto_commit: bool = False
+    ) -> str:
         """デフォルトのレビュープロンプト"""
         base_prompt = """# CodeRabbit レビューコメント対応プロンプト
 
@@ -555,7 +590,7 @@ class CLIInterface:
 - 判断: [✅/❌/🤔]
 - 理由: [技術的根拠]
 - 対応: [具体的な行動]"""
-        
+
         # 確認オプションに応じた指示を追加
         if no_confirm:
             base_prompt += """
@@ -566,7 +601,7 @@ class CLIInterface:
             base_prompt += """
 
 次のコメントに進む前に、必ず確認を求めてください。"""
-        
+
         # Git自動コミットオプションに応じた指示を追加
         if auto_commit:
             base_prompt += """
@@ -591,23 +626,25 @@ CodeRabbitレビューコメント対応 - #123
 ```
 
 **注意**: Git操作実行前に作業内容を簡潔にサマリーしてください。"""
-        
+
         base_prompt += """
 
 **重要**: CodeRabbitのコメントは必ずしも正しくないことがあります。エンジニアとしての技術的判断を最優先し、疑問がある場合は遠慮なく返信で確認してください。"""
-        
+
         return base_prompt
 
-    def _get_option_specific_instructions(self, no_confirm: bool = False, auto_commit: bool = False) -> str:
+    def _get_option_specific_instructions(
+        self, no_confirm: bool = False, auto_commit: bool = False
+    ) -> str:
         """オプション固有の指示を生成"""
         instructions = ""
-        
+
         if no_confirm or auto_commit:
             instructions += "\n\n## ⚡ 作業モード設定"
-            
+
             if no_confirm:
                 instructions += "\n**確認スキップモード**: 各コメント処理後の確認は行わず、連続して処理を進めてください。"
-            
+
             if auto_commit:
                 instructions += """
 **自動コミット・プッシュモード**: すべてのレビューコメント対応完了後、以下を自動実行してください：
@@ -629,10 +666,10 @@ CodeRabbitレビューコメント対応 - #123
 ```
 
 **注意**: Git操作実行前に作業内容を簡潔にサマリーしてください。"""
-        
+
         return instructions
 
-    def _generate_todos_section(self, prompts, pr_info, pr_basic_info = None) -> str:
+    def _generate_todos_section(self, prompts, pr_info, pr_basic_info=None) -> str:
         """TODOセクションを生成"""
         if not prompts:
             return "\\n## レビューコメント一覧\\n\\n対象となるレビューコメントが見つかりませんでした。"
@@ -648,13 +685,13 @@ CodeRabbitレビューコメント対応 - #123
             todos_content += f"""
 **タイトル**: {pr_basic_info.get('title', 'タイトル不明')}
 **作成者**: @{pr_basic_info.get('author', '不明')}"""
-            
+
             # ブランチ情報を追加
-            head_branch = pr_basic_info.get('head_branch')
-            base_branch = pr_basic_info.get('base_branch')
-            head_repo = pr_basic_info.get('head_repo')
-            base_repo = pr_basic_info.get('base_repo')
-            
+            head_branch = pr_basic_info.get("head_branch")
+            base_branch = pr_basic_info.get("base_branch")
+            head_repo = pr_basic_info.get("head_repo")
+            base_repo = pr_basic_info.get("base_repo")
+
             if head_branch or base_branch:
                 todos_content += f"""
 
@@ -664,7 +701,7 @@ CodeRabbitレビューコメント対応 - #123
 
 ### 🔄 作業開始コマンド
 ```bash"""
-                
+
                 # 同じリポジトリかフォークかで分岐
                 if head_repo and head_branch:
                     if head_repo == base_repo:
@@ -678,19 +715,19 @@ git pull origin {head_branch}"""
 git remote add fork https://github.com/{head_repo}.git
 git fetch fork {head_branch}
 git checkout -b {head_branch} fork/{head_branch}"""
-                
+
                 todos_content += """
 ```"""
-        
+
         todos_content += "\\n\\n"
 
         for i, prompt in enumerate(prompts, 1):
             # プロンプトから基本情報を抽出
-            file_path = getattr(prompt, 'file_path', 'Unknown')
-            line_number = getattr(prompt, 'line_number', 'Unknown')
+            file_path = getattr(prompt, "file_path", "Unknown")
+            line_number = getattr(prompt, "line_number", "Unknown")
 
             # コメント本体から情報を抽出
-            comment_body = getattr(prompt, 'content', '')
+            comment_body = getattr(prompt, "content", "")
 
             # レビュー種類を判定
             review_type = self._extract_review_type(comment_body)
@@ -722,42 +759,42 @@ git checkout -b {head_branch} fork/{head_branch}"""
     def _extract_review_type(self, comment_body: str) -> str:
         """コメント本体からレビュー種類を抽出"""
         review_types = {
-            '⚠️ Potential issue': 'Potential issue',
-            '🛠️ Refactor suggestion': 'Refactor suggestion',
-            '💡 Nitpick comments': 'Nitpick comments',
-            '📝 Committable suggestion': 'Committable suggestion',
-            '🔍 Verification agent': 'Verification agent',
-            '📊 Analysis chain': 'Analysis chain'
+            "⚠️ Potential issue": "Potential issue",
+            "🛠️ Refactor suggestion": "Refactor suggestion",
+            "💡 Nitpick comments": "Nitpick comments",
+            "📝 Committable suggestion": "Committable suggestion",
+            "🔍 Verification agent": "Verification agent",
+            "📊 Analysis chain": "Analysis chain",
         }
 
         for pattern, review_type in review_types.items():
             if pattern in comment_body:
                 return review_type
 
-        return 'General comment'
+        return "General comment"
 
     def _extract_title_from_comment(self, comment_body: str) -> str:
         """コメントからタイトルを抽出"""
-        lines = comment_body.strip().split('\\n')
+        lines = comment_body.strip().split("\\n")
 
         # **太字のタイトル**を探す
         for line in lines:
             line = line.strip()
-            if line.startswith('**') and line.endswith('**') and len(line) > 4:
+            if line.startswith("**") and line.endswith("**") and len(line) > 4:
                 return line[2:-2]  # **を除去
 
         # 最初の非空行を使用
         for line in lines:
             line = line.strip()
-            if line and not line.startswith('_') and not line.startswith('`'):
+            if line and not line.startswith("_") and not line.startswith("`"):
                 # 最大80文字に制限
-                return line[:80] + '...' if len(line) > 80 else line
+                return line[:80] + "..." if len(line) > 80 else line
 
-        return 'レビューコメント'
+        return "レビューコメント"
 
     def _extract_problem_description(self, comment_body: str) -> str:
         """コメントから問題の説明を抽出"""
-        lines = comment_body.strip().split('\\n')
+        lines = comment_body.strip().split("\\n")
 
         # **タイトル**の後の説明文を探す
         found_title = False
@@ -766,27 +803,36 @@ git checkout -b {head_branch} fork/{head_branch}"""
         for line in lines:
             line = line.strip()
 
-            if line.startswith('**') and line.endswith('**'):
+            if line.startswith("**") and line.endswith("**"):
                 found_title = True
                 continue
 
-            if found_title and line and not line.startswith('```') and not line.startswith('<details>'):
+            if (
+                found_title
+                and line
+                and not line.startswith("```")
+                and not line.startswith("<details>")
+            ):
                 description_lines.append(line)
                 # 最初の段落で十分
                 if len(description_lines) >= 3:
                     break
 
         if description_lines:
-            description = ' '.join(description_lines)
+            description = " ".join(description_lines)
             # 最大200文字に制限
-            return description[:200] + '...' if len(description) > 200 else description
+            return description[:200] + "..." if len(description) > 200 else description
 
         # フォールバック: 最初の数行
         non_empty_lines = [line.strip() for line in lines if line.strip()]
         if len(non_empty_lines) > 1:
-            return non_empty_lines[1][:100] + '...' if len(non_empty_lines[1]) > 100 else non_empty_lines[1]
+            return (
+                non_empty_lines[1][:100] + "..."
+                if len(non_empty_lines[1]) > 100
+                else non_empty_lines[1]
+            )
 
-        return 'レビューコメントの内容を確認してください'
+        return "レビューコメントの内容を確認してください"
 
 
 def main() -> int:

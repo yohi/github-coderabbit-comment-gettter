@@ -26,6 +26,10 @@ share/python-wheels/
 *.egg
 MANIFEST
 
+# IDE and editor configurations with potential secrets
+.cursor/
+.kiro/
+
 # PyInstaller
 #  Usually these files are written by a python script from a template
 #  before PyInstaller builds the exe, so as to inject date/other infos into it.
@@ -159,3 +163,4 @@ review_prompt_*.md
 
 # Development test environments
 test-env/
+.cursor/

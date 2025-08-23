@@ -1,6 +1,6 @@
 [project]
 name = "github-review-prompts-ai-agent"
-version = "1.0.0"
+version = "1.4.1"
 description = "AI agent-optimized prompts extraction from GitHub PR review comments with persona support"
 authors = [
     {name = "yohi", email = "yohi@example.com"}
@@ -39,7 +39,7 @@ gh-review-prompts = "github_review_prompts.main:main"
 
 # 非推奨エントリーポイント（互換性維持のみ）
 grp-legacy-unified = "github_review_prompts.unified_cli:main"
-grp-legacy-cli = "github_review_prompts.cli:main" 
+grp-legacy-cli = "github_review_prompts.cli:main"
 grp-legacy = "grp_uvx:main"
 grp-reply = "github_review_prompts.comment_reply_cli:main"
 github-comment-reply = "github_review_prompts.comment_reply_cli:main"
@@ -130,4 +130,11 @@ exclude_lines = [
     "no cov",
     "if __name__ == .__main__.:",
     "if TYPE_CHECKING:",
+]
+
+[dependency-groups]
+dev = [
+    "pre-commit>=4.3.0",
+    "psutil>=7.0.0",
+    "pytest>=8.4.1",
 ]
