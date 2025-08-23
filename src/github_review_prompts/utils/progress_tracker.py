@@ -179,7 +179,9 @@ class ProgressTracker:
                 }
 
             # トレンド分析（前半と後半の比較）
-            mid_date = start_date + timedelta(days=days // 2)
+            first_half_days = max(1, days // 2)
+            second_half_days = max(1, days - first_half_days)
+            mid_date = start_date + timedelta(days=first_half_days)
             first_half = [
                 r
                 for r in resolutions
@@ -191,8 +193,8 @@ class ProgressTracker:
                 if datetime.fromisoformat(r["resolved_at"]) >= mid_date
             ]
 
-            first_half_rate = len(first_half) / (days // 2)
-            second_half_rate = len(second_half) / (days - days // 2)
+            first_half_rate = len(first_half) / first_half_days
+            second_half_rate = len(second_half) / second_half_days
 
             if second_half_rate > first_half_rate * 1.1:
                 trend = "improving"

@@ -652,10 +652,10 @@ environments:
     def should_auto_create_issue(self, priority: str) -> bool:
         """優先度に基づいてIssueを自動作成すべきかを判定"""
         priority_levels = ["low", "medium", "high", "critical"]
-        threshold_index = priority_levels.index(
-            self.config.processing_rules.auto_create_threshold
-        )
-        priority_index = priority_levels.index(priority.lower())
+        level_map = {p: i for i, p in enumerate(priority_levels)}
+        threshold = self.config.processing_rules.auto_create_threshold
+        threshold_index = level_map.get(str(threshold).lower(), level_map["medium"])
+        priority_index = level_map.get(str(priority).lower(), level_map["low"])
 
         return priority_index >= threshold_index
 

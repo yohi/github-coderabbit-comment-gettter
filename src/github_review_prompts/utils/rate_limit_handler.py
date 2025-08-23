@@ -60,7 +60,8 @@ class GitHubRateLimitHandler:
 
         # 統計情報
         self.stats = {
-            "total_requests": 0,
+            "total_requests": 0,          # 総試行回数
+            "successful_requests": 0,     # 成功回数
             "rate_limited_requests": 0,
             "total_wait_time": 0.0,
             "last_reset_time": None,

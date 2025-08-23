@@ -200,8 +200,14 @@ class OutsideDiffParser:
                 "", description
             ).strip()
 
+            import hashlib
+            stable_key = f"{base_comment_id}:{file_path}:{line_range}:{title}"
+            id_int = int.from_bytes(
+                hashlib.blake2b(stable_key.encode("utf-8"), digest_size=8).digest(),
+                "big",
+            )
             comment = OutsideDiffComment(
-                id=base_comment_id + i + 1,  # ユニークなIDを生成
+                id=id_int,  # 内容ベースの安定一意ID
                 body=f"{title}\n\n{clean_description}",
                 file_path=file_path,
                 line_range=line_range,

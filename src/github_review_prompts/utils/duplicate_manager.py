@@ -586,11 +586,16 @@ class DuplicateCommentManager:
         try:
             # 古い履歴を削除（90日以上前）
             cutoff_date = datetime.now() - timedelta(days=90)
-            filtered_history = [
-                record
-                for record in history
-                if datetime.fromisoformat(record["timestamp"]) > cutoff_date
-            ]
+            filtered_history = []
+            for record in history:
+                ts = record.get("timestamp")
+                try:
+                    dt = datetime.fromisoformat(ts) if ts else None
+                except Exception:
+                    self.logger.debug(f"無効なtimestampのためスキップ: {ts}")
+                    continue
+                if dt and dt > cutoff_date:
+                    filtered_history.append(record)
 
             with open(self.cache_file, "w", encoding="utf-8") as f:
                 json.dump(filtered_history, f, ensure_ascii=False, indent=2)
