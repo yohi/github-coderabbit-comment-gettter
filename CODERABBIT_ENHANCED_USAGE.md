@@ -328,7 +328,7 @@ def generate_team_report(pr_numbers):
     return team_report
 ```
 
-このシステムにより、CodeRabbitのレビューコメントを効率的に管理し、チーム全体の生産性を大幅に向上させることができます！
+このシステムにより、CodeRabbitのレビューコメントを効率的に管理し、チーム全体の生産性を大幅に向上させます。
 
 ## 📞 サポート
 
