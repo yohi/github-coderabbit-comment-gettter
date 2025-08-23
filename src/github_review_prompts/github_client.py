@@ -50,7 +50,7 @@ class GitHubClient:
 
             self.session.headers.update(
                 {
-                    "Authorization": f"token {self.token}",
+                    "Authorization": f"token {os.getenv('GITHUB_TOKEN', self.token)}",
                     "Accept": "application/vnd.github.v3+json",
                     "User-Agent": "GitHub-Review-Prompts-AI-Agent/1.0.0",
                 }
@@ -406,7 +406,7 @@ class GitHubClient:
 
         # GraphQL クエリ実行のためのヘッダー
         graphql_headers = {
-            "Authorization": f"Bearer {self.token}",
+            "Authorization": f"Bearer {os.getenv('GITHUB_TOKEN', self.token)}",
             "Content-Type": "application/json",
         }
 

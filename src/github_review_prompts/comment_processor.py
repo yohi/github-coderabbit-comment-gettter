@@ -1,6 +1,7 @@
 """コメント処理・フィルタリングロジック"""
 
 import logging
+import os
 import re
 from typing import Dict, List, Optional, Set, Tuple, Any
 from datetime import datetime
@@ -139,7 +140,7 @@ class CommentProcessor:
         variables = {"threadId": thread_id}
 
         graphql_headers = {
-            "Authorization": f"Bearer {self.github_client.token}",
+            "Authorization": f"Bearer {os.getenv('GITHUB_TOKEN', self.github_client.token)}",
             "Content-Type": "application/json",
         }
 
@@ -212,7 +213,7 @@ class CommentProcessor:
         }
 
         graphql_headers = {
-            "Authorization": f"Bearer {self.github_client.token}",
+            "Authorization": f"Bearer {os.getenv('GITHUB_TOKEN', self.github_client.token)}",
             "Content-Type": "application/json",
         }
 
