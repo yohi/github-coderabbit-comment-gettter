@@ -17,24 +17,28 @@ from .utils.validators import validate_file_path, validate_output_format
 
 class OutputFormatter:
     """出力フォーマット・ファイル処理クラス"""
-    
+
     def __init__(self, format_type: str = "markdown"):
         if not validate_output_format(format_type):
             raise ValueError(f"無効な出力フォーマット: {format_type}")
-        
+
         self.format_type = format_type
         # 環境変数でカラー出力制御（コピーペースト対応）
-        self.use_colors = os.getenv('NO_COLOR') is None and os.getenv('GITHUB_ACTIONS') is None
+        self.use_colors = (
+            os.getenv("NO_COLOR") is None and os.getenv("GITHUB_ACTIONS") is None
+        )
         self.console = Console(force_terminal=self.use_colors)
         self.logger = logging.getLogger(__name__)
-        
-        self.logger.info(f"出力フォーマッター初期化: {format_type} (カラー: {self.use_colors})")
-    
+
+        self.logger.info(
+            f"出力フォーマッター初期化: {format_type} (カラー: {self.use_colors})"
+        )
+
     def format_output(
-        self, 
-        content: str, 
+        self,
+        content: str,
         metadata: Optional[Dict[str, Any]] = None,
-        stats: Optional[ProcessingStats] = None
+        stats: Optional[ProcessingStats] = None,
     ) -> str:
         """コンテンツを指定されたフォーマットで整形"""
         if self.format_type == "markdown":
@@ -42,34 +46,34 @@ class OutputFormatter:
         elif self.format_type == "json":
             return self._format_json(content, metadata, stats)
         else:
-            raise ValueError(f"サポートされていない出力フォーマット: {self.format_type}")
-    
+            raise ValueError(
+                f"サポートされていない出力フォーマット: {self.format_type}"
+            )
+
     def _format_markdown(
-        self, 
-        content: str, 
-        metadata: Optional[Dict[str, Any]], 
-        stats: Optional[ProcessingStats]
+        self,
+        content: str,
+        metadata: Optional[Dict[str, Any]],
+        stats: Optional[ProcessingStats],
     ) -> str:
         """Markdownフォーマットで整形"""
         parts = []
-        
+
         # メタデータヘッダー
         if metadata:
             parts.append(self._generate_markdown_header(metadata, stats))
-        
+
         # メインコンテンツ
         parts.append(content)
-        
+
         # フッター
         if stats:
             parts.append(self._generate_markdown_footer(stats))
-        
+
         return "\n\n".join(filter(None, parts))
-    
+
     def _generate_markdown_header(
-        self, 
-        metadata: Dict[str, Any], 
-        stats: Optional[ProcessingStats]
+        self, metadata: Dict[str, Any], stats: Optional[ProcessingStats]
     ) -> str:
         """Markdownヘッダーを生成"""
         lines = [
@@ -79,69 +83,77 @@ class OutputFormatter:
             "",
             f"**生成日時**: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
         ]
-        
+
         # PR情報
         if "pr_info" in metadata:
             pr_info = metadata["pr_info"]
-            lines.extend([
-                f"**プルリクエスト**: [{pr_info.get('owner')}/{pr_info.get('repo')}#{pr_info.get('pull_number')}]({pr_info.get('url')})",
-            ])
-        
+            lines.extend(
+                [
+                    f"**プルリクエスト**: [{pr_info.get('owner')}/{pr_info.get('repo')}#{pr_info.get('pull_number')}]({pr_info.get('url')})",
+                ]
+            )
+
         # ペルソナ情報
         if "persona" in metadata:
             lines.append(f"**AIペルソナ**: {metadata['persona']}")
-        
+
         # 統計情報
         if stats:
-            lines.extend([
-                "",
-                "## 処理統計",
-                "",
-                f"- **総コメント数**: {stats.total_comments} 件",
-                f"- **解決済み**: {stats.resolved_comments} 件",
-                f"- **未解決**: {stats.unresolved_comments} 件", 
-                f"- **抽出プロンプト**: {stats.prompts_extracted} 件",
-                f"- **処理時間**: {stats.processing_time:.2f} 秒",
-            ])
-            
+            lines.extend(
+                [
+                    "",
+                    "## 処理統計",
+                    "",
+                    f"- **総コメント数**: {stats.total_comments} 件",
+                    f"- **解決済み**: {stats.resolved_comments} 件",
+                    f"- **未解決**: {stats.unresolved_comments} 件",
+                    f"- **CodeRabbit以外**: {stats.non_coderabbit_comments} 件（除外）",
+                    f"- **抽出プロンプト**: {stats.prompts_extracted} 件",
+                    f"- **処理時間**: {stats.processing_time:.2f} 秒",
+                ]
+            )
+
             if stats.errors:
-                lines.extend([
-                    f"- **エラー**: {len(stats.errors)} 件",
-                    "",
-                    "<details>",
-                    "<summary>エラー詳細</summary>",
-                    "",
-                    *[f"- {error}" for error in stats.errors],
-                    "",
-                    "</details>"
-                ])
-        
+                lines.extend(
+                    [
+                        f"- **エラー**: {len(stats.errors)} 件",
+                        "",
+                        "<details>",
+                        "<summary>エラー詳細</summary>",
+                        "",
+                        *[f"- {error}" for error in stats.errors],
+                        "",
+                        "</details>",
+                    ]
+                )
+
         return "\n".join(lines)
-    
+
     def _generate_markdown_footer(self, stats: ProcessingStats) -> str:
         """Markdownフッターを生成"""
         success_rate = (
             (stats.prompts_extracted / max(stats.unresolved_comments, 1)) * 100
-            if stats.unresolved_comments > 0 else 0
+            if stats.unresolved_comments > 0
+            else 0
         )
-        
+
         return f"""
 ---
 
 ## 処理完了
 
-✅ **成功率**: {success_rate:.1f}% ({stats.prompts_extracted}/{stats.unresolved_comments} プロンプト抽出)  
-⏱️ **処理時間**: {stats.processing_time:.2f} 秒  
+✅ **成功率**: {success_rate:.1f}% ({stats.prompts_extracted}/{stats.unresolved_comments} プロンプト抽出)
+⏱️ **処理時間**: {stats.processing_time:.2f} 秒
 📊 **総処理数**: {stats.total_comments} コメント
 
 *Generated by GitHub Review Prompts AI Agent v1.0.0*
 """
-    
+
     def _format_json(
-        self, 
-        content: str, 
-        metadata: Optional[Dict[str, Any]], 
-        stats: Optional[ProcessingStats]
+        self,
+        content: str,
+        metadata: Optional[Dict[str, Any]],
+        stats: Optional[ProcessingStats],
     ) -> str:
         """JSONフォーマットで整形"""
         output_data = {
@@ -149,59 +161,63 @@ class OutputFormatter:
             "format_version": "1.0.0",
             "metadata": metadata or {},
             "content": content,
-            "statistics": stats.dict() if stats else None
+            "statistics": stats.dict() if stats else None,
         }
-        
+
         return json.dumps(output_data, ensure_ascii=False, indent=2)
-    
+
     def save_to_file(self, content: str, filepath: str) -> bool:
         """コンテンツをファイルに保存"""
         try:
             # ファイルパスの検証
             if not validate_file_path(filepath, allow_create=True):
                 raise ValueError(f"無効なファイルパス: {filepath}")
-            
+
             file_path = Path(filepath).resolve()
-            
+
             # 親ディレクトリを作成
             file_path.parent.mkdir(parents=True, exist_ok=True)
-            
+
             # ファイル拡張子の確認と警告
             expected_ext = ".md" if self.format_type == "markdown" else ".json"
             if not filepath.endswith(expected_ext):
-                self.logger.warning(f"ファイル拡張子が一致しません。期待値: {expected_ext}, 実際: {file_path.suffix}")
-            
+                self.logger.warning(
+                    f"ファイル拡張子が一致しません。期待値: {expected_ext}, 実際: {file_path.suffix}"
+                )
+
             # UTF-8エンコーディングでファイル書き込み
-            with open(file_path, 'w', encoding='utf-8') as f:
+            with open(file_path, "w", encoding="utf-8") as f:
                 f.write(content)
-            
+
             self.logger.info(f"ファイル保存完了: {file_path} ({len(content)} 文字)")
             return True
-            
+
         except Exception as e:
             error_msg = f"ファイル保存エラー ({filepath}): {str(e)}"
             self.logger.error(error_msg)
             return False
-    
+
     def display_to_console(
-        self, 
-        content: str, 
+        self,
+        content: str,
         metadata: Optional[Dict[str, Any]] = None,
-        stats: Optional[ProcessingStats] = None
+        stats: Optional[ProcessingStats] = None,
     ) -> None:
         """コンソールに結果を表示"""
         try:
             # ヘッダー表示
             if metadata or stats:
                 self._display_console_header(metadata, stats)
-            
+
             # プロンプト用コピー範囲の明確な開始マーカー
             marker = "🤖" + "=" * 78 + "🤖"
             start_msg = "📋 AI AGENT PROMPT - コピーペースト用範囲 (開始)"
             copy_instruction = "💡 以下の内容をコピーしてAIチャットに貼り付けてください"
             end_msg = "📋 AI AGENT PROMPT - コピーペースト用範囲 (終了)"
-            copy_instruction_end = "💡 上記の内容をコピーしてAIチャットに貼り付けてください"
-            
+            copy_instruction_end = (
+                "💡 上記の内容をコピーしてAIチャットに貼り付けてください"
+            )
+
             if self.use_colors:
                 # カラー出力（視覚的）
                 self.console.print()
@@ -216,15 +232,15 @@ class OutputFormatter:
                 print(start_msg)
                 print(copy_instruction)
                 print(marker)
-            
+
             print()  # プレーンprintで改行
-            
+
             # メインコンテンツ表示（常にプレーンテキスト）
             print(content)
-            
+
             # プロンプト用コピー範囲の明確な終了マーカー
             print()  # プレーンprintで改行
-            
+
             if self.use_colors:
                 # カラー出力（視覚的）
                 self.console.print(marker, style="bold cyan")
@@ -237,79 +253,77 @@ class OutputFormatter:
                 print(end_msg)
                 print(copy_instruction_end)
                 print(marker)
-            
+
         except Exception as e:
             self.logger.error(f"コンソール表示エラー: {str(e)}")
             # フォールバック: プレーンテキストで出力
             print(content)
-    
+
     def _display_console_header(
-        self, 
-        metadata: Optional[Dict[str, Any]], 
-        stats: Optional[ProcessingStats]
+        self, metadata: Optional[Dict[str, Any]], stats: Optional[ProcessingStats]
     ) -> None:
         """コンソールヘッダーを表示"""
         # タイトルパネル
         title = Text("GitHub Review Prompts AI Agent", style="bold blue")
         subtitle = f"Generated at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
-        
+
         if metadata and "persona" in metadata:
             subtitle += f" | Persona: {metadata['persona']}"
-        
+
         self.console.print(Panel(title, subtitle=subtitle, style="blue"))
-        
+
         # 統計テーブル
         if stats:
             self._display_stats_table(stats)
-        
+
         # PR情報
         if metadata and "pr_info" in metadata:
             self._display_pr_info(metadata["pr_info"])
-    
+
     def _display_stats_table(self, stats: ProcessingStats) -> None:
         """統計情報をテーブルで表示"""
         table = Table(title="処理統計", style="cyan")
         table.add_column("項目", style="bold")
         table.add_column("値", justify="right")
-        
+
         table.add_row("総コメント数", f"{stats.total_comments:,} 件")
         table.add_row("解決済み", f"{stats.resolved_comments:,} 件")
         table.add_row("未解決", f"{stats.unresolved_comments:,} 件")
         table.add_row("抽出プロンプト", f"{stats.prompts_extracted:,} 件")
         table.add_row("処理時間", f"{stats.processing_time:.2f} 秒")
-        
+
         if stats.errors:
             table.add_row("エラー", f"{len(stats.errors)} 件", style="red")
-        
+
         self.console.print(table)
         self.console.print()
-    
+
     def _display_pr_info(self, pr_info: Dict[str, Any]) -> None:
         """PR情報を表示"""
         info_text = f"PR: {pr_info.get('owner')}/{pr_info.get('repo')}#{pr_info.get('pull_number')}"
         if pr_info.get("url"):
             info_text += f"\nURL: {pr_info['url']}"
-        
+
         self.console.print(Panel(info_text, title="プルリクエスト情報", style="green"))
         self.console.print()
-    
+
     def create_summary_report(
-        self, 
-        prompts: List[AIPrompt], 
+        self,
+        prompts: List[AIPrompt],
         stats: ProcessingStats,
-        metadata: Optional[Dict[str, Any]] = None
+        metadata: Optional[Dict[str, Any]] = None,
     ) -> str:
         """サマリーレポートを作成"""
         if self.format_type == "markdown":
             return self._create_markdown_summary(prompts, stats, metadata)
         else:
             return self._create_json_summary(prompts, stats, metadata)
-    
+
     def _create_markdown_summary(
-        self, 
-        prompts: List[AIPrompt], 
+        self,
+        prompts: List[AIPrompt],
         stats: ProcessingStats,
-        metadata: Optional[Dict[str, Any]]
+        metadata: Optional[Dict[str, Any]],
     ) -> str:
         """Markdownサマリーレポートを作成"""
         lines = [
@@ -317,85 +331,98 @@ class OutputFormatter:
             "",
             f"**生成日時**: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
         ]
-        
+
         # 統計概要
-        lines.extend([
-            "",
-            "## 処理概要",
-            "",
-            f"- **総コメント数**: {stats.total_comments} 件",
-            f"- **AIプロンプト抽出数**: {stats.prompts_extracted} 件",
-            f"- **処理時間**: {stats.processing_time:.2f} 秒",
-        ])
-        
+        lines.extend(
+            [
+                "",
+                "## 処理概要",
+                "",
+                f"- **総コメント数**: {stats.total_comments} 件",
+                f"- **AIプロンプト抽出数**: {stats.prompts_extracted} 件",
+                f"- **処理時間**: {stats.processing_time:.2f} 秒",
+            ]
+        )
+
         if not prompts:
-            lines.append("\n**結果**: AIエージェント用プロンプトは見つかりませんでした。")
+            lines.append(
+                "\n**結果**: AIエージェント用プロンプトは見つかりませんでした。"
+            )
             return "\n".join(lines)
-        
+
         # カテゴリ別統計
         category_stats = {}
         priority_stats = {"high": 0, "medium": 0, "low": 0}
-        
+
         for prompt in prompts:
             category_stats[prompt.category] = category_stats.get(prompt.category, 0) + 1
             priority_stats[prompt.priority] += 1
-        
-        lines.extend([
-            "",
-            "## カテゴリ別統計",
-            "",
-            *[f"- **{cat}**: {count} 件" for cat, count in sorted(category_stats.items())],
-            "",
-            "## 優先度別統計", 
-            "",
-            f"- **高 (High)**: {priority_stats['high']} 件",
-            f"- **中 (Medium)**: {priority_stats['medium']} 件",
-            f"- **低 (Low)**: {priority_stats['low']} 件",
-        ])
-        
+
+        lines.extend(
+            [
+                "",
+                "## カテゴリ別統計",
+                "",
+                *[
+                    f"- **{cat}**: {count} 件"
+                    for cat, count in sorted(category_stats.items())
+                ],
+                "",
+                "## 優先度別統計",
+                "",
+                f"- **高 (High)**: {priority_stats['high']} 件",
+                f"- **中 (Medium)**: {priority_stats['medium']} 件",
+                f"- **低 (Low)**: {priority_stats['low']} 件",
+            ]
+        )
+
         # ファイル別統計
         file_stats = {}
         for prompt in prompts:
             if prompt.file_path:
                 file_stats[prompt.file_path] = file_stats.get(prompt.file_path, 0) + 1
-        
+
         if file_stats:
-            lines.extend([
-                "",
-                "## ファイル別統計",
-                "",
-                *[f"- **{file}**: {count} 件" for file, count in sorted(file_stats.items(), key=lambda x: -x[1])]
-            ])
-        
+            lines.extend(
+                [
+                    "",
+                    "## ファイル別統計",
+                    "",
+                    *[
+                        f"- **{file}**: {count} 件"
+                        for file, count in sorted(
+                            file_stats.items(), key=lambda x: -x[1]
+                        )
+                    ],
+                ]
+            )
+
         # エラー情報
         if stats.errors:
-            lines.extend([
-                "",
-                "## エラー情報",
-                "",
-                *[f"- {error}" for error in stats.errors]
-            ])
-        
+            lines.extend(
+                ["", "## エラー情報", "", *[f"- {error}" for error in stats.errors]]
+            )
+
         return "\n".join(lines)
-    
+
     def _create_json_summary(
-        self, 
-        prompts: List[AIPrompt], 
+        self,
+        prompts: List[AIPrompt],
         stats: ProcessingStats,
-        metadata: Optional[Dict[str, Any]]
+        metadata: Optional[Dict[str, Any]],
     ) -> str:
         """JSONサマリーレポートを作成"""
         # カテゴリ・優先度・ファイル別の統計を計算
         category_stats = {}
         priority_stats = {"high": 0, "medium": 0, "low": 0}
         file_stats = {}
-        
+
         for prompt in prompts:
             category_stats[prompt.category] = category_stats.get(prompt.category, 0) + 1
             priority_stats[prompt.priority] += 1
             if prompt.file_path:
                 file_stats[prompt.file_path] = file_stats.get(prompt.file_path, 0) + 1
-        
+
         summary_data = {
             "generated_at": datetime.now().isoformat(),
             "metadata": metadata or {},
@@ -405,26 +432,30 @@ class OutputFormatter:
                 "unresolved_comments": stats.unresolved_comments,
                 "prompts_extracted": stats.prompts_extracted,
                 "processing_time": stats.processing_time,
-                "errors": stats.errors
+                "errors": stats.errors,
             },
             "breakdown": {
                 "by_category": category_stats,
                 "by_priority": priority_stats,
-                "by_file": dict(sorted(file_stats.items(), key=lambda x: -x[1]))
+                "by_file": dict(sorted(file_stats.items(), key=lambda x: -x[1])),
             },
             "prompts": [
                 {
                     "id": prompt.comment_id,
-                    "content": prompt.content[:200] + "..." if len(prompt.content) > 200 else prompt.content,
+                    "content": (
+                        prompt.content[:200] + "..."
+                        if len(prompt.content) > 200
+                        else prompt.content
+                    ),
                     "location": prompt.location,
                     "file_path": prompt.file_path,
                     "line_number": prompt.line_number,
                     "category": prompt.category,
                     "priority": prompt.priority,
-                    "author": prompt.author
+                    "author": prompt.author,
                 }
                 for prompt in prompts
-            ]
+            ],
         }
-        
+
         return json.dumps(summary_data, ensure_ascii=False, indent=2)

@@ -289,6 +289,15 @@ class CommentProcessor:
                     self.logger.warning("コメントIDが見つかりません")
                     continue
 
+                # CodeRabbitのコメントのみを対象とする
+                user_login = comment.get("user", {}).get("login", "").lower()
+                if "coderabbitai" not in user_login:
+                    self.stats.non_coderabbit_comments += 1
+                    self.logger.debug(
+                        f"CodeRabbit以外のコメント {comment_id} をスキップ: {user_login}"
+                    )
+                    continue
+
                 # 解決済みコメントの処理
                 is_resolved = comment_id in resolved_ids
                 is_marked_for_resolution = comment_id in marked_comment_ids

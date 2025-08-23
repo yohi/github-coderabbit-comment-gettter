@@ -47,6 +47,13 @@ class CommentThreadProcessor:
             first_comment = sorted_comments[0] if sorted_comments else None
 
             if first_comment:
+                # 最初のコメントがCodeRabbitのものかチェック
+                if not self._is_coderabbit_comment(first_comment):
+                    self.logger.debug(
+                        f"CodeRabbit以外のコメントスレッド {thread_id} をスキップ"
+                    )
+                    continue
+
                 # CodeRabbitの最後のコメントを取得
                 last_coderabbit_comment = self._get_last_coderabbit_comment(
                     sorted_comments
