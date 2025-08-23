@@ -200,10 +200,20 @@ class GitHubRateLimitHandler:
             time.sleep(config["delay"])
 
     def _handle_rate_limit_error(
-        self, response: requests.Response, api_type: str
+        self, response: requests.Response, api_type: str, retry_count: int = 0
     ) -> float:
         """レート制限エラーの処理"""
         headers = response.headers
+
+        # Retry-After 優先（abuse/secondary rate limit対策）
+        retry_after = headers.get("Retry-After")
+        if retry_after:
+            try:
+                delay = max(float(retry_after), 0.0)
+                return delay
+            except ValueError:
+                # 数値以外（HTTP-date等）の場合はリセット時刻ベースにフォールバック
+                pass
 
         # GitHub APIのレート制限ヘッダーから情報取得
         reset_time = int(headers.get("X-RateLimit-Reset", time.time() + 3600))
@@ -223,12 +233,10 @@ class GitHubRateLimitHandler:
 
         if self.strategy == RateLimitStrategy.EXPONENTIAL_BACKOFF:
             config = self.config[RateLimitStrategy.EXPONENTIAL_BACKOFF]
-            retry_count = getattr(self, "_retry_count", 0)
             delay = min(
                 config["base_delay"] * (config["backoff_factor"] ** retry_count),
                 config["max_delay"],
             )
-            self._retry_count = retry_count + 1
 
         elif self.strategy == RateLimitStrategy.FIXED_DELAY:
             delay = time_until_reset + 10  # 少し余裕を持たせる
