@@ -10,40 +10,44 @@ def parse_pr_url(pr_url: str) -> Tuple[str, str, int]:
     """プルリクエストURLを解析してowner, repo, pull_numberを取得"""
     if not pr_url or not isinstance(pr_url, str):
         raise ValueError(f"無効なプルリクエストURL: {pr_url}")
-    
+
     # URLを正規化
     url = pr_url.strip()
-    
+
     try:
         parsed = urlparse(url)
-        
+
         # github.com以外は拒否
         if parsed.hostname != "github.com":
             raise ValueError(f"GitHub以外のURL: {parsed.hostname}")
-        
+
         # プルリクエストURLのパターンマッチ
         pr_pattern = r"^/([^/]+)/([^/]+)/pull/(\d+)/?$"
         match = re.match(pr_pattern, parsed.path)
-        
+
         if not match:
-            raise ValueError(f"プルリクエストURLの形式が正しくありません: {parsed.path}")
-        
+            raise ValueError(
+                f"プルリクエストURLの形式が正しくありません: {parsed.path}"
+            )
+
         owner, repo, pull_number_str = match.groups()
-        
+
         # 基本的な検証
         if not owner or not repo or not pull_number_str:
             raise ValueError("URLの構成要素が不完全です")
-        
+
         # プルリクエスト番号の変換と検証
         try:
             pull_number = int(pull_number_str)
             if pull_number <= 0:
                 raise ValueError(f"無効なプルリクエスト番号: {pull_number}")
         except ValueError as e:
-            raise ValueError(f"プルリクエスト番号の変換に失敗: {pull_number_str}") from e
-        
+            raise ValueError(
+                f"プルリクエスト番号の変換に失敗: {pull_number_str}"
+            ) from e
+
         return owner, repo, pull_number
-        
+
     except Exception as e:
         if isinstance(e, ValueError):
             raise
@@ -54,7 +58,7 @@ def extract_ai_agent_prompt(comment_body: str) -> Optional[str]:
     """コメント本文からPrompt for AI Agentsブロックを抽出"""
     if not comment_body or not isinstance(comment_body, str):
         return None
-    
+
     # 複数のパターンに対応
     patterns = [
         # CodeRabbit標準形式: <details><summary>🤖 Prompt for AI Agents</summary>.....</details>
@@ -68,18 +72,18 @@ def extract_ai_agent_prompt(comment_body: str) -> Optional[str]:
         # シンプルなマークダウン: **Prompt for AI Agents**...
         r"\*\*Prompt for AI Agents\*\*\s*(.*?)(?:\n\n|$)",
     ]
-    
+
     for pattern in patterns:
         match = re.search(pattern, comment_body, re.DOTALL | re.IGNORECASE)
         if match:
             prompt_text = match.group(1).strip()
-            
+
             # HTMLタグとマークダウン記法を除去
             prompt_text = _clean_extracted_prompt(prompt_text)
-            
+
             if prompt_text:  # 空でない場合のみ返す
                 return prompt_text
-    
+
     return None
 
 
@@ -87,27 +91,27 @@ def _clean_extracted_prompt(text: str) -> str:
     """抽出されたプロンプトテキストをクリーンアップ"""
     if not text:
         return ""
-    
+
     # HTMLタグを除去
     text = re.sub(r"<[^>]+>", "", text)
-    
+
     # マークダウンコードブロック記法を除去
     text = re.sub(r"```[a-zA-Z]*\n?", "", text)
     text = re.sub(r"\n```", "", text)
     text = re.sub(r"```", "", text)
-    
+
     # マークダウン強調記法を除去
     text = re.sub(r"\*\*(.*?)\*\*", r"\1", text)  # **bold**
-    text = re.sub(r"\*(.*?)\*", r"\1", text)        # *italic*
-    text = re.sub(r"_(.*?)_", r"\1", text)           # _italic_
-    text = re.sub(r"`(.*?)`", r"\1", text)           # `code`
-    
+    text = re.sub(r"\*(.*?)\*", r"\1", text)  # *italic*
+    text = re.sub(r"_(.*?)_", r"\1", text)  # _italic_
+    text = re.sub(r"`(.*?)`", r"\1", text)  # `code`
+
     # 余分な空白文字を除去
     text = re.sub(r"\s+", " ", text)
-    
+
     # HTMLエンティティをデコード
     text = html.unescape(text)
-    
+
     return text.strip()
 
 
@@ -115,38 +119,100 @@ def categorize_prompt(prompt: str, file_path: str = "") -> str:
     """プロンプト内容からカテゴリを推定"""
     if not prompt:
         return "general"
-    
+
     prompt_lower = prompt.lower()
     file_lower = file_path.lower()
-    
+
     # セキュリティ関連キーワード
     security_keywords = [
-        "security", "vulnerability", "sanitiz", "validat", "escap", "inject",
-        "xss", "csrf", "sql", "auth", "permission", "encrypt", "decrypt",
-        "token", "password", "secret", "private", "sensitive", "exposure"
+        "security",
+        "vulnerability",
+        "sanitiz",
+        "validat",
+        "escap",
+        "inject",
+        "xss",
+        "csrf",
+        "sql",
+        "auth",
+        "permission",
+        "encrypt",
+        "decrypt",
+        "token",
+        "password",
+        "secret",
+        "private",
+        "sensitive",
+        "exposure",
     ]
-    
+
     # パフォーマンス関連キーワード
     performance_keywords = [
-        "performance", "optimization", "optimize", "speed", "memory", "cache",
-        "efficient", "slow", "fast", "bottleneck", "scale", "resource",
-        "cpu", "ram", "database", "query", "index", "algorithm", "complexity"
+        "performance",
+        "optimization",
+        "optimize",
+        "speed",
+        "memory",
+        "cache",
+        "efficient",
+        "slow",
+        "fast",
+        "bottleneck",
+        "scale",
+        "resource",
+        "cpu",
+        "ram",
+        "database",
+        "query",
+        "index",
+        "algorithm",
+        "complexity",
     ]
-    
+
     # スタイル関連キーワード
     style_keywords = [
-        "style", "format", "naming", "convention", "consistent", "readable",
-        "maintainable", "clean", "organize", "structure", "comment", "doc",
-        "variable", "function", "class", "method", "indentation", "spacing"
+        "style",
+        "format",
+        "naming",
+        "convention",
+        "consistent",
+        "readable",
+        "maintainable",
+        "clean",
+        "organize",
+        "structure",
+        "comment",
+        "doc",
+        "variable",
+        "function",
+        "class",
+        "method",
+        "indentation",
+        "spacing",
     ]
-    
+
     # ロジック関連キーワード
     logic_keywords = [
-        "logic", "algorithm", "condition", "loop", "error", "exception",
-        "handle", "return", "null", "undefined", "edge", "case", "bug",
-        "fix", "correct", "implement", "refactor", "simplify"
+        "logic",
+        "algorithm",
+        "condition",
+        "loop",
+        "error",
+        "exception",
+        "handle",
+        "return",
+        "null",
+        "undefined",
+        "edge",
+        "case",
+        "bug",
+        "fix",
+        "correct",
+        "implement",
+        "refactor",
+        "simplify",
     ]
-    
+
     # キーワードマッチングによるカテゴリ判定
     if any(keyword in prompt_lower for keyword in security_keywords):
         return "security"
@@ -156,15 +222,15 @@ def categorize_prompt(prompt: str, file_path: str = "") -> str:
         return "style"
     elif any(keyword in prompt_lower for keyword in logic_keywords):
         return "logic"
-    
-    # ファイル拡張子による補助的な判定
-    if file_lower.endswith(('.sql', '.db')):
+
+    # ファイル拡張子による補助的な判定（file_pathがある場合のみ）
+    if file_lower and file_lower.endswith((".sql", ".db")):
         return "performance"
-    elif file_lower.endswith(('.css', '.scss', '.less')):
+    elif file_lower and file_lower.endswith((".css", ".scss", ".less")):
         return "style"
-    elif file_lower.endswith(('.test.', '.spec.')):
+    elif file_lower and file_lower.endswith((".test.", ".spec.")):
         return "logic"
-    
+
     return "general"
 
 
@@ -172,30 +238,51 @@ def determine_priority(prompt: str, category: str) -> str:
     """プロンプト内容から優先度を推定"""
     if not prompt:
         return "medium"
-    
+
     prompt_lower = prompt.lower()
-    
+
     # 高優先度キーワード
     high_priority_keywords = [
-        "critical", "security", "vulnerability", "crash", "error", "fail",
-        "break", "bug", "urgent", "important", "must", "required", "necessary"
+        "critical",
+        "security",
+        "vulnerability",
+        "crash",
+        "error",
+        "fail",
+        "break",
+        "bug",
+        "urgent",
+        "important",
+        "must",
+        "required",
+        "necessary",
     ]
-    
+
     # 低優先度キーワード
     low_priority_keywords = [
-        "style", "format", "minor", "suggestion", "consider", "optional",
-        "improve", "enhance", "better", "nice", "clean", "organize"
+        "style",
+        "format",
+        "minor",
+        "suggestion",
+        "consider",
+        "optional",
+        "improve",
+        "enhance",
+        "better",
+        "nice",
+        "clean",
+        "organize",
     ]
-    
+
     # セキュリティカテゴリは基本的に高優先度
     if category == "security":
         return "high"
-    
+
     # キーワードベースの判定
     if any(keyword in prompt_lower for keyword in high_priority_keywords):
         return "high"
     elif any(keyword in prompt_lower for keyword in low_priority_keywords):
         return "low"
-    
+
     # デフォルトは中優先度
     return "medium"
