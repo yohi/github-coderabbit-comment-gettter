@@ -163,3 +163,4 @@ review_prompt_*.md
 
 # Development test environments
 test-env/
+.cursor/
