@@ -1,0 +1,8 @@
+# 個人の解決状態管理ファイル
+personal-*.json
+cache/
+
+# 共有ファイルはGit管理対象
+!shared.json
+!README.md
+!.gitignore

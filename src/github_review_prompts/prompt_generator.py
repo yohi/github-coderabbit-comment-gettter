@@ -5,7 +5,8 @@ import time
 from typing import Dict, List, Optional, Any
 from datetime import datetime
 
-from .models import AIPrompt, PersonaConfig, PERSONAS
+from .models import AIPrompt, PersonaConfig, PERSONAS, OutsideDiffComment
+from .utils.outside_diff_parser import OutsideDiffParser
 from .utils.validators import validate_persona
 
 
@@ -22,6 +23,7 @@ class AIPromptGenerator:
         self.persona_config = PERSONAS[persona]
         self.github_token = github_token
         self.logger = logging.getLogger(__name__)
+        self.outside_diff_parser = OutsideDiffParser()
 
         self.logger.info(f"AIプロンプト生成初期化: ペルソナ '{persona}'")
 
@@ -602,3 +604,107 @@ curl -X POST \\
 **特別な指示**:
 {chr(10).join(f'- {instruction}' for instruction in config.instructions)}
 """
+
+    def generate_outside_diff_section(
+        self, outside_diff_comments: List[OutsideDiffComment]
+    ) -> str:
+        """範囲外コメント用の特別セクションを生成
+
+        Args:
+            outside_diff_comments: 範囲外コメントのリスト
+
+        Returns:
+            範囲外コメント用のプロンプトセクション
+        """
+        if not outside_diff_comments:
+            return ""
+
+        # 優先度別に分類
+        categorized = self.outside_diff_parser.categorize_by_priority(
+            outside_diff_comments
+        )
+        priority_order = self.outside_diff_parser.get_priority_order()
+
+        section = """
+## 🚨 範囲外重要コメント（プラットフォーム制限により別途対応）
+
+**⚠️ 重要**: これらのコメントはGitHubのプラットフォーム制限により、
+diffビューでインライン表示されていませんが、対応が必要です。
+ファイル全体を確認して該当箇所を特定してください。
+
+### 🔒 セキュリティファースト対応手順
+1. **ファイル特定**: 指定されたファイルパスを確認
+2. **行範囲確認**: 指定された行範囲を直接確認
+3. **コード理解**: 現在の実装を把握
+4. **修正適用**: 提案されたdiffを慎重に適用
+5. **影響範囲検証**: 関連する他の箇所への影響を確認
+
+"""
+
+        todo_counter = 1
+
+        for priority in priority_order:
+            if priority not in categorized:
+                continue
+
+            comments = categorized[priority]
+            section += f"\n### {priority}対応項目\n\n"
+
+            for comment in comments:
+                section += self._format_outside_diff_comment(comment, todo_counter)
+                todo_counter += 1
+
+        return section
+
+    def _format_outside_diff_comment(
+        self, comment: OutsideDiffComment, todo_number: int
+    ) -> str:
+        """範囲外コメントを整形
+
+        Args:
+            comment: 範囲外コメント
+            todo_number: TODO番号
+
+        Returns:
+            整形されたコメント文字列
+        """
+        # カテゴリアイコンのマッピング
+        category_icons = {"actionable": "🚨", "duplicate": "♻️", "nitpick": "🧹"}
+
+        # 重要度アイコンのマッピング
+        severity_icons = {"caution": "🔴", "warning": "🟡", "info": "🟢"}
+
+        category_icon = category_icons.get(comment.category.value, "📝")
+        severity_icon = severity_icons.get(comment.severity.value, "ℹ️")
+
+        formatted = f"""
+### TODO #{todo_number}: {comment.title}
+**ID**: {comment.id}
+**ファイル**: `{comment.file_path}`
+**行範囲**: {comment.line_range}
+**カテゴリ**: {category_icon} {comment.category.value.title()} ({severity_icon} {comment.severity.value.upper()})
+**制限理由**: diff範囲外のためインライン表示不可
+
+**問題**: {comment.title}
+**詳細**: {comment.description}
+"""
+
+        if comment.suggested_fix:
+            formatted += f"""
+**🔧 推奨修正**:
+```diff
+{comment.suggested_fix}
+```
+"""
+
+        formatted += f"""
+**📍 対応方法**:
+1. ファイル `{comment.file_path}` を開く
+2. 行 {comment.line_range} を確認
+3. 上記の修正案を慎重に適用
+4. 関連する他の箇所への影響を検証
+
+---
+"""
+
+        return formatted

@@ -6,13 +6,20 @@ import re
 from typing import Dict, List, Optional, Set, Tuple, Any
 from datetime import datetime
 
-from .models import ReviewComment, AIPrompt, ProcessingStats, ProcessingError
+from .models import (
+    ReviewComment,
+    AIPrompt,
+    ProcessingStats,
+    ProcessingError,
+    OutsideDiffComment,
+)
 from .utils.parsers import (
     extract_ai_agent_prompt,
     categorize_prompt,
     determine_priority,
 )
 from .utils.validators import sanitize_content
+from .utils.outside_diff_parser import OutsideDiffParser
 from .github_client import GitHubClient
 from .comment_thread_processor import CommentThreadProcessor
 
@@ -32,6 +39,7 @@ class CommentProcessor:
         self.stats = ProcessingStats()
         self.auto_resolved_comments = []  # 自動解決されたコメントのログ
         self.thread_processor = CommentThreadProcessor(github_client)
+        self.outside_diff_parser = OutsideDiffParser()
 
     def detect_resolution_markers(self, comment_bodies: Dict[int, str]) -> Set[int]:
         """コメント本文からCodeRabbit解決済みマーカーを検出
@@ -664,3 +672,47 @@ class CommentProcessor:
                 validation_errors.append(f"コメント {i}: ユーザー情報が無効です")
 
         return len(validation_errors) == 0, validation_errors
+
+    def process_outside_diff_comments(
+        self, comments: List[ReviewComment]
+    ) -> List[OutsideDiffComment]:
+        """範囲外コメントを検出・処理
+
+        Args:
+            comments: レビューコメントのリスト
+
+        Returns:
+            範囲外コメントのリスト
+        """
+        outside_diff_comments = []
+
+        for comment in comments:
+            # 範囲外コメントが含まれているかチェック
+            if self.outside_diff_parser.detect_outside_diff_comments(comment.body):
+                self.logger.info(f"範囲外コメントを検出: コメントID {comment.id}")
+
+                # 範囲外コメントを解析
+                parsed_comments = self.outside_diff_parser.parse_outside_diff_comments(
+                    comment.body, comment.id, comment.author
+                )
+                outside_diff_comments.extend(parsed_comments)
+
+                self.logger.info(
+                    f"解析完了: {len(parsed_comments)}件の範囲外コメントを抽出"
+                )
+
+        # 優先度順にソート
+        outside_diff_comments.sort(
+            key=lambda x: (
+                (
+                    0
+                    if x.severity.value == "caution"
+                    else 1 if x.severity.value == "warning" else 2
+                ),
+                x.file_path,
+                x.line_range,
+            )
+        )
+
+        self.logger.info(f"範囲外コメント処理完了: 合計 {len(outside_diff_comments)}件")
+        return outside_diff_comments

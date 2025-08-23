@@ -10,15 +10,59 @@ from datetime import datetime
 from typing import List, Dict, Optional, Set, Tuple, Any
 from pathlib import Path
 
+# モジュール内インポート（相対インポート）
+if __name__ == "__main__":
+    # 直接実行時は絶対インポート
+    import sys
+
+    sys.path.append(str(Path(__file__).parent.parent))
+    from models import OutsideDiffComment
+    from comment_processor import CommentProcessor
+    from prompt_generator import AIPromptGenerator
+else:
+    # モジュールとして実行時は相対インポート
+    from ..models import OutsideDiffComment
+    from ..comment_processor import CommentProcessor
+    from ..prompt_generator import AIPromptGenerator
+    from ..utils.outside_diff_parser import OutsideDiffParser
+    from ..utils.ai_agent_optimizer import AIAgentOptimizer
+    from ..utils.platform_detector import PlatformLimitationDetector
+    from ..utils.duplicate_manager import DuplicateCommentManager
+    from ..utils.resolution_master import ResolutionMasterController
+
 logger = logging.getLogger(__name__)
 
 
 class UnifiedPromptEngine:
     """統一プロンプト生成エンジン"""
 
-    def __init__(self):
+    def __init__(self, project_root: str = ".", github_token: Optional[str] = None):
         # 新しいシンプル構造では動的生成を使用
-        pass
+        self.logger = logging.getLogger(__name__)
+        self.project_root = project_root
+        self.github_token = github_token
+
+        # Phase 2 & 3: 高度化・最適化機能の初期化
+        try:
+            self.outside_diff_parser = OutsideDiffParser()
+            self.ai_optimizer = AIAgentOptimizer()
+            self.platform_detector = PlatformLimitationDetector()
+            self.duplicate_manager = DuplicateCommentManager()
+
+            # 解決状態追跡システム（最新機能）
+            self.resolution_master = ResolutionMasterController(
+                project_root=project_root, github_token=github_token
+            )
+
+            self.enhanced_features_available = True
+            self.resolution_tracking_available = True
+            self.logger.info(
+                "全ての高度化・最適化機能が利用可能です（解決状態追跡含む）"
+            )
+        except Exception as e:
+            self.logger.warning(f"拡張機能の初期化に失敗: {e}")
+            self.enhanced_features_available = False
+            self.resolution_tracking_available = False
 
     def generate_main_prompt(
         self,
@@ -699,6 +743,577 @@ git log --oneline origin/[ブランチ名]..HEAD
                 )
 
         return "\n".join(prompt_parts)
+
+    def generate_resolution_aware_prompt(
+        self,
+        comments: List[Dict],
+        pr_info: Dict,
+        pr_url: str = "",
+        options: Dict = None,
+        enable_resolution_tracking: bool = True,
+    ) -> str:
+        """解決状態追跡機能付きの最高レベルプロンプト生成
+
+        Args:
+            comments: コメントリスト
+            pr_info: プルリクエスト情報
+            pr_url: プルリクエストURL
+            options: 生成オプション
+            enable_resolution_tracking: 解決状態追跡を有効にするか
+
+        Returns:
+            解決状態追跡機能付きプロンプト
+        """
+        try:
+            self.logger.info("解決状態追跡機能付きプロンプト生成開始")
+
+            # 1. 範囲外コメントの検出・解析
+            outside_diff_comments = []
+            if self.enhanced_features_available:
+                for comment in comments:
+                    if self._is_outside_diff_comment(comment):
+                        parsed_comments = (
+                            self.outside_diff_parser.parse_outside_diff_comments(
+                                comment.get("body", "")
+                            )
+                        )
+                        outside_diff_comments.extend(parsed_comments)
+
+            if not outside_diff_comments:
+                self.logger.info("範囲外コメントが見つかりませんでした")
+                return self.generate_ultimate_enhanced_prompt(
+                    comments, pr_info, pr_url, options, self.github_token
+                )
+
+            # 2. 解決状態追跡（有効な場合）
+            if enable_resolution_tracking and self.resolution_tracking_available:
+                # 解決状態追跡付きで処理
+                tracking_result = (
+                    self.resolution_master.process_comments_with_resolution_tracking(
+                        outside_diff_comments, pr_url, enable_github_integration=True
+                    )
+                )
+
+                # 解決状態追跡付きプロンプト生成
+                enhanced_prompt = self.resolution_master.generate_enhanced_prompt_with_resolution_context(
+                    outside_diff_comments, pr_info, include_progress_info=True
+                )
+
+                # 統計情報を追加
+                stats_section = f"""
+## 📊 解決状態追跡統計
+
+- **総コメント数**: {tracking_result['total_comments']}
+- **解決済み**: {tracking_result['resolved_comments']}
+- **未解決**: {tracking_result['unresolved_comments']}
+- **進捗率**: {tracking_result.get('progress_report', {}).get('summary', {}).get('completion_rate', 0):.1f}%
+
+"""
+                enhanced_prompt = stats_section + enhanced_prompt
+
+                self.logger.info(
+                    f"解決状態追跡機能付きプロンプト生成完了: {tracking_result['resolved_comments']}/{tracking_result['total_comments']} 解決済み"
+                )
+                return enhanced_prompt
+
+            else:
+                # 基本的な範囲外コメント処理のみ
+                self.logger.info("解決状態追跡なしで範囲外コメント処理")
+                return self.generate_enhanced_prompt_with_outside_diff(
+                    comments, pr_info, outside_diff_comments, options, self.github_token
+                )
+
+        except Exception as e:
+            self.logger.error(f"解決状態追跡機能付きプロンプト生成エラー: {e}")
+            # フォールバック: 基本プロンプト生成
+            return self.generate_main_prompt(
+                comments, pr_info, options, self.github_token
+            )
+
+    def _is_outside_diff_comment(self, comment: Dict) -> bool:
+        """コメントが範囲外コメントかどうかを判定"""
+        try:
+            body = comment.get("body", "")
+
+            # 範囲外コメントの特徴的なパターンを検出
+            outside_diff_patterns = [
+                r"\*\*Actionable comments posted:\s*\d+\*\*",
+                r"`\d+(?:-\d+)?`:\s*\*\*.*?\*\*",
+                r"---\s*\*\*Duplicate comments posted:\s*\d+\*\*",
+                r"---\s*\*\*Nitpick comments posted:\s*\d+\*\*",
+            ]
+
+            for pattern in outside_diff_patterns:
+                if re.search(pattern, body, re.IGNORECASE | re.DOTALL):
+                    return True
+
+            return False
+
+        except Exception as e:
+            self.logger.error(f"範囲外コメント判定エラー: {e}")
+            return False
+
+    def generate_enhanced_prompt_with_outside_diff(
+        self,
+        comments: List[Dict],
+        pr_info: Dict,
+        outside_diff_comments: List[OutsideDiffComment] = None,
+        options: Dict = None,
+        github_token: str = None,
+    ) -> str:
+        """範囲外コメントを含む拡張プロンプトを生成
+
+        Args:
+            comments: 通常のレビューコメント
+            pr_info: プルリクエスト情報
+            outside_diff_comments: 範囲外コメントのリスト
+            options: オプション設定
+            github_token: GitHubトークン
+
+        Returns:
+            範囲外コメントを含む統合プロンプト
+        """
+        if options is None:
+            options = {}
+
+        # 基本プロンプトを生成
+        base_prompt = self.generate_main_prompt(
+            comments, pr_info, options, github_token
+        )
+
+        # 範囲外コメントがない場合は基本プロンプトを返す
+        if not outside_diff_comments:
+            return base_prompt
+
+        # 範囲外コメント用のプロンプト生成器を初期化
+        try:
+            persona = options.get(
+                "persona", "security-analyst"
+            )  # デフォルトはセキュリティアナリスト
+            prompt_generator = AIPromptGenerator(
+                persona=persona, github_token=github_token
+            )
+
+            # 範囲外コメント用セクションを生成
+            outside_diff_section = prompt_generator.generate_outside_diff_section(
+                outside_diff_comments
+            )
+
+            # 統計情報を追加
+            stats_section = self._generate_outside_diff_stats(outside_diff_comments)
+
+            # 基本プロンプトと範囲外コメントセクションを統合
+            enhanced_prompt = f"""{base_prompt}
+
+{outside_diff_section}
+
+{stats_section}
+
+## 📋 統合対応指針
+
+### 🔒 セキュリティファースト原則
+1. **範囲外コメント優先**: プラットフォーム制限により見落としやすいため、最優先で対応
+2. **段階的対応**: 🔴緊急 → 🟡重要 → 🟢低優先の順で処理
+3. **影響範囲検証**: 各修正が他の箇所に与える影響を慎重に確認
+
+### 📊 対応完了の報告形式
+各範囲外コメントの対応完了時は以下の形式で報告してください：
+
+```
+✅ 範囲外TODO #{todo_number}: {title}
+**ファイル**: {file_path}
+**行範囲**: {line_range}
+**対応内容**: {具体的な対応内容}
+**検証結果**: {影響範囲の確認結果}
+```
+
+### ⚠️ 対応不要の判断
+範囲外コメントでも対応不要と判断する場合：
+
+```
+❌ 範囲外TODO #{todo_number}: {title}
+**理由**: {技術的根拠に基づく詳細な理由}
+**判断**: 対応不要（範囲外コメント）
+```
+"""
+
+            self.logger.info(
+                f"範囲外コメント統合完了: {len(outside_diff_comments)}件のコメントを統合"
+            )
+            return enhanced_prompt
+
+        except Exception as e:
+            self.logger.error(f"範囲外コメント統合エラー: {e}")
+            # エラーが発生した場合は基本プロンプトを返す
+            return base_prompt
+
+    def _generate_outside_diff_stats(
+        self, outside_diff_comments: List[OutsideDiffComment]
+    ) -> str:
+        """範囲外コメントの統計情報を生成
+
+        Args:
+            outside_diff_comments: 範囲外コメントのリスト
+
+        Returns:
+            統計情報のセクション
+        """
+        if not outside_diff_comments:
+            return ""
+
+        # カテゴリ別の集計
+        category_counts = {}
+        severity_counts = {}
+        file_counts = {}
+
+        for comment in outside_diff_comments:
+            # カテゴリ別
+            category = comment.category.value
+            category_counts[category] = category_counts.get(category, 0) + 1
+
+            # 重要度別
+            severity = comment.severity.value
+            severity_counts[severity] = severity_counts.get(severity, 0) + 1
+
+            # ファイル別
+            file_path = comment.file_path
+            file_counts[file_path] = file_counts.get(file_path, 0) + 1
+
+        stats = f"""
+## 📊 範囲外コメント統計
+
+### 📈 全体サマリー
+- **総コメント数**: {len(outside_diff_comments)}件
+- **対象ファイル数**: {len(file_counts)}ファイル
+
+### 🎯 重要度別内訳
+"""
+
+        # 重要度別の表示
+        severity_icons = {"caution": "🔴", "warning": "🟡", "info": "🟢"}
+        severity_names = {"caution": "緊急", "warning": "重要", "info": "低優先"}
+
+        for severity in ["caution", "warning", "info"]:
+            count = severity_counts.get(severity, 0)
+            if count > 0:
+                icon = severity_icons[severity]
+                name = severity_names[severity]
+                stats += f"- **{icon} {name}**: {count}件\n"
+
+        stats += "\n### 📂 ファイル別内訳\n"
+
+        # ファイル別の表示（上位5ファイル）
+        sorted_files = sorted(file_counts.items(), key=lambda x: x[1], reverse=True)[:5]
+        for file_path, count in sorted_files:
+            stats += f"- **{file_path}**: {count}件\n"
+
+        if len(file_counts) > 5:
+            stats += f"- その他 {len(file_counts) - 5}ファイル\n"
+
+        return stats
+
+    def generate_ultimate_enhanced_prompt(
+        self,
+        comments: List[Dict],
+        pr_info: Dict,
+        pr_url: str = "",
+        options: Dict = None,
+        github_token: str = None,
+    ) -> str:
+        """全機能統合版の最高レベルプロンプトを生成
+
+        Args:
+            comments: 通常のレビューコメント
+            pr_info: プルリクエスト情報
+            pr_url: プルリクエストURL
+            options: オプション設定
+            github_token: GitHubトークン
+
+        Returns:
+            全機能統合プロンプト
+        """
+        if options is None:
+            options = {}
+
+        if not self.enhanced_features_available:
+            self.logger.warning(
+                "拡張機能が利用できません。基本プロンプトを生成します。"
+            )
+            return self.generate_main_prompt(comments, pr_info, options, github_token)
+
+        try:
+            # Phase 1: 範囲外コメントの検出・解析
+            outside_diff_comments = []
+            for comment in comments:
+                if self.outside_diff_parser.detect_outside_diff_comments(
+                    comment.get("body", "")
+                ):
+                    parsed_comments = (
+                        self.outside_diff_parser.parse_outside_diff_comments(
+                            comment.get("body", ""),
+                            comment.get("id", 0),
+                            comment.get("user", {}).get("login", ""),
+                        )
+                    )
+                    outside_diff_comments.extend(parsed_comments)
+
+            # Phase 2: 詳細情報の付与
+            for comment in outside_diff_comments:
+                comment.file_details = self.outside_diff_parser.parse_file_path_details(
+                    comment.file_path
+                )
+                comment.line_details = (
+                    self.outside_diff_parser.parse_line_range_details(
+                        comment.line_range
+                    )
+                )
+                comment.suggestion_details = (
+                    self.outside_diff_parser.extract_structured_code_suggestion(
+                        comment.description
+                    )
+                )
+
+            # Phase 3: 最適化・分析
+            optimization_result = self.ai_optimizer.optimize_work_instructions(
+                outside_diff_comments
+            )
+            platform_analysis = self.platform_detector.analyze_comment_accessibility(
+                comments
+            )
+
+            # 重複管理（PR URLが提供されている場合）
+            duplicate_analysis = {}
+            if pr_url and outside_diff_comments:
+                tracking_result = self.duplicate_manager.track_comments(
+                    pr_url, outside_diff_comments
+                )
+                duplicate_analysis = self.duplicate_manager.find_cross_pr_duplicates(
+                    outside_diff_comments
+                )
+
+            # 基本プロンプトの生成
+            if outside_diff_comments:
+                base_prompt = self.generate_enhanced_prompt_with_outside_diff(
+                    comments, pr_info, outside_diff_comments, options, github_token
+                )
+            else:
+                base_prompt = self.generate_main_prompt(
+                    comments, pr_info, options, github_token
+                )
+
+            # 最適化情報の統合
+            optimization_section = self._generate_optimization_section(
+                optimization_result
+            )
+            platform_section = self._generate_platform_analysis_section(
+                platform_analysis
+            )
+            duplicate_section = (
+                self._generate_duplicate_analysis_section(duplicate_analysis)
+                if duplicate_analysis
+                else ""
+            )
+
+            # 最終統合プロンプト
+            ultimate_prompt = f"""{base_prompt}
+
+{optimization_section}
+
+{platform_section}
+
+{duplicate_section}
+
+## 🚀 統合実行戦略
+
+### 📊 実行サマリー
+- **総コメント数**: {len(comments)}件
+- **範囲外コメント数**: {len(outside_diff_comments)}件
+- **推定作業時間**: {optimization_result.get('estimated_time_minutes', 0)}分
+- **複雑度スコア**: {optimization_result.get('complexity_score', 0)}/100
+- **推奨アプローチ**: {optimization_result.get('recommended_approach', 'sequential')}
+
+### 🎯 最適化された実行順序
+{self._format_priority_order(optimization_result.get('priority_order', []))}
+
+### 🔒 セキュリティ・品質チェックリスト
+- [ ] GitHub トークンの環境変数確認完了
+- [ ] 範囲外コメントの位置特定完了
+- [ ] プラットフォーム制限への対応確認完了
+- [ ] 重複コメントの統合・スキップ判断完了
+- [ ] 高リスク項目の手動レビュー完了
+
+### ⚡ 効率化機会
+{self._format_automation_opportunities(optimization_result.get('automation_opportunities', []))}
+
+---
+
+**🎉 このプロンプトは全3フェーズの機能統合により生成されました**
+- **Phase 1**: 範囲外コメント基本対応
+- **Phase 2**: 高度化機能（詳細解析・グループ化）
+- **Phase 3**: 最適化機能（AI指示最適化・制限検出・重複管理）
+"""
+
+            self.logger.info(
+                f"統合プロンプト生成完了: {len(outside_diff_comments)}件の範囲外コメントを統合"
+            )
+            return ultimate_prompt
+
+        except Exception as e:
+            self.logger.error(f"統合プロンプト生成エラー: {e}")
+            # エラーが発生した場合は基本プロンプトにフォールバック
+            return self.generate_main_prompt(comments, pr_info, options, github_token)
+
+    def _generate_optimization_section(
+        self, optimization_result: Dict[str, Any]
+    ) -> str:
+        """最適化セクションを生成"""
+        if not optimization_result:
+            return ""
+
+        return f"""
+## 🤖 AI最適化分析結果
+
+### 📈 作業効率分析
+- **複雑度スコア**: {optimization_result.get('complexity_score', 0)}/100
+- **推定作業時間**: {optimization_result.get('estimated_time_minutes', 0)}分
+- **推奨アプローチ**: {optimization_result.get('recommended_approach', 'sequential')}
+
+### ⚠️ リスク評価
+**全体リスクレベル**: {optimization_result.get('risk_assessment', {}).get('overall_risk_level', 'low')}
+
+{self._format_risk_details(optimization_result.get('risk_assessment', {}))}
+
+### 🔧 手動レビュー必須項目
+{self._format_manual_review_items(optimization_result.get('manual_review_required', []))}
+"""
+
+    def _generate_platform_analysis_section(
+        self, platform_analysis: Dict[str, Any]
+    ) -> str:
+        """プラットフォーム分析セクションを生成"""
+        if not platform_analysis:
+            return ""
+
+        return f"""
+## 🌐 プラットフォーム制限分析
+
+### 📊 アクセシビリティスコア
+**スコア**: {platform_analysis.get('accessibility_score', 0)}/100
+
+### 📋 コメント分類
+- **アクセス可能**: {platform_analysis.get('accessible_comments', 0)}件
+- **制限あり**: {platform_analysis.get('limited_comments', 0)}件
+- **アクセス不可**: {platform_analysis.get('inaccessible_comments', 0)}件
+
+### 💡 推奨事項
+{self._format_recommendations(platform_analysis.get('recommendations', []))}
+"""
+
+    def _generate_duplicate_analysis_section(
+        self, duplicate_analysis: Dict[str, Any]
+    ) -> str:
+        """重複分析セクションを生成"""
+        if not duplicate_analysis:
+            return ""
+
+        exact_duplicates = len(duplicate_analysis.get("exact_duplicates", []))
+        similar_comments = len(duplicate_analysis.get("similar_comments", []))
+
+        return f"""
+## 🔄 重複コメント分析
+
+### 📊 重複統計
+- **完全重複**: {exact_duplicates}件
+- **類似コメント**: {similar_comments}件
+
+### 💡 重複対応推奨事項
+{self._format_recommendations(duplicate_analysis.get('recommendations', []))}
+"""
+
+    def _format_priority_order(self, priority_order: List[Dict[str, Any]]) -> str:
+        """優先順序をフォーマット"""
+        if not priority_order:
+            return "優先順序情報がありません。"
+
+        formatted = ""
+        for item in priority_order[:5]:  # 上位5件のみ表示
+            formatted += f"""
+**{item.get('rank', 0)}位**: {item.get('title', 'タイトル不明')}
+- ファイル: `{item.get('file_path', '')}`
+- リスクレベル: {item.get('risk_level', 'unknown')}
+- 推定時間: {item.get('estimated_time_minutes', 0)}分
+"""
+
+        if len(priority_order) > 5:
+            formatted += f"\n...他{len(priority_order) - 5}件"
+
+        return formatted
+
+    def _format_automation_opportunities(
+        self, opportunities: List[Dict[str, Any]]
+    ) -> str:
+        """自動化機会をフォーマット"""
+        if not opportunities:
+            return "自動化機会は検出されませんでした。"
+
+        formatted = ""
+        for opp in opportunities:
+            formatted += f"- **{opp.get('automation_type', 'unknown')}**: {opp.get('description', '')}"
+            if opp.get("estimated_time_saved_minutes"):
+                formatted += f" (節約時間: {opp['estimated_time_saved_minutes']}分)"
+            formatted += "\n"
+
+        return formatted
+
+    def _format_risk_details(self, risk_assessment: Dict[str, Any]) -> str:
+        """リスク詳細をフォーマット"""
+        if not risk_assessment:
+            return ""
+
+        formatted = ""
+
+        security_risks = risk_assessment.get("security_risks", [])
+        if security_risks:
+            formatted += f"**🔒 セキュリティリスク**: {len(security_risks)}件\n"
+
+        breaking_risks = risk_assessment.get("breaking_change_risks", [])
+        if breaking_risks:
+            formatted += f"**💥 破壊的変更リスク**: {len(breaking_risks)}件\n"
+
+        performance_risks = risk_assessment.get("performance_risks", [])
+        if performance_risks:
+            formatted += f"**⚡ パフォーマンスリスク**: {len(performance_risks)}件\n"
+
+        mitigation_strategies = risk_assessment.get("mitigation_strategies", [])
+        if mitigation_strategies:
+            formatted += "\n**軽減戦略**:\n"
+            for strategy in mitigation_strategies:
+                formatted += f"- {strategy}\n"
+
+        return formatted
+
+    def _format_manual_review_items(self, manual_items: List[Dict[str, Any]]) -> str:
+        """手動レビュー項目をフォーマット"""
+        if not manual_items:
+            return "手動レビューが必要な項目はありません。"
+
+        formatted = ""
+        for item in manual_items:
+            formatted += f"""
+**{item.get('title', 'タイトル不明')}**
+- ファイル: `{item.get('file_path', '')}`
+- 理由: {', '.join(item.get('reasons', []))}
+- 優先度: {item.get('review_priority', 'medium')}
+"""
+
+        return formatted
+
+    def _format_recommendations(self, recommendations: List[str]) -> str:
+        """推奨事項をフォーマット"""
+        if not recommendations:
+            return "推奨事項はありません。"
+
+        return "\n".join(f"- {rec}" for rec in recommendations)
 
     def _format_single_comment(
         self, comment: Dict, pr_info: Dict, github_token: str = None
