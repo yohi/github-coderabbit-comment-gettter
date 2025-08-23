@@ -703,7 +703,7 @@ git log --oneline origin/[ブランチ名]..HEAD
     def _format_single_comment(
         self, comment: Dict, pr_info: Dict, github_token: str = None
     ) -> str:
-        """構造化された単一コメントのフォーマット"""
+        """構造化された単一コメントのフォーマット（スレッド情報を含む）"""
         # 基本情報抽出
         comment_id = comment.get("id", "unknown")
         author = comment.get("user", {}).get("login", "Unknown")
@@ -712,10 +712,13 @@ git log --oneline origin/[ブランチ名]..HEAD
         line_number = comment.get("line") or comment.get("original_line", "Unknown")
         body = comment.get("body", "")
 
+        # スレッド情報の取得
+        thread_info = comment.get("_thread_info", {})
+
         # 自動分類とメタデータ生成
         classification_data = self._analyze_comment(body, file_path)
 
-        # 完全機械化YAMLメタデータ
+        # 完全機械化YAMLメタデータ（スレッド情報を含む）
         security_risk = classification_data["issue_type"] == "security"
         yaml_data = f"""```yaml
 id: {comment_id}
@@ -725,11 +728,32 @@ file: {file_path}:{line_number}
 author: {author}
 created_at: {created_at}
 auto_decision: {classification_data['auto_decision']}
-security_risk: {str(security_risk).lower()}
-```"""
+security_risk: {str(security_risk).lower()}"""
+
+        # スレッド情報を追加
+        if thread_info:
+            yaml_data += f"""
+thread_comments: {thread_info.get('total_comments', 1)}
+has_coderabbit_response: {str(thread_info.get('has_coderabbit_response', False)).lower()}
+is_resolved: {str(thread_info.get('is_resolved', False)).lower()}"""
+
+        yaml_data += "\n```"
 
         # パターンベース最適化フォーマット
         optimized_content = self._optimize_comment_format(body)
+
+        # CodeRabbitの最新コメント情報を追加
+        if thread_info.get("coderabbit_last_comment"):
+            coderabbit_info = thread_info["coderabbit_last_comment"]
+            optimized_content += (
+                f"\n\n**💬 CodeRabbit最新コメント**: {coderabbit_info['summary']}"
+            )
+
+            # 解決マーカーがある場合は明記
+            if thread_info.get("is_resolved"):
+                optimized_content += (
+                    "\n\n**✅ 解決状態**: CodeRabbitにより解決済みマーク済み"
+                )
 
         parts = [
             yaml_data,

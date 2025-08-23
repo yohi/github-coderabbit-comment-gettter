@@ -14,6 +14,7 @@ from .utils.parsers import (
 )
 from .utils.validators import sanitize_content
 from .github_client import GitHubClient
+from .comment_thread_processor import CommentThreadProcessor
 
 
 class CommentProcessor:
@@ -30,6 +31,7 @@ class CommentProcessor:
         self.logger = logging.getLogger(__name__)
         self.stats = ProcessingStats()
         self.auto_resolved_comments = []  # 自動解決されたコメントのログ
+        self.thread_processor = CommentThreadProcessor(github_client)
 
     def detect_resolution_markers(self, comment_bodies: Dict[int, str]) -> Set[int]:
         """コメント本文からCodeRabbit解決済みマーカーを検出
@@ -258,6 +260,7 @@ class CommentProcessor:
         include_resolved: bool = False,
         pr_info: Optional[Dict[str, Any]] = None,
         auto_resolve_marked: bool = True,
+        enable_thread_processing: bool = True,
     ) -> Tuple[List[AIPrompt], ProcessingStats]:
         """コメントを処理してAIプロンプトを抽出"""
         start_time = datetime.now()
@@ -265,6 +268,12 @@ class CommentProcessor:
 
         self.stats.total_comments = len(comments)
         self.logger.info(f"コメント処理開始: {len(comments)} 件")
+
+        # スレッド処理が有効な場合、コメントをスレッド処理
+        if enable_thread_processing:
+            self.logger.info("スレッド処理を実行中...")
+            comments = self.thread_processor.process_comment_threads(comments)
+            self.logger.info(f"スレッド処理完了: {len(comments)} 件のタスクを生成")
 
         # マーカー検出と自動解決処理
         marked_comment_ids = set()
