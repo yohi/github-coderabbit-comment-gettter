@@ -323,7 +323,7 @@ class AIPromptGenerator:
 
         # 返信情報（curlコマンドでの返信を指示）
         return f"""**コメントID**: {comment_id}
-**APIエンドポイント**: `POST /repos/{pr_owner}/{pr_repo}/issues/{pr_number}/comments`
+**APIエンドポイント**: `POST /repos/{pr_owner}/{pr_repo}/pulls/{pr_number}/comments/{comment_id}/replies`
 **返信方法**: 以下のcurlコマンドで@coderabbitaiメンションして返信
 ```bash
 curl -X POST \\
@@ -331,7 +331,7 @@ curl -X POST \\
   -H "Accept: application/vnd.github.v3+json" \\
   -H "Content-Type: application/json" \\
   -d '{{"body": "@coderabbitai 返信メッセージ"}}' \\
-  https://api.github.com/repos/{pr_owner}/{pr_repo}/issues/{pr_number}/comments
+  https://api.github.com/repos/{pr_owner}/{pr_repo}/pulls/{pr_number}/comments/{comment_id}/replies
 ```"""
 
     def _generate_simple_curl_section(self) -> str:
@@ -343,7 +343,7 @@ curl -X POST \\
 echo "Authorization: Bearer $GITHUB_TOKEN" > /tmp/github_headers
 curl -X POST -H @/tmp/github_headers -H "Content-Type: application/json" \\
   -d '{"body": "@coderabbitai 返信メッセージ"}' \\
-  "https://api.github.com/repos/OWNER/REPO/issues/PR_NUMBER/comments"
+  "https://api.github.com/repos/OWNER/REPO/pulls/PR_NUMBER/comments/COMMENT_ID/replies"
 rm /tmp/github_headers
 ```
 

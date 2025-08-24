@@ -225,11 +225,11 @@ class GitHubCurlReply:
         # PR番号を抽出
         pr_number = pr_url.split("/")[-1]
 
-        # 返信コメント作成のAPIエンドポイント
-        url = f"{self.base_url}/repos/{owner}/{repo}/pulls/{pr_number}/comments"
+        # 返信コメント作成のAPIエンドポイント（正しい返信エンドポイント）
+        url = f"{self.base_url}/repos/{owner}/{repo}/pulls/{pr_number}/comments/{comment_id}/replies"
 
-        # 返信データ
-        reply_data = {"body": reply_text, "in_reply_to": comment_id}
+        # 返信データ（返信エンドポイントではbodyのみ）
+        reply_data = {"body": reply_text}
 
         try:
             response, status_code = self._run_curl("POST", url, reply_data)

@@ -938,13 +938,13 @@ class GitHubClient:
         if not original_comment:
             raise APIError(f"コメント ID {comment_id} が見つかりません")
 
-        # 返信作成のためのデータ（GitHub API仕様: bodyとin_reply_toのみ）
+        # 返信作成のためのデータ（GitHub API仕様: 返信エンドポイントではbodyのみ）
         reply_data = {
             "body": reply_body,
-            "in_reply_to": comment_id,
         }
 
-        url = f"{self.base_url}/repos/{pr_info.owner}/{pr_info.repo}/pulls/{pr_info.pull_number}/comments"
+        # 正しい返信エンドポイント: /comments/{comment_id}/replies
+        url = f"{self.base_url}/repos/{pr_info.owner}/{pr_info.repo}/pulls/{pr_info.pull_number}/comments/{comment_id}/replies"
 
         try:
             self.logger.info(f"コメント {comment_id} に返信中...")
@@ -1090,11 +1090,10 @@ class GitHubClient:
             if not original_comment:
                 raise APIError(f"コメント ID {comment_id} が見つかりません")
 
-            url = f"{self.base_url}/repos/{pr_info.owner}/{pr_info.repo}/pulls/{pr_info.pull_number}/comments"
-            # GitHub API仕様: コメント返信はbodyとin_reply_toのみ
+            url = f"{self.base_url}/repos/{pr_info.owner}/{pr_info.repo}/pulls/{pr_info.pull_number}/comments/{comment_id}/replies"
+            # GitHub API仕様: 返信エンドポイントではbodyのみ
             data = {
                 "body": reply_body,
-                "in_reply_to": comment_id,
             }
 
             import json

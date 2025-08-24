@@ -122,10 +122,10 @@ def reply_to_comment_with_curl(
     import json
 
     # GitHub API URL
-    url = f"https://api.github.com/repos/{owner}/{repo}/pulls/{pr_number}/comments"
+    url = f"https://api.github.com/repos/{owner}/{repo}/pulls/{pr_number}/comments/{comment_id}/replies"
 
-    # 返信データ
-    reply_data = {"body": message, "in_reply_to": comment_id}
+    # 返信データ（返信エンドポイントではbodyのみ）
+    reply_data = {"body": message}
 
     # curlコマンドを構築
     curl_cmd = [
@@ -812,7 +812,7 @@ curl -X POST \\
   -H "Accept: application/vnd.github.v3+json" \\
   -H "Content-Type: application/json" \\
   -d '{"body": "@coderabbitai 返信メッセージ"}' \\
-  https://api.github.com/repos/OWNER/REPO/issues/PR_NUMBER/comments
+  https://api.github.com/repos/OWNER/REPO/pulls/PR_NUMBER/comments/COMMENT_ID/replies
 rm /tmp/github_headers
 ```
 

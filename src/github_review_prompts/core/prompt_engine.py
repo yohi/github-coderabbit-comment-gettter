@@ -2170,26 +2170,38 @@ is_resolved: {str(thread_info.get('is_resolved', False)).lower()}"""
 複数のcurlコマンドを並列で実行して処理時間を短縮：
 
 ```bash
+# PR番号を正しく取得（重要：コミットハッシュではなくPR番号）
+# 方法1: GitHub CLI（推奨）
+PR_NUMBER=$(gh pr view --json number -q .number 2>/dev/null)
+# 方法2: GitHubアAPI経由（GitHub CLIが使用できない場合）
+if [ -z "$PR_NUMBER" ]; then
+  PR_NUMBER=$(curl -s -H "Authorization: Bearer $GITHUB_TOKEN" \\
+    "https://api.github.com/repos/{owner}/{repo}/pulls?head={owner}:$(git branch --show-current)" \\
+    | jq -r '.[0].number // "{pr_number}"')
+fi
+# フォールバック: 手動指定値
+PR_NUMBER=${{PR_NUMBER:-{pr_number}}}
+
 # セキュアな並列実行で高速化（推奨）
 echo "Authorization: Bearer $GITHUB_TOKEN" > /tmp/github_headers
 {{
   curl -X POST \\
     -H @/tmp/github_headers \\
     -H "Content-Type: application/json" \\
-    -d '{{"body": "返信内容1", "in_reply_to": COMMENT_ID1}}' \\
-    "https://api.github.com/repos/{owner}/{repo}/pulls/{pr_number}/comments" &
+    -d '{{"body": "返信内容1"}}' \\
+    "https://api.github.com/repos/{owner}/{repo}/pulls/$PR_NUMBER/comments/COMMENT_ID1/replies" &
 
   curl -X POST \\
     -H @/tmp/github_headers \\
     -H "Content-Type: application/json" \\
-    -d '{{"body": "返信内容2", "in_reply_to": COMMENT_ID2}}' \\
-    "https://api.github.com/repos/{owner}/{repo}/pulls/{pr_number}/comments" &
+    -d '{{"body": "返信内容2"}}' \\
+    "https://api.github.com/repos/{owner}/{repo}/pulls/$PR_NUMBER/comments/COMMENT_ID2/replies" &
 
   curl -X POST \\
     -H @/tmp/github_headers \\
     -H "Content-Type: application/json" \\
-    -d '{{"body": "返信内容3", "in_reply_to": COMMENT_ID3}}' \\
-    "https://api.github.com/repos/{owner}/{repo}/pulls/{pr_number}/comments" &
+    -d '{{"body": "返信内容3"}}' \\
+    "https://api.github.com/repos/{owner}/{repo}/pulls/$PR_NUMBER/comments/COMMENT_ID3/replies" &
 
   # 全ての並列処理の完了を待機
   wait
@@ -2203,10 +2215,13 @@ rm /tmp/github_headers
 # セキュアなヘッダファイルを作成
 echo "Authorization: Bearer $GITHUB_TOKEN" > /tmp/github_headers
 
+# PR番号を正しく取得
+PR_NUMBER=$(gh pr view --json number -q .number 2>/dev/null || echo "{pr_number}")
+
 # コマンドリストファイルを作成
-cat > reply_commands.txt << 'EOF'
-curl -X POST -H @/tmp/github_headers -H "Content-Type: application/json" -d '{{"body": "返信1", "in_reply_to": ID1}}' "https://api.github.com/repos/{owner}/{repo}/pulls/{pr_number}/comments"
-curl -X POST -H @/tmp/github_headers -H "Content-Type: application/json" -d '{{"body": "返信2", "in_reply_to": ID2}}' "https://api.github.com/repos/{owner}/{repo}/pulls/{pr_number}/comments"
+cat > reply_commands.txt << EOF
+curl -X POST -H @/tmp/github_headers -H "Content-Type: application/json" -d '{{"body": "返信1"}}' "https://api.github.com/repos/{owner}/{repo}/pulls/$PR_NUMBER/comments/ID1/replies"
+curl -X POST -H @/tmp/github_headers -H "Content-Type: application/json" -d '{{"body": "返信2"}}' "https://api.github.com/repos/{owner}/{repo}/pulls/$PR_NUMBER/comments/ID2/replies"
 EOF
 
 # 並列実行（最大5並列）
@@ -2218,13 +2233,16 @@ rm /tmp/github_headers
 
 ### **方法3: 個別実行（シンプル）**
 ```bash
+# PR番号を正しく取得
+PR_NUMBER=$(gh pr view --json number -q .number 2>/dev/null || echo "{pr_number}")
+
 # セキュアな個別実行
 echo "Authorization: Bearer $GITHUB_TOKEN" > /tmp/github_headers
 curl -X POST \\
   -H @/tmp/github_headers \\
   -H "Content-Type: application/json" \\
-  -d '{{"body": "返信内容", "in_reply_to": COMMENT_ID}}' \\
-  https://api.github.com/repos/{owner}/{repo}/pulls/{pr_number}/comments
+  -d '{{"body": "返信内容"}}' \\
+  https://api.github.com/repos/{owner}/{repo}/pulls/$PR_NUMBER/comments/COMMENT_ID/replies
 rm /tmp/github_headers
 ```
 

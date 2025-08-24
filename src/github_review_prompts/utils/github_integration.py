@@ -325,29 +325,60 @@ class GitHubIssuesIntegration:
         )
 
         for i, comment in enumerate(sorted_comments, 1):
-            severity_icon = (
-                "🔴"
-                if comment.severity.value == "caution"
-                else "🟡" if comment.severity.value == "warning" else "🟢"
-            )
-            category_icon = (
-                "🚨"
-                if comment.category.value == "actionable"
-                else "♻️" if comment.category.value == "duplicate" else "🧹"
-            )
+            try:
+                severity_icon = (
+                    "🔴"
+                    if comment.severity.value == "caution"
+                    else "🟡" if comment.severity.value == "warning" else "🟢"
+                )
+                category_icon = (
+                    "🚨"
+                    if comment.category.value == "actionable"
+                    else "♻️" if comment.category.value == "duplicate" else "🧹"
+                )
 
-            title = getattr(comment, "title", f"{comment.file_path} のコメント")
-            desc_src = getattr(comment, "description", getattr(comment, "body", ""))
-            body += f"""
+                # より安全なプロパティアクセス
+                title = getattr(comment, "title", None)
+                if not title:
+                    # titleが空またはNoneの場合、file_pathベースのフォールバック
+                    title = (
+                        f"{getattr(comment, 'file_path', 'Unknown file')} のコメント"
+                    )
+
+                # descriptionの安全な取得
+                description = getattr(comment, "description", None)
+                if not description:
+                    # descriptionが空の場合、bodyを試す
+                    description = getattr(comment, "body", "")
+                    if not description:
+                        description = "詳細なし"
+
+                # 長い説明文の処理
+                desc_preview = description[:200] if description else "詳細なし"
+                desc_suffix = "..." if len(description) > 200 else ""
+
+                body += f"""
 ### {i}. {severity_icon} {title}
 
 - [ ] **対応完了**
-- **ファイル**: `{comment.file_path}`
-- **行範囲**: {comment.line_range}
+- **ファイル**: `{getattr(comment, 'file_path', 'Unknown')}`
+- **行範囲**: {getattr(comment, 'line_range', 'Unknown')}
 - **カテゴリ**: {category_icon} {comment.category.value.title()}
-- **コメントID**: {comment.id}
+- **コメントID**: {getattr(comment, 'id', 'Unknown')}
 
-**詳細**: {desc_src[:200]}{'...' if len(desc_src) > 200 else ''}
+**詳細**: {desc_preview}{desc_suffix}
+
+---
+"""
+            except AttributeError as e:
+                logger.warning(f"OutsideDiffComment プロパティアクセスエラー: {e}")
+                # エラー時のフォールバック
+                body += f"""
+### {i}. ⚠️ コメント情報の取得に失敗
+
+- [ ] **対応完了**
+- **エラー**: プロパティアクセスエラーが発生しました
+- **コメントID**: {getattr(comment, 'id', 'Unknown')}
 
 ---
 """
