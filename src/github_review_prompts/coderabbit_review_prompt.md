@@ -48,12 +48,15 @@
 プルリクエストコメントに対して以下の **curlコマンド** で返信してください：
 
 ```bash
+# セキュアな方法（推奨）
+echo "Authorization: Bearer $GITHUB_TOKEN" > /tmp/github_headers
 curl -X POST \
-  -H "Authorization: Bearer $GITHUB_TOKEN" \
+  -H @/tmp/github_headers \
   -H "Accept: application/vnd.github.v3+json" \
   -H "Content-Type: application/json" \
   -d '{"body": "返信メッセージ", "in_reply_to": COMMENT_ID}' \
   https://api.github.com/repos/OWNER/REPO/pulls/PR_NUMBER/comments
+rm /tmp/github_headers
 ```
 
 **返信すべき場面**:

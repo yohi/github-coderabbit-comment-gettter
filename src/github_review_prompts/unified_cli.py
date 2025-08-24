@@ -805,12 +805,15 @@ def get_default_review_prompt(
 プルリクエストコメントに対する返信は、以下の **curlコマンド** を使用して行ってください：
 
 ```bash
+# セキュアな方法（推奨）
+echo "Authorization: Bearer $GITHUB_TOKEN" > /tmp/github_headers
 curl -X POST \\
-  -H "Authorization: Bearer YOUR_GITHUB_TOKEN" \\
+  -H @/tmp/github_headers \\
   -H "Accept: application/vnd.github.v3+json" \\
   -H "Content-Type: application/json" \\
   -d '{"body": "返信メッセージ", "in_reply_to": COMMENT_ID}' \\
   https://api.github.com/repos/OWNER/REPO/pulls/PR_NUMBER/comments
+rm /tmp/github_headers
 ```
 
 **返信すべき場面**:
@@ -823,12 +826,15 @@ curl -X POST \\
 
 **返信例**:
 ```bash
+# セキュアな方法（推奨）
+echo "Authorization: Bearer $GITHUB_TOKEN" > /tmp/github_headers
 curl -X POST \\
-  -H "Authorization: Bearer ${GITHUB_TOKEN}" \\
+  -H @/tmp/github_headers \\
   -H "Accept: application/vnd.github.v3+json" \\
   -H "Content-Type: application/json" \\
   -d '{"body": "@coderabbitai この指摘について検証しましたが、現在の実装で問題ありません。理由：[技術的根拠]", "in_reply_to": 123456789}' \\
   https://api.github.com/repos/owner/repo/pulls/42/comments
+rm /tmp/github_headers
 ```"""
 
     # 確認スキップオプションに応じたセクション追加
