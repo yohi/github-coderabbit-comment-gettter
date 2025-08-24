@@ -2164,70 +2164,68 @@ is_resolved: {str(thread_info.get('is_resolved', False)).lower()}"""
         pr_number = pr_info.get("number", "PR_NUMBER")
 
         return f"""
-## ⚡ 効率的な並列返信方法（推奨）
+## ⚡ 高速返信コマンド
 
-### **方法1: バックグラウンド並列実行（推奨）**
+### **効率的な並列実行（推奨）**
 複数のcurlコマンドを並列で実行して処理時間を短縮：
 
 ```bash
-# PR番号: {pr_number}（URLから取得済み）
-
-# セキュアな並列実行で高速化（推奨）
+# 並列実行で高速処理 - PR番号: {pr_number}
 echo "Authorization: Bearer $GITHUB_TOKEN" > /tmp/github_headers
 {{
-  curl -X POST \\
-    -H @/tmp/github_headers \\
-    -H "Content-Type: application/json" \\
-    -d '{{"body": "返信内容1"}}' \\
+  curl -X POST -H @/tmp/github_headers -H "Content-Type: application/json" \\
+    -d '{{"body": "@coderabbitai 技術的制約により対応不要。解決済みマーク依頼。"}}' \\
     "https://api.github.com/repos/{owner}/{repo}/pulls/{pr_number}/comments/COMMENT_ID1/replies" &
 
-  curl -X POST \\
-    -H @/tmp/github_headers \\
-    -H "Content-Type: application/json" \\
-    -d '{{"body": "返信内容2"}}' \\
+  curl -X POST -H @/tmp/github_headers -H "Content-Type: application/json" \\
+    -d '{{"body": "@coderabbitai 技術的制約により対応不要。解決済みマーク依頼。"}}' \\
     "https://api.github.com/repos/{owner}/{repo}/pulls/{pr_number}/comments/COMMENT_ID2/replies" &
 
-  curl -X POST \\
-    -H @/tmp/github_headers \\
-    -H "Content-Type: application/json" \\
-    -d '{{"body": "返信内容3"}}' \\
+  curl -X POST -H @/tmp/github_headers -H "Content-Type: application/json" \\
+    -d '{{"body": "@coderabbitai 技術的制約により対応不要。解決済みマーク依頼。"}}' \\
     "https://api.github.com/repos/{owner}/{repo}/pulls/{pr_number}/comments/COMMENT_ID3/replies" &
+
+  curl -X POST -H @/tmp/github_headers -H "Content-Type: application/json" \\
+    -d '{{"body": "@coderabbitai 技術的制約により対応不要。解決済みマーク依頼。"}}' \\
+    "https://api.github.com/repos/{owner}/{repo}/pulls/{pr_number}/comments/COMMENT_ID4/replies" &
+
+  curl -X POST -H @/tmp/github_headers -H "Content-Type: application/json" \\
+    -d '{{"body": "@coderabbitai 技術的制約により対応不要。解決済みマーク依頼。"}}' \\
+    "https://api.github.com/repos/{owner}/{repo}/pulls/{pr_number}/comments/COMMENT_ID5/replies" &
 
   # 全ての並列処理の完了を待機
   wait
 }}
-# セキュリティ: ヘッダファイルを削除
 rm /tmp/github_headers
 ```
 
-### **方法2: xargs並列実行**
+**⚠️ 使用方法:**
+1. `COMMENT_ID1`, `COMMENT_ID2`, ... を実際のコメントIDに置換
+2. 返信内容を状況に応じて調整
+3. 最大5件まで並列実行（API制限考慮）
+
+### **方法2: 個別実行（シンプル）**
 ```bash
-# セキュアなヘッダファイルを作成
-echo "Authorization: Bearer $GITHUB_TOKEN" > /tmp/github_headers
-
-# コマンドリストファイルを作成
-cat > reply_commands.txt << EOF
-curl -X POST -H @/tmp/github_headers -H "Content-Type: application/json" -d '{{"body": "返信1"}}' "https://api.github.com/repos/{owner}/{repo}/pulls/{pr_number}/comments/ID1/replies"
-curl -X POST -H @/tmp/github_headers -H "Content-Type: application/json" -d '{{"body": "返信2"}}' "https://api.github.com/repos/{owner}/{repo}/pulls/{pr_number}/comments/ID2/replies"
-EOF
-
-# 並列実行（最大5並列）
-cat reply_commands.txt | xargs -I {{}} -P 5 bash -c "{{}}"
-
-# セキュリティ: ヘッダファイルを削除
-rm /tmp/github_headers
-```
-
-### **方法3: 個別実行（シンプル）**
-```bash
-# セキュアな個別実行
+# 個別実行テンプレート - PR番号: {pr_number}
 echo "Authorization: Bearer $GITHUB_TOKEN" > /tmp/github_headers
 curl -X POST \\
   -H @/tmp/github_headers \\
   -H "Content-Type: application/json" \\
-  -d '{{"body": "返信内容"}}' \\
-  https://api.github.com/repos/{owner}/{repo}/pulls/{pr_number}/comments/COMMENT_ID/replies
+  -d '{{"body": "@coderabbitai 技術的制約により対応不要。解決済みマーク依頼。"}}' \\
+  "https://api.github.com/repos/{owner}/{repo}/pulls/{pr_number}/comments/COMMENT_ID/replies"
 rm /tmp/github_headers
+```
+
+### **返信テンプレート集**
+```bash
+# ❌ 対応不要
+-d '{{"body": "@coderabbitai 技術的制約により対応不要。解決済みマーク依頼。"}}'
+
+# ⏳ 将来対応
+-d '{{"body": "@coderabbitai 妥当な指摘ですが現フェーズでは対象外。Phase4で対応予定。記憶依頼。"}}'
+
+# 🤔 要確認
+-d '{{"body": "@coderabbitai この指摘について詳細説明をお願いします。"}}'
 ```
 
 **🎯 推奨**: 方法1の並列実行で大幅な時間短縮を実現してください。
