@@ -35,21 +35,26 @@ class InlineComment:
     """インラインコメント"""
 
     path: str  # ファイルパス
-    line: int  # 行番号
+    line: Optional[int] = None  # 行番号（line/side モード）
     body: str  # コメント内容
     side: str = "RIGHT"  # RIGHT or LEFT
     start_line: Optional[int] = None  # マルチライン開始行
+    start_side: Optional[str] = None  # マルチライン開始側
+    position: Optional[int] = None  # diff上の位置（positionモード）
 
     def to_dict(self) -> Dict[str, Any]:
         """辞書形式に変換"""
-        result = {
-            "path": self.path,
-            "line": self.line,
-            "body": self.body,
-            "side": self.side,
-        }
-        if self.start_line is not None:
-            result["start_line"] = self.start_line
+        result = {"path": self.path, "body": self.body}
+        if self.position is not None:
+            result["position"] = self.position
+        else:
+            if self.line is not None:
+                result["line"] = self.line
+            result["side"] = self.side
+            if self.start_line is not None:
+                result["start_line"] = self.start_line
+                if self.start_side:
+                    result["start_side"] = self.start_side
         return result
 
 

@@ -147,22 +147,21 @@ class SmartCommentFilter:
                 self.logger.debug(f"解決済みマーカー検出: {marker}")
                 return False, FilterReason.RESOLVED_DISCUSSION, CommentType.RESOLVED
 
-        # 4. 短いコメントの判定
+        # 4. 技術的指摘パターンチェック（優先）
+        for pattern in self.actionable_patterns:
+            if re.search(pattern, comment_body, re.IGNORECASE):
+                self.logger.debug(f"技術的指摘パターンマッチ: {pattern}")
+                return True, FilterReason.TECHNICAL_ISSUE, CommentType.ACTIONABLE
+
+        # 5. 短いコメントの判定（最後に実行）
         clean_body = re.sub(r"<[^>]+>", "", comment_body)  # HTMLタグ除去
         clean_body = re.sub(
             r"```[^`]*```", "", clean_body, flags=re.DOTALL
         )  # コードブロック除去
         clean_body = clean_body.strip()
-
         if len(clean_body) < 50:
             self.logger.debug(f"短文コメント: {len(clean_body)}文字")
             return False, FilterReason.SHORT_COMMENT, CommentType.INFORMATIONAL
-
-        # 5. 技術的指摘パターンチェック
-        for pattern in self.actionable_patterns:
-            if re.search(pattern, comment_body, re.IGNORECASE):
-                self.logger.debug(f"技術的指摘パターンマッチ: {pattern}")
-                return True, FilterReason.TECHNICAL_ISSUE, CommentType.ACTIONABLE
 
         # 6. CodeRabbitボットの詳細分析
         if author == "coderabbitai[bot]":
@@ -317,6 +316,9 @@ class SmartCommentFilter:
                 elif comment_type == CommentType.RESOLVED:
                     results["statistics"]["resolved"] += 1
 
+                if reason == FilterReason.SHORT_COMMENT:
+                    results["statistics"]["short_comment"] += 1
+
         # フィルタリング効果をログ出力
         filtered_count = len(results["filtered_out"])
         actionable_count = len(results["actionable_comments"])
@@ -342,8 +344,8 @@ class SmartCommentFilter:
 
 ### 全体統計
 - **総コメント数**: {total}件
-- **対応必要**: {actionable}件 ({(actionable/total*100):.1f}%)
-- **フィルタ除外**: {total-actionable}件 ({((total-actionable)/total*100):.1f}%)
+- **対応必要**: {actionable}件 ({(actionable/total*100 if total else 0):.1f}%)
+- **フィルタ除外**: {total-actionable}件 ({(((total-actionable)/total*100) if total else 0):.1f}%)
 
 ### 除外理由別内訳
 - 🤖 **自動生成**: {stats['auto_generated']}件

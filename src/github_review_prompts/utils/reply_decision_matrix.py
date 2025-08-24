@@ -420,20 +420,10 @@ class ReplyDecisionMatrix:
 
             # アクション別統計
             action_key = (
-                decision.action.value.split()[1]
-                if " " in decision.action.value
-                else decision.action.value
-            )
-            if action_key == "実施":
-                results["summary_by_action"]["implement"] += 1
-            elif action_key == "対応不要":
-                results["summary_by_action"]["reject"] += 1
-            elif action_key == "将来対応":
-                results["summary_by_action"]["future"] += 1
-            elif action_key == "指摘間違い":
-                results["summary_by_action"]["incorrect"] += 1
-            elif action_key == "要確認":
-                results["summary_by_action"]["clarify"] += 1
+                decision.action.name.lower()
+            )  # implement/reject/future/incorrect/clarify
+            if action_key in results["summary_by_action"]:
+                results["summary_by_action"][action_key] += 1
 
             results["estimated_total_time"] += decision.estimated_time
 
