@@ -105,6 +105,9 @@ class SmartCommentFilter:
         self.resolved_markers = [
             r"CR_RESOLUTION_CONFIRMED",
             r"✅ エンジニアによる技術的検証完了",
+            r"問題ないと判断.*解決済みにマーク",
+            r"将来対応と判断.*解決済みにマーク",
+            r"指摘が間違い.*解決済みにマーク",
             r"修正完了",
             r"対応済み",
             r"解決しました",

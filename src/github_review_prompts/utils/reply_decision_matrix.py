@@ -95,7 +95,11 @@ class ReplyDecisionMatrix:
 理由: {detailed_explanation}
 根拠: {reference_or_documentation}
 
-問題ないと判断すれば、このコメントスレッドを解決済みにマークしてください。""",
+問題ないと判断できれば、このコメントスレッドを解決済みにマークし、返信末尾に以下を追加してください：
+
+[CR_RESOLUTION_CONFIRMED:TECHNICAL_ISSUE_RESOLVED]
+✅ エンジニアによる技術的検証完了 - CodeRabbitによる解決済みマーク実行可能
+[/CR_RESOLUTION_CONFIRMED]""",
             "future_planning": """@coderabbitai 技術的に妥当ですが現在の{current_phase}では対象外です。
 
 現在フェーズ: {current_phase}
@@ -108,14 +112,22 @@ class ReplyDecisionMatrix:
 - 優先度: {priority_level}
 - 思い出し条件: {trigger_condition}
 
-将来対応と判断して問題なければ、このコメントスレッドを解決済みにマークしてください。""",
+将来対応と判断して問題なければ、このコメントスレッドを解決済みにマークし、返信末尾に以下を追加してください：
+
+[CR_RESOLUTION_CONFIRMED:TECHNICAL_ISSUE_RESOLVED]
+✅ エンジニアによる技術的検証完了 - CodeRabbitによる解決済みマーク実行可能
+[/CR_RESOLUTION_CONFIRMED]""",
             "technical_correction": """@coderabbitai この指摘は{specific_reason}により間違いと判断します。
 
 正しい技術情報: {correct_technical_info}
 根拠: {technical_evidence}
 参考: {documentation_link}
 
-指摘が間違いと確認できれば、このコメントスレッドを解決済みにマークしてください。""",
+指摘が間違いと確認できれば、このコメントスレッドを解決済みにマークし、返信末尾に以下を追加してください：
+
+[CR_RESOLUTION_CONFIRMED:TECHNICAL_ISSUE_RESOLVED]
+✅ エンジニアによる技術的検証完了 - CodeRabbitによる解決済みマーク実行可能
+[/CR_RESOLUTION_CONFIRMED]""",
             "clarification_request": """@coderabbitai {clarification_topic}について詳細説明をお願いします。
 
 具体的な確認事項:
@@ -469,6 +481,62 @@ class ReplyDecisionMatrix:
 
 """
 
+        # 並列返信の効率的な実行指示を追加
+        if len(reply_required_items) > 1:
+            checklist += f"""
+### ⚡ 効率的な並列返信実行（推奨）
+
+**{len(reply_required_items)}件の返信を並列で高速処理**:
+
+#### 方法1: バックグラウンド並列実行
+```bash
+# 全ての返信を並列で実行（推奨）
+{{
+  curl -X POST -H "Authorization: Bearer $GITHUB_TOKEN" -H "Content-Type: application/json" \\
+    -d '{{"body": "返信内容1", "in_reply_to": コメントID1}}' \\
+    "https://api.github.com/repos/OWNER/REPO/pulls/PR_NUMBER/comments" &
+
+  curl -X POST -H "Authorization: Bearer $GITHUB_TOKEN" -H "Content-Type: application/json" \\
+    -d '{{"body": "返信内容2", "in_reply_to": コメントID2}}' \\
+    "https://api.github.com/repos/OWNER/REPO/pulls/PR_NUMBER/comments" &
+
+  # 全ての並列処理の完了を待機
+  wait
+}}
+```
+
+#### 方法2: xargs並列実行
+```bash
+# コマンドリストファイルを作成
+cat > reply_commands.txt << 'EOF'
+{self._generate_parallel_curl_commands(reply_required_items) if hasattr(self, '_generate_parallel_curl_commands') else '# コマンドリストをここに記載'}
+EOF
+
+# 並列実行（最大5並列）
+cat reply_commands.txt | grep -v '^#' | xargs -I {{}} -P {min(len(reply_required_items), 5)} bash -c "{{}}"
+```
+
+#### 方法3: 実行時間測定付き並列処理
+```bash
+# 実行時間を測定しながら並列実行
+time {{
+  # 各返信を並列で実行
+{self._generate_parallel_background_commands(reply_required_items) if hasattr(self, '_generate_parallel_background_commands') else '  # 並列コマンドをここに記載'}
+
+  # 全ての並列処理の完了を待機
+  wait
+  echo "✅ {len(reply_required_items)}件の返信を並列処理で完了"
+}}
+```
+
+**🎯 効果**:
+- 実行時間: 最大{len(reply_required_items)}倍高速化（理論値）
+- 同時実行数: 最大5件（GitHub API制限考慮）
+- 処理効率: 大幅向上
+- 推定短縮時間: {max(1, len(reply_required_items) // 5)}分の{len(reply_required_items)}分 → 約{max(1, len(reply_required_items) // 5)}分
+
+"""
+
         checklist += f"""
 ### 🚨 最終確認質問
 作業完了前に以下を自問してください：
@@ -485,6 +553,67 @@ class ReplyDecisionMatrix:
 """
 
         return checklist.strip()
+
+    def _generate_parallel_curl_commands(self, reply_required_items: List[Dict]) -> str:
+        """並列curl実行用のコマンドリストを生成"""
+        commands = []
+
+        for i, item in enumerate(reply_required_items, 1):
+            decision = item["decision"]
+            comment_id = item["comment_id"]
+
+            # テンプレートに基づく返信内容を生成
+            template_name = decision.template_type or "general"
+
+            if template_name == "technical_rejection":
+                reply_body = "@coderabbitai この指摘は技術的制約により対応不要です。\\n\\n問題ないと判断できれば、このコメントスレッドを解決済みにマークし、返信末尾に以下を追加してください：\\n\\n[CR_RESOLUTION_CONFIRMED:TECHNICAL_ISSUE_RESOLVED]\\n✅ エンジニアによる技術的検証完了 - CodeRabbitによる解決済みマーク実行可能\\n[/CR_RESOLUTION_CONFIRMED]"
+            elif template_name == "future_planning":
+                reply_body = "@coderabbitai 技術的に妥当ですが現在のフェーズでは対象外です。\\n\\n将来対応と判断して問題なければ、このコメントスレッドを解決済みにマークし、返信末尾に以下を追加してください：\\n\\n[CR_RESOLUTION_CONFIRMED:TECHNICAL_ISSUE_RESOLVED]\\n✅ エンジニアによる技術的検証完了 - CodeRabbitによる解決済みマーク実行可能\\n[/CR_RESOLUTION_CONFIRMED]"
+            elif template_name == "technical_correction":
+                reply_body = "@coderabbitai この指摘は技術的に間違いと判断します。\\n\\n指摘が間違いと確認できれば、このコメントスレッドを解決済みにマークし、返信末尾に以下を追加してください：\\n\\n[CR_RESOLUTION_CONFIRMED:TECHNICAL_ISSUE_RESOLVED]\\n✅ エンジニアによる技術的検証完了 - CodeRabbitによる解決済みマーク実行可能\\n[/CR_RESOLUTION_CONFIRMED]"
+            elif template_name == "clarification_request":
+                reply_body = "@coderabbitai 詳細説明をお願いします。より適切な対応を検討いたします。"
+            else:
+                reply_body = f"@coderabbitai コメント#{comment_id}への返信"
+
+            # curlコマンドを生成
+            curl_cmd = f'curl -X POST -H "Authorization: Bearer $GITHUB_TOKEN" -H "Content-Type: application/json" -d \'{{"body": "{reply_body}", "in_reply_to": {comment_id}}}\' "https://api.github.com/repos/OWNER/REPO/pulls/PR_NUMBER/comments"'
+            commands.append(f"# 返信 #{i} (コメント#{comment_id})")
+            commands.append(curl_cmd)
+            commands.append("")
+
+        return "\\n".join(commands)
+
+    def _generate_parallel_background_commands(
+        self, reply_required_items: List[Dict]
+    ) -> str:
+        """並列バックグラウンド実行用のコマンドを生成"""
+        commands = []
+
+        for i, item in enumerate(reply_required_items, 1):
+            decision = item["decision"]
+            comment_id = item["comment_id"]
+
+            # テンプレートに基づく返信内容を生成
+            template_name = decision.template_type or "general"
+
+            if template_name == "technical_rejection":
+                reply_body = "@coderabbitai この指摘は技術的制約により対応不要です。\\n\\n問題ないと判断できれば、このコメントスレッドを解決済みにマークし、返信末尾に以下を追加してください：\\n\\n[CR_RESOLUTION_CONFIRMED:TECHNICAL_ISSUE_RESOLVED]\\n✅ エンジニアによる技術的検証完了 - CodeRabbitによる解決済みマーク実行可能\\n[/CR_RESOLUTION_CONFIRMED]"
+            elif template_name == "future_planning":
+                reply_body = "@coderabbitai 技術的に妥当ですが現在のフェーズでは対象外です。\\n\\n将来対応と判断して問題なければ、このコメントスレッドを解決済みにマークし、返信末尾に以下を追加してください：\\n\\n[CR_RESOLUTION_CONFIRMED:TECHNICAL_ISSUE_RESOLVED]\\n✅ エンジニアによる技術的検証完了 - CodeRabbitによる解決済みマーク実行可能\\n[/CR_RESOLUTION_CONFIRMED]"
+            elif template_name == "technical_correction":
+                reply_body = "@coderabbitai この指摘は技術的に間違いと判断します。\\n\\n指摘が間違いと確認できれば、このコメントスレッドを解決済みにマークし、返信末尾に以下を追加してください：\\n\\n[CR_RESOLUTION_CONFIRMED:TECHNICAL_ISSUE_RESOLVED]\\n✅ エンジニアによる技術的検証完了 - CodeRabbitによる解決済みマーク実行可能\\n[/CR_RESOLUTION_CONFIRMED]"
+            elif template_name == "clarification_request":
+                reply_body = "@coderabbitai 詳細説明をお願いします。より適切な対応を検討いたします。"
+            else:
+                reply_body = f"@coderabbitai コメント#{comment_id}への返信"
+
+            # バックグラウンド実行用のcurlコマンドを生成
+            curl_cmd = f'  curl -X POST -H "Authorization: Bearer $GITHUB_TOKEN" -H "Content-Type: application/json" -d \'{{"body": "{reply_body}", "in_reply_to": {comment_id}}}\' "https://api.github.com/repos/OWNER/REPO/pulls/PR_NUMBER/comments" &'
+            commands.append(f"  # 返信 #{i} (コメント#{comment_id}) - {template_name}")
+            commands.append(curl_cmd)
+
+        return "\\n".join(commands)
 
 
 def create_reply_decision_matrix() -> ReplyDecisionMatrix:

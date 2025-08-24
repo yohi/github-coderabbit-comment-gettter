@@ -62,6 +62,9 @@ class ThreadContextAnalyzer:
         self.resolution_markers = [
             r"CR_RESOLUTION_CONFIRMED",
             r"✅ エンジニアによる技術的検証完了",
+            r"問題ないと判断.*解決済みにマーク",
+            r"将来対応と判断.*解決済みにマーク",
+            r"指摘が間違い.*解決済みにマーク",
             r"修正完了",
             r"対応済み",
             r"解決しました",
@@ -613,7 +616,7 @@ if __name__ == "__main__":
             {
                 "id": 5,
                 "user": {"login": "developer"},
-                "body": "修正完了しました。\n\n[CR_RESOLUTION_CONFIRMED:TECHNICAL_ISSUE_RESOLVED]\n✅ エンジニアによる技術的検証完了\n[/CR_RESOLUTION_CONFIRMED]",
+                "body": "修正完了しました。\n\n問題ないと判断できれば、このコメントスレッドを解決済みにマークし、返信末尾に以下を追加してください：\n\n[CR_RESOLUTION_CONFIRMED:TECHNICAL_ISSUE_RESOLVED]\n✅ エンジニアによる技術的検証完了 - CodeRabbitによる解決済みマーク実行可能\n[/CR_RESOLUTION_CONFIRMED]",
                 "created_at": "2025-01-24T09:30:00Z",
             },
         ],

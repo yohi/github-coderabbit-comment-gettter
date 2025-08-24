@@ -165,7 +165,7 @@ echo $GITHUB_TOKEN
 ```
 @coderabbitai [技術的根拠]により対応不要と判断します。
 
-このコメントスレッドを解決済みにマークし、返信末尾に以下を追加してください：
+問題ないと判断できれば、このコメントスレッドを解決済みにマークし、返信末尾に以下を追加してください：
 
 [CR_RESOLUTION_CONFIRMED:TECHNICAL_ISSUE_RESOLVED]
 ✅ エンジニアによる技術的検証完了 - CodeRabbitによる解決済みマーク実行可能
@@ -176,7 +176,7 @@ echo $GITHUB_TOKEN
 ```
 @coderabbitai 妥当な指摘ですが[現フェーズ]では対応しません。[将来フェーズ]で対応予定です。この課題を将来のタスクとして記憶し、[将来フェーズ]開始時に再度指摘してください。
 
-このコメントスレッドを解決済みにマークし、返信末尾に以下を追加してください：
+問題ないと判断できれば、このコメントスレッドを解決済みにマークし、返信末尾に以下を追加してください：
 
 [CR_RESOLUTION_CONFIRMED:TECHNICAL_ISSUE_RESOLVED]
 ✅ エンジニアによる技術的検証完了 - CodeRabbitによる解決済みマーク実行可能
@@ -218,7 +218,7 @@ echo $GITHUB_TOKEN
 依頼: この課題を将来のタスクとして記憶し、Phase2開始時または
       当該ファイルの次回修正時に再度指摘してください。
 
-このコメントスレッドを解決済みにマークし、返信末尾に以下を追加してください：
+問題ないと判断できれば、このコメントスレッドを解決済みにマークし、返信末尾に以下を追加してください：
 
 [CR_RESOLUTION_CONFIRMED:TECHNICAL_ISSUE_RESOLVED]
 ✅ エンジニアによる技術的検証完了 - CodeRabbitによる解決済みマーク実行可能
@@ -232,7 +232,7 @@ echo $GITHUB_TOKEN
 予定: Phase3（本格運用準備フェーズ）で対応予定
 依頼: この課題を将来のタスクとして記憶し、Phase3開始時に再度指摘してください。
 
-このコメントスレッドを解決済みにマークし、返信末尾に以下を追加してください：
+問題ないと判断できれば、このコメントスレッドを解決済みにマークし、返信末尾に以下を追加してください：
 
 [CR_RESOLUTION_CONFIRMED:TECHNICAL_ISSUE_RESOLVED]
 ✅ エンジニアによる技術的検証完了 - CodeRabbitによる解決済みマーク実行可能
@@ -252,7 +252,7 @@ echo $GITHUB_TOKEN
 @coderabbitai この指摘はXXXの理由により技術的に不適切です。
 [具体的な技術的根拠]
 
-このコメントスレッドを解決済みにマークし、返信末尾に以下を追加してください：
+問題ないと判断できれば、このコメントスレッドを解決済みにマークし、返信末尾に以下を追加してください：
 
 [CR_RESOLUTION_CONFIRMED:TECHNICAL_ISSUE_RESOLVED]
 ✅ エンジニアによる技術的検証完了 - CodeRabbitによる解決済みマーク実行可能
@@ -1984,9 +1984,50 @@ is_resolved: {str(thread_info.get('is_resolved', False)).lower()}"""
         pr_number = pr_info.get("number", "PR_NUMBER")
 
         return f"""
-## 返信方法
-GitHub UIまたはGitHub CLI推奨。curl使用時は：
+## ⚡ 効率的な並列返信方法（推奨）
 
+### **方法1: バックグラウンド並列実行（推奨）**
+複数のcurlコマンドを並列で実行して処理時間を短縮：
+
+```bash
+# 並列実行で高速化（推奨）
+{{
+  curl -X POST \\
+    -H "Authorization: Bearer $GITHUB_TOKEN" \\
+    -H "Content-Type: application/json" \\
+    -d '{{"body": "返信内容1", "in_reply_to": COMMENT_ID1}}' \\
+    "https://api.github.com/repos/{owner}/{repo}/pulls/{pr_number}/comments" &
+
+  curl -X POST \\
+    -H "Authorization: Bearer $GITHUB_TOKEN" \\
+    -H "Content-Type: application/json" \\
+    -d '{{"body": "返信内容2", "in_reply_to": COMMENT_ID2}}' \\
+    "https://api.github.com/repos/{owner}/{repo}/pulls/{pr_number}/comments" &
+
+  curl -X POST \\
+    -H "Authorization: Bearer $GITHUB_TOKEN" \\
+    -H "Content-Type: application/json" \\
+    -d '{{"body": "返信内容3", "in_reply_to": COMMENT_ID3}}' \\
+    "https://api.github.com/repos/{owner}/{repo}/pulls/{pr_number}/comments" &
+
+  # 全ての並列処理の完了を待機
+  wait
+}}
+```
+
+### **方法2: xargs並列実行**
+```bash
+# コマンドリストファイルを作成
+cat > reply_commands.txt << 'EOF'
+curl -X POST -H "Authorization: Bearer $GITHUB_TOKEN" -H "Content-Type: application/json" -d '{{"body": "返信1", "in_reply_to": ID1}}' "https://api.github.com/repos/{owner}/{repo}/pulls/{pr_number}/comments"
+curl -X POST -H "Authorization: Bearer $GITHUB_TOKEN" -H "Content-Type: application/json" -d '{{"body": "返信2", "in_reply_to": ID2}}' "https://api.github.com/repos/{owner}/{repo}/pulls/{pr_number}/comments"
+EOF
+
+# 並列実行（最大5並列）
+cat reply_commands.txt | xargs -I {{}} -P 5 bash -c "{{}}"
+```
+
+### **方法3: 個別実行（シンプル）**
 ```bash
 curl -X POST \\
   -H "Authorization: Bearer $GITHUB_TOKEN" \\
@@ -1995,6 +2036,11 @@ curl -X POST \\
   https://api.github.com/repos/{owner}/{repo}/pulls/{pr_number}/comments
 ```
 
+**🎯 推奨**: 方法1の並列実行で大幅な時間短縮を実現してください。
+**⚠️ 注意**:
+- 同時実行数は5件以下に制限（API制限考慮）
+- 各コマンドの末尾に`&`を付けてバックグラウンド実行
+- 最後に`wait`で全処理の完了を待機
 **重要**: セキュリティのため、実際のトークン値は環境変数から参照してください。"""
 
     def _extract_comment_title(self, comment: Dict) -> str:

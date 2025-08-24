@@ -34,6 +34,13 @@ class CommentProcessor:
         re.DOTALL | re.IGNORECASE,
     )
 
+    # 追加の解決済み判定パターン
+    ADDITIONAL_RESOLUTION_PATTERNS = [
+        re.compile(r"問題ないと判断.*?解決済みにマーク", re.DOTALL | re.IGNORECASE),
+        re.compile(r"将来対応と判断.*?解決済みにマーク", re.DOTALL | re.IGNORECASE),
+        re.compile(r"指摘が間違い.*?解決済みにマーク", re.DOTALL | re.IGNORECASE),
+    ]
+
     def __init__(
         self, github_client: GitHubClient, enable_smart_filtering: bool = True
     ):

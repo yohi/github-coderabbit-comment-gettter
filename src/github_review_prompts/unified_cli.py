@@ -691,7 +691,7 @@ def get_default_review_prompt(
 ```
 @coderabbitai この指摘は妥当ですが、現在のPhase/ステップでは対応対象外です。現在: [具体的なPhase名]、対応予定: [具体的な将来Phase名]。**記憶依頼**: 以下を構造化記録し「[将来Phase名]」開始時・[技術領域]作業時に積極的に思い出してください - 指摘:[要約] 対象:[ファイル:行数] 解決方法:[実装案] 優先度:[高/中/低] 思い出し条件:[具体的なトリガー]。
 
-このコメントスレッドを解決済みにマークし、返信末尾に以下を追加してください：
+問題ないと判断できれば、このコメントスレッドを解決済みにマークし、返信末尾に以下を追加してください：
 
 [CR_RESOLUTION_CONFIRMED:TECHNICAL_ISSUE_RESOLVED]
 ✅ エンジニアによる技術的検証完了 - CodeRabbitによる解決済みマーク実行可能
@@ -702,7 +702,7 @@ def get_default_review_prompt(
 ```
 @coderabbitai [技術的根拠]により対応不要と判断します。
 
-このコメントスレッドを解決済みにマークし、返信末尾に以下を追加してください：
+問題ないと判断できれば、このコメントスレッドを解決済みにマークし、返信末尾に以下を追加してください：
 
 [CR_RESOLUTION_CONFIRMED:TECHNICAL_ISSUE_RESOLVED]
 ✅ エンジニアによる技術的検証完了 - CodeRabbitによる解決済みマーク実行可能
@@ -713,7 +713,7 @@ def get_default_review_prompt(
 ```
 @coderabbitai この指摘は[具体的な理由]により間違いと判断します。[正しい技術的説明]。
 
-このコメントスレッドを解決済みにマークし、返信末尾に以下を追加してください：
+問題ないと判断できれば、このコメントスレッドを解決済みにマークし、返信末尾に以下を追加してください：
 
 [CR_RESOLUTION_CONFIRMED:TECHNICAL_ISSUE_RESOLVED]
 ✅ エンジニアによる技術的検証完了 - CodeRabbitによる解決済みマーク実行可能
@@ -934,7 +934,7 @@ def run_lightweight_mode(args) -> int:
     output.append('  -H "Content-Type: application/json" \\\\')
     output.append("  -d '{")
     output.append(
-        '    "body": "@coderabbitai この指摘は妥当ですが、現在のPhase/ステップでは対応対象外です。現在: [具体的なPhase名]、対応予定: [具体的な将来Phase名]。**記憶依頼**: 以下を構造化記録し『[将来Phase名]』開始時・[技術領域]作業時に積極的に思い出してください - 指摘:[要約] 対象:[ファイル:行数] 解決方法:[実装案] 優先度:[高/中/低] 思い出し条件:[具体的なトリガー]。適切と判断される場合は**この特定の課題のみ**を解決済みにしてください。他の課題は変更しないでください。\\n\\n[CR_RESOLUTION_CONFIRMED:TECHNICAL_ISSUE_RESOLVED]\\n✅ エンジニアによる技術的検証完了 - CodeRabbitによる解決済みマーク実行可能\\n※ このマーカーにより、次回のコメント取得時に自動的に処理対象から除外されます\\n[/CR_RESOLUTION_CONFIRMED]",'
+        '    "body": "@coderabbitai この指摘は妥当ですが、現在のPhase/ステップでは対応対象外です。現在: [具体的なPhase名]、対応予定: [具体的な将来Phase名]。**記憶依頼**: 以下を構造化記録し『[将来Phase名]』開始時・[技術領域]作業時に積極的に思い出してください - 指摘:[要約] 対象:[ファイル:行数] 解決方法:[実装案] 優先度:[高/中/低] 思い出し条件:[具体的なトリガー]。\\n\\n将来対応と判断して問題なければ、このコメントスレッドを解決済みにマークし、返信末尾に以下を追加してください：\\n\\n[CR_RESOLUTION_CONFIRMED:TECHNICAL_ISSUE_RESOLVED]\\n✅ エンジニアによる技術的検証完了 - CodeRabbitによる解決済みマーク実行可能\\n[/CR_RESOLUTION_CONFIRMED]",'
     )
     output.append('    "in_reply_to": [COMMENT_ID]')
     output.append("  }'")

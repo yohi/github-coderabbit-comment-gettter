@@ -369,7 +369,7 @@ curl -X POST \\
             '  -H "Accept: application/vnd.github.v3+json" \\\\',
             '  -H "Content-Type: application/json" \\\\',
             "  -d '{",
-            '    "body": "@coderabbitai 対応不要：[技術的根拠を記載]。\\n\\nこのコメントスレッドを解決済みにマークし、返信末尾に以下を追加してください：\\n\\n[CR_RESOLUTION_CONFIRMED:TECHNICAL_ISSUE_RESOLVED]\\n✅ エンジニアによる技術的検証完了 - CodeRabbitによる解決済みマーク実行可能\\n[/CR_RESOLUTION_CONFIRMED]",',
+            '    "body": "@coderabbitai 対応不要：[技術的根拠を記載]。\\n\\n問題ないと判断できれば、このコメントスレッドを解決済みにマークし、返信末尾に以下を追加してください：\\n\\n[CR_RESOLUTION_CONFIRMED:TECHNICAL_ISSUE_RESOLVED]\\n✅ エンジニアによる技術的検証完了 - CodeRabbitによる解決済みマーク実行可能\\n[/CR_RESOLUTION_CONFIRMED]",',
             '    "in_reply_to": [COMMENT_ID]',
             "  }'",
             "```",
@@ -382,7 +382,7 @@ curl -X POST \\
             '  -H "Accept: application/vnd.github.v3+json" \\\\',
             '  -H "Content-Type: application/json" \\\\',
             "  -d '{",
-            '    "body": "@coderabbitai この指摘は妥当ですが、現在のPhase/ステップでは対応対象外です。現在: [具体的なPhase名]、対応予定: [具体的な将来Phase名]。**記憶依頼**: 以下を構造化記録し『[将来Phase名]』開始時・[技術領域]作業時に積極的に思い出してください - 指摘:[要約] 対象:[ファイル:行数] 解決方法:[実装案] 優先度:[高/中/低] 思い出し条件:[具体的なトリガー]。\\n\\nこのコメントスレッドを解決済みにマークし、返信末尾に以下を追加してください：\\n\\n[CR_RESOLUTION_CONFIRMED:TECHNICAL_ISSUE_RESOLVED]\\n✅ エンジニアによる技術的検証完了 - CodeRabbitによる解決済みマーク実行可能\\n[/CR_RESOLUTION_CONFIRMED]",',
+            '    "body": "@coderabbitai この指摘は妥当ですが、現在のPhase/ステップでは対応対象外です。現在: [具体的なPhase名]、対応予定: [具体的な将来Phase名]。**記憶依頼**: 以下を構造化記録し『[将来Phase名]』開始時・[技術領域]作業時に積極的に思い出してください - 指摘:[要約] 対象:[ファイル:行数] 解決方法:[実装案] 優先度:[高/中/低] 思い出し条件:[具体的なトリガー]。\\n\\n将来対応と判断して問題なければ、このコメントスレッドを解決済みにマークし、返信末尾に以下を追加してください：\\n\\n[CR_RESOLUTION_CONFIRMED:TECHNICAL_ISSUE_RESOLVED]\\n✅ エンジニアによる技術的検証完了 - CodeRabbitによる解決済みマーク実行可能\\n[/CR_RESOLUTION_CONFIRMED]",',
             '    "in_reply_to": [COMMENT_ID]',
             "  }'",
             "```",
@@ -410,7 +410,7 @@ curl -X POST \\
             '  -H "Accept: application/vnd.github.v3+json" \\\\',
             '  -H "Content-Type: application/json" \\\\',
             "  -d '{",
-            '    "body": "@coderabbitai この指摘は[具体的な理由]により間違いと判断します。[正しい技術的説明]。\\n\\nこのコメントスレッドを解決済みにマークし、返信末尾に以下を追加してください：\\n\\n[CR_RESOLUTION_CONFIRMED:TECHNICAL_ISSUE_RESOLVED]\\n✅ エンジニアによる技術的検証完了 - CodeRabbitによる解決済みマーク実行可能\\n[/CR_RESOLUTION_CONFIRMED]",',
+            '    "body": "@coderabbitai この指摘は[具体的な理由]により間違いと判断します。[正しい技術的説明]。\\n\\n指摘が間違いと確認できれば、このコメントスレッドを解決済みにマークし、返信末尾に以下を追加してください：\\n\\n[CR_RESOLUTION_CONFIRMED:TECHNICAL_ISSUE_RESOLVED]\\n✅ エンジニアによる技術的検証完了 - CodeRabbitによる解決済みマーク実行可能\\n[/CR_RESOLUTION_CONFIRMED]",',
             '    "in_reply_to": [COMMENT_ID]',
             "  }'",
             "```",
@@ -478,11 +478,12 @@ curl -X POST \\
 - ❌ **対応不要（完全に不要）**: CodeRabbitに返信のみ
   - 返信:
     ```
-    @coderabbitai 対応不要：[技術的根拠]。適切と判断される場合は**この特定の課題のみ**を解決済みにしてください。他の課題は変更しないでください。
+    @coderabbitai 対応不要：[技術的根拠]。
+
+    問題ないと判断できれば、このコメントスレッドを解決済みにマークし、返信末尾に以下を追加してください：
 
     [CR_RESOLUTION_CONFIRMED:TECHNICAL_ISSUE_RESOLVED]
     ✅ エンジニアによる技術的検証完了 - CodeRabbitによる解決済みマーク実行可能
-    ※ このマーカーにより、次回のコメント取得時に自動的に処理対象から除外されます
     [/CR_RESOLUTION_CONFIRMED]
     ```
 - 📅 **将来対応予定**: 以下の2つのアクションを実行
@@ -490,9 +491,10 @@ curl -X POST \\
      ```
      @coderabbitai 将来対応予定：このフェーズでは対応しませんが、[次のフェーズ/バージョン]で対応予定です。
 
+     将来対応と判断して問題なければ、このコメントスレッドを解決済みにマークし、返信末尾に以下を追加してください：
+
      [CR_RESOLUTION_CONFIRMED:TECHNICAL_ISSUE_RESOLVED]
      ✅ エンジニアによる技術的検証完了 - CodeRabbitによる解決済みマーク実行可能
-     ※ このマーカーにより、次回のコメント取得時に自動的に処理対象から除外されます
      [/CR_RESOLUTION_CONFIRMED]
      ```
   2. **ソースコードにTODOコメント追加**: 該当ファイルの指摘箇所に `// TODO: [次フェーズで対応予定] - [日付]` を追加
@@ -502,9 +504,10 @@ curl -X POST \\
     ```
     @coderabbitai この指摘は[具体的な理由]により間違いと判断します。[正しい技術的説明]。
 
+    指摘が間違いと確認できれば、このコメントスレッドを解決済みにマークし、返信末尾に以下を追加してください：
+
     [CR_RESOLUTION_CONFIRMED:TECHNICAL_ISSUE_RESOLVED]
     ✅ エンジニアによる技術的検証完了 - CodeRabbitによる解決済みマーク実行可能
-    ※ このマーカーにより、次回のコメント取得時に自動的に処理対象から除外されます
     [/CR_RESOLUTION_CONFIRMED]
     ```
 

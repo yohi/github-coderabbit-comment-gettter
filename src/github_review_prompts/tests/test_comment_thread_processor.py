@@ -80,7 +80,7 @@ class TestCommentThreadProcessor:
             },
             {
                 "id": 1002,
-                "body": "修正完了しました。[CR_RESOLUTION_CONFIRMED:TECHNICAL_ISSUE_RESOLVED]✅ エンジニアによる技術的検証完了[/CR_RESOLUTION_CONFIRMED]",
+                "body": "修正完了しました。\n\n問題ないと判断できれば、このコメントスレッドを解決済みにマークし、返信末尾に以下を追加してください：\n\n[CR_RESOLUTION_CONFIRMED:TECHNICAL_ISSUE_RESOLVED]\n✅ エンジニアによる技術的検証完了 - CodeRabbitによる解決済みマーク実行可能\n[/CR_RESOLUTION_CONFIRMED]",
                 "user": {"login": "coderabbitai[bot]"},
                 "created_at": "2025-08-23T10:05:00Z",
                 "path": "src/main.py",
@@ -162,7 +162,7 @@ class TestCommentThreadProcessor:
             {"user": {"login": "reviewer"}, "body": "問題があります"},
             {
                 "user": {"login": "coderabbitai[bot]"},
-                "body": "修正完了。[CR_RESOLUTION_CONFIRMED:TECHNICAL_ISSUE_RESOLVED]✅ エンジニアによる技術的検証完了[/CR_RESOLUTION_CONFIRMED]",
+                "body": "修正完了。\n\n問題ないと判断できれば、このコメントスレッドを解決済みにマークし、返信末尾に以下を追加してください：\n\n[CR_RESOLUTION_CONFIRMED:TECHNICAL_ISSUE_RESOLVED]\n✅ エンジニアによる技術的検証完了 - CodeRabbitによる解決済みマーク実行可能\n[/CR_RESOLUTION_CONFIRMED]",
             },
         ]
 

@@ -234,6 +234,11 @@ class CommentThreadProcessor:
             r"\[CR_RESOLUTION_CONFIRMED:TECHNICAL_ISSUE_RESOLVED\]",
             r"✅.*エンジニアによる技術的検証完了",
             r"CodeRabbitによる解決済みマーク実行可能",
+            r"問題ないと判断.*解決済みにマーク",
+            r"将来対応と判断.*解決済みにマーク",
+            r"指摘が間違い.*解決済みにマーク",
+            r"修正完了",
+            r"対応済み",
         ]
 
         import re
