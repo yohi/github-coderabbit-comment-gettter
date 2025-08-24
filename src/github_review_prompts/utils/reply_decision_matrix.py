@@ -95,11 +95,7 @@ class ReplyDecisionMatrix:
 理由: {detailed_explanation}
 根拠: {reference_or_documentation}
 
-このコメントスレッドを解決済みにマークし、返信末尾に以下を追加してください：
-
-[CR_RESOLUTION_CONFIRMED:TECHNICAL_ISSUE_RESOLVED]
-✅ エンジニアによる技術的検証完了 - CodeRabbitによる解決済みマーク実行可能
-[/CR_RESOLUTION_CONFIRMED]""",
+問題ないと判断すれば、このコメントスレッドを解決済みにマークしてください。""",
             "future_planning": """@coderabbitai 技術的に妥当ですが現在の{current_phase}では対象外です。
 
 現在フェーズ: {current_phase}
@@ -112,22 +108,14 @@ class ReplyDecisionMatrix:
 - 優先度: {priority_level}
 - 思い出し条件: {trigger_condition}
 
-このコメントスレッドを解決済みにマークし、返信末尾に以下を追加してください：
-
-[CR_RESOLUTION_CONFIRMED:TECHNICAL_ISSUE_RESOLVED]
-✅ エンジニアによる技術的検証完了 - CodeRabbitによる解決済みマーク実行可能
-[/CR_RESOLUTION_CONFIRMED]""",
+将来対応と判断して問題なければ、このコメントスレッドを解決済みにマークしてください。""",
             "technical_correction": """@coderabbitai この指摘は{specific_reason}により間違いと判断します。
 
 正しい技術情報: {correct_technical_info}
 根拠: {technical_evidence}
 参考: {documentation_link}
 
-このコメントスレッドを解決済みにマークし、返信末尾に以下を追加してください：
-
-[CR_RESOLUTION_CONFIRMED:TECHNICAL_ISSUE_RESOLVED]
-✅ エンジニアによる技術的検証完了 - CodeRabbitによる解決済みマーク実行可能
-[/CR_RESOLUTION_CONFIRMED]""",
+指摘が間違いと確認できれば、このコメントスレッドを解決済みにマークしてください。""",
             "clarification_request": """@coderabbitai {clarification_topic}について詳細説明をお願いします。
 
 具体的な確認事項:
