@@ -898,75 +898,108 @@ def run_lightweight_mode(args) -> int:
     output.append("")
     output.append("")
 
-    # curlコマンドテンプレートを先に生成
-    output.append("### 🔧 CodeRabbit返信用curlコマンド")
+    # 簡潔なバッチ返信方法を生成
+    output.append("### ⚡ 効率的な一括対応方法")
     output.append("")
-    output.append("**認証**: 環境変数 GITHUB_TOKEN を使用します（値は出力しません）")
-    output.append("")
-    output.append("#### ❌ 対応不要（完全に不要）の場合")
+    output.append("**推奨ツール**: `github-review-prompts comment-reply-cli batch-reply`")
     output.append("```bash")
-    output.append(
-        f'curl -X POST "https://api.github.com/repos/{owner}/{repo}/pulls/{pr_number}/comments" \\\\'
-    )
+    output.append(f"# バッチファイル作成後、一括実行")
+    output.append(f"uvx --from /path/to/tool -n grp comment-reply-cli batch-reply \\\\")
+    output.append(f"  {pr_url} --replies-file replies.json")
+    output.append("```")
+    output.append("")
+    output.append("**代替方法（個別curl）**:")
+    output.append("```bash")
+    output.append(f"# 基本テンプレート (COMMENT_IDを各TODOから取得)")
+    output.append(f'curl -X POST "https://api.github.com/repos/{owner}/{repo}/pulls/{pr_number}/comments" \\\\')
     output.append('  -H "Authorization: token ${GITHUB_TOKEN}" \\\\')
     output.append('  -H "Accept: application/vnd.github.v3+json" \\\\')
-    output.append('  -H "Content-Type: application/json" \\\\')
-    output.append("  -d '{")
-    output.append(
-        '    "body": "@coderabbitai 対応不要：[技術的根拠を記載]。適切と判断される場合は**この特定の課題のみ**を解決済みにしてください。他の課題は変更しないでください。",'
-    )
-    output.append('    "in_reply_to": [COMMENT_ID]')
-    output.append("  }'")
+    output.append('  -d \'{"body": "@coderabbitai [対応内容]", "in_reply_to": [COMMENT_ID]}\'')
     output.append("```")
     output.append("")
-
-    # 他のcurlテンプレートも追加...
-    output.append("#### 📅 将来対応予定（このフェーズでは対応しない）の場合")
-    output.append(
-        "**重要**: curlコマンド実行と同時に、該当ソースファイルにTODOコメントを追加してください。"
-    )
-    output.append("```bash")
-    output.append(
-        f'curl -X POST "https://api.github.com/repos/{owner}/{repo}/pulls/{pr_number}/comments" \\\\'
-    )
-    output.append('  -H "Authorization: token ${GITHUB_TOKEN}" \\\\')
-    output.append('  -H "Accept: application/vnd.github.v3+json" \\\\')
-    output.append('  -H "Content-Type: application/json" \\\\')
-    output.append("  -d '{")
-    output.append(
-        '    "body": "@coderabbitai この指摘は妥当ですが、現在のPhase/ステップでは対応対象外です。現在: [具体的なPhase名]、対応予定: [具体的な将来Phase名]。**記憶依頼**: 以下を構造化記録し『[将来Phase名]』開始時・[技術領域]作業時に積極的に思い出してください - 指摘:[要約] 対象:[ファイル:行数] 解決方法:[実装案] 優先度:[高/中/低] 思い出し条件:[具体的なトリガー]。\\n\\n将来対応と判断して問題なければ、このコメントスレッドを解決済みにマークし、返信末尾に以下を追加してください：\\n\\n[CR_RESOLUTION_CONFIRMED:TECHNICAL_ISSUE_RESOLVED]\\n✅ エンジニアによる技術的検証完了 - CodeRabbitによる解決済みマーク実行可能\\n[/CR_RESOLUTION_CONFIRMED]",'
-    )
-    output.append('    "in_reply_to": [COMMENT_ID]')
-    output.append("  }'")
-    output.append("```")
-    output.append("**ソースコード修正**: 指摘箇所に以下のTODOコメントを追加")
-    output.append("```")
-    output.append("// TODO: [次フェーズで対応予定] - [YYYY-MM-DD]")
-    output.append("```")
+    output.append("**📋 返信テンプレート**:")
+    output.append("- ❌ **対応不要**: `@coderabbitai 対応不要: [理由]。解決済みマークしてください。`")
+    output.append("- ⏳ **将来対応**: `@coderabbitai 将来対応予定: [Phase名]で実装。TODOコメント追加済み。`")
+    output.append("- ✅ **実施完了**: `@coderabbitai 修正完了: [変更内容]。確認してください。`")
     output.append("")
 
     output.append("## レビューコメント一覧")
     output.append("")
 
-    if not coderabbit_comments:
-        output.append("⚠️ 対象となるレビューコメントが見つかりませんでした。")
+    # スマートフィルタリングを適用（軽量版でも）
+    actionable_comments = []
+    if coderabbit_comments:
+        try:
+            # スマートフィルタリングを適用
+            from .utils.smart_comment_filter import SmartCommentFilter
+
+            smart_filter = SmartCommentFilter()
+            filter_results = smart_filter.filter_comments(coderabbit_comments)
+            actionable_comments = filter_results["actionable_comments"]
+
+            output.append(f"📊 スマートフィルタリング結果:")
+            output.append(f"- 総コメント数: {filter_results['total_comments']}件")
+            output.append(f"- 対応必要: {len(actionable_comments)}件")
+            output.append(f"- フィルタ除外: {len(filter_results['filtered_out'])}件")
+            output.append("")
+
+            # フィルタリング除外の詳細
+            if filter_results['filtered_out']:
+                output.append(f"🤖 除外されたコメント ({len(filter_results['filtered_out'])}件):")
+                for excluded in filter_results['filtered_out'][:5]:  # 最初の5件のみ表示
+                    reason = excluded.get('reason', 'その他')
+                    preview = excluded.get('body_preview', '')[:50]
+                    output.append(f"  - {reason}: {preview}...")
+                if len(filter_results['filtered_out']) > 5:
+                    output.append(f"  - (他{len(filter_results['filtered_out']) - 5}件)")
+                output.append("")
+
+        except Exception as e:
+            logger.warning(f"スマートフィルタリング失敗: {e}")
+            actionable_comments = coderabbit_comments
+
+    if not actionable_comments:
+        output.append("✅ 対応が必要な技術的コメントは見つかりませんでした。")
         output.append("")
+        output.append("詳細:")
         output.append(f"- 解決済みコメント: {len(resolved_ids)} 件（除外済み）")
         output.append(f"- 総コメント数: {len(comments)} 件")
+        output.append(f"- フィルタ除外: {len(coderabbit_comments) - len(actionable_comments)} 件")
+        output.append("")
+        output.append("💡 フィルタ除外されたコメントは主に以下の種類です:")
+        output.append("  - 自動生成・情報提供コメント")
+        output.append("  - 進捗報告・完了報告")
+        output.append("  - 長いやり取りの中間コメント")
     else:
-        for i, comment in enumerate(coderabbit_comments, 1):
+        output.append(f"🎯 対応が必要なコメント ({len(actionable_comments)}件):")
+        output.append("")
+
+        for i, comment in enumerate(actionable_comments, 1):
             title = extract_title_from_comment(comment.get("body", ""))
             review_type = extract_review_type(comment.get("body", ""))
-            problem = extract_problem_description(comment.get("body", ""))
 
+            # 簡潔版表示
             output.append(f"### TODO #{i}: {title}")
             output.append(
                 f"**ファイル**: `{comment.get('path', 'Unknown')}` (行: {comment.get('line', 'Unknown')})"
             )
-            output.append("")
-            output.append("```")
-            output.append(comment.get("body", "").strip())
-            output.append("```")
+
+            # コメント内容は最初の200文字のみ表示（簡潔化）
+            body = comment.get("body", "").strip()
+            if len(body) > 200:
+                body_preview = body[:200] + "..."
+                output.append("")
+                output.append("**問題内容** (省略版):")
+                output.append(body_preview)
+                output.append("")
+                output.append("**完全版確認**: 元のPRページでコメント詳細を確認してください")
+            else:
+                output.append("")
+                output.append("**問題内容**:")
+                output.append("```")
+                output.append(body)
+                output.append("```")
+
             output.append("")
 
             # 返信情報のみ表示
@@ -986,7 +1019,9 @@ def run_lightweight_mode(args) -> int:
     print()
     print("=" * 80)
     print("✅ レビュープロンプトとTODOリストを生成しました")
-    print(f"📄 ファイル保存: {output_file}")
+    print(f"📋 処理対象コメント: {len(actionable_comments)} 件")
+    if 'filter_results' in locals():
+        print(f"🗂️ 除外コメント: {len(filter_results['filtered_out'])} 件 (自動生成・進捗報告等)")
     print()
 
     # プロンプト用コピー範囲の明確な開始マーカー

@@ -44,20 +44,72 @@ class SmartCommentFilter:
 
         # 除外パターン（タスク化不要）
         self.exclusion_patterns = [
-            # CodeRabbit自動生成
+            # CodeRabbit自動生成コメント（強化版）
             r"<!-- This is an auto-generated",
+            r"This is an auto-generated.*reply by CodeRab",
+            r"auto-generated.*comment.*summari",
             r"✅ Actions performed",
             r"Summary by CodeRabbit",
+            r"## Summary by CodeRabbit",
             r"For best results, initiate chat",
+            r"> For best results, initiate chat",
             r"Note: CodeRabbit is an incremental review",
             r"🧩 Analysis chain",
             r"🏁 Script executed:",
-            # ユーザーコマンド
-            r"^@coderabbitai review\s*$",
-            r"^@coderabbitai\s*$",
-            # 処理完了通知
             r"Review triggered\.",
             r"Actions performed",
+            r"Workflow.*completed",
+            r"^<!-- This is an auto-generated comment: summari",
+            r"^## Summary by CodeRabbit",
+            r"^> For best results",
+
+            # ユーザーコマンド・指示（強化版）
+            r"^@coderabbitai review\s*$",
+            r"^@coderabbitai\s*$",
+            r"^@coderabbitai$",
+            r"@coderabbitai review$",
+
+            # 開発者の作業報告・進捗報告（大幅強化）
+            r"## CodeRabbit.*完了報告",
+            r"## .*レビューコメント.*対応完了報告",
+            r"## .*レビューコメント.*最終対応完了報告",
+            r"## CodeRabbitレビューコメント.*報告",
+            r"@coderabbitai.*指摘された問題.*既に解決済み",
+            r"@coderabbitai.*レビューコメント対応完了報告",
+            r"@coderabbitai.*Analysis Results",
+            r"@coderabbitai.*現在のブランチ.*コミット情報",
+            r"@coderabbitai.*未解決の課題.*改めて確認",
+            r"🎯 現在のブランチ.*コミット情報",
+            r"After thoroughly examining.*modules",
+
+            # 具体的なパターン（実際の出力から）
+            r"指摘された問題の大部分は既に解決済みです",
+            r"## CodeRabbitレビューコメント追加対応完了報告",
+            r"## CodeRabbitレビューコメント最終対応完了報告",
+            r"@coderabbitai\s+Analysis Results",
+            r"@coderabbitai\s+🎯 現在のブランチ",
+            r"@coderabbitai\s+未解決の課題を改めて確認",
+            r"@coderabbitai\s+レビューコメント対応完了報告",
+
+            # HTML詳細セクション（強化版）
+            r"<details>.*</details>",
+            r"^<details>",
+            r"<!-- This is an auto-generated reply by CodeRab",
+            r"auto-generated comment: summari",
+
+            # 検証スクリプトのみのコメント
+            r"#!/bin/bash\n# 参照有無の確認\nrg -nP",
+            r"検証スクリプト.*:\n```shell\n#!/bin/bash",
+            r"^_💡 Verification agent_\n\n\*\*検証スクリプト\*\*:",
+
+            # 情報提供・確認完了コメント（強化版）
+            r"✅.*完了した修正項目",
+            r"✅.*追加修正完了項目",
+            r"✅.*最終修正完了項目",
+            r"指摘された問題の大部分は既に解決済み",
+            r"🔴 緊急修正.*完了",
+            r"### ✅ 追加修正完了項目",
+            r"### ✅ 最終修正完了項目",
         ]
 
         # 情報提供のみパターン（タスク化不要）
@@ -72,33 +124,26 @@ class SmartCommentFilter:
             r"バージョン統一に関する指摘について確認しました",
         ]
 
-        # 技術的指摘パターン（タスク化必要）
+        # 技術的指摘パターン（タスク化必要） - より厳格な基準
         self.actionable_patterns = [
-            # CodeRabbit指摘タイプ
+            # CodeRabbit技術的指摘（明確な指摘タイプのみ）
             r"_⚠️ Potential issue_",
             r"_🛠️ Refactor suggestion_",
             r"_💡 Verification agent_",
             r"_🔒 Security issue_",
             r"_⚡ Performance issue_",
-            # 修正提案
+
+            # 具体的な修正提案
             r"```diff",
             r"```suggestion",
-            # 重要キーワード
-            r"セキュリティ",
-            r"パフォーマンス",
-            r"バグ",
-            r"エラー",
+
+            # 重要度の高い問題のみ（より限定的）
+            r"セキュリティ上の問題",
             r"脆弱性",
-            r"修正",
-            r"改善",
-            # 英語キーワード
-            r"\bsecurity\b",
-            r"\bperformance\b",
-            r"\bbug\b",
-            r"\berror\b",
-            r"\bvulnerability\b",
-            r"\bfix\b",
-            r"\bimprove\b",
+            r"構文エラー",
+            r"参照エラー",
+            r"undefined.*reference",
+            r"存在しない.*参照",
         ]
 
         # 解決済みマーカー
@@ -132,9 +177,9 @@ class SmartCommentFilter:
 
         self.logger.debug(f"コメント分析開始: ID={comment_id}, Author={author}")
 
-        # 1. 除外パターンチェック
+        # 1. 除外パターンチェック（強化）
         for pattern in self.exclusion_patterns:
-            if re.search(pattern, comment_body, re.IGNORECASE | re.MULTILINE):
+            if re.search(pattern, comment_body, re.IGNORECASE | re.MULTILINE | re.DOTALL):
                 self.logger.debug(f"除外パターンマッチ: {pattern}")
                 return False, FilterReason.AUTO_GENERATED, CommentType.AUTO_GENERATED
 
@@ -150,13 +195,18 @@ class SmartCommentFilter:
                 self.logger.debug(f"解決済みマーカー検出: {marker}")
                 return False, FilterReason.RESOLVED_DISCUSSION, CommentType.RESOLVED
 
-        # 4. 技術的指摘パターンチェック（優先）
-        for pattern in self.actionable_patterns:
-            if re.search(pattern, comment_body, re.IGNORECASE):
-                self.logger.debug(f"技術的指摘パターンマッチ: {pattern}")
-                return True, FilterReason.TECHNICAL_ISSUE, CommentType.ACTIONABLE
+        # 4. 開発者コメントの事前除外（厳格化）
+        if author != "coderabbitai[bot]":
+            # 開発者コメントは基本的にタスク化しない（進捗報告・質問が多い）
+            self.logger.debug(f"開発者コメント分析: {author}")
+            return False, FilterReason.PROGRESS_REPORT, CommentType.PROGRESS_REPORT
 
-        # 5. 短いコメントの判定（最後に実行）
+        # 5. CodeRabbitコメントの厳格判定
+        if author == "coderabbitai[bot]":
+            # CodeRabbitコメントでも、技術的指摘でないものは除外
+            return self._analyze_coderabbit_comment(comment_body)
+
+        # 6. 短いコメントの判定
         clean_body = re.sub(r"<[^>]+>", "", comment_body)  # HTMLタグ除去
         clean_body = re.sub(
             r"```[^`]*```", "", clean_body, flags=re.DOTALL
@@ -166,62 +216,78 @@ class SmartCommentFilter:
             self.logger.debug(f"短文コメント: {len(clean_body)}文字")
             return False, FilterReason.SHORT_COMMENT, CommentType.INFORMATIONAL
 
-        # 6. CodeRabbitボットの詳細分析
-        if author == "coderabbitai[bot]":
-            return self._analyze_coderabbit_comment(comment_body)
-
-        # 7. 開発者コメントの分析
-        if author != "coderabbitai[bot]":
-            return self._analyze_developer_comment(comment_body)
-
-        # デフォルト: 要検討として扱う
-        self.logger.debug("デフォルト判定: 要検討コメント")
-        return True, FilterReason.NEEDS_REVIEW, CommentType.DISCUSSION
+        # デフォルト: 除外（厳格化）
+        self.logger.debug("デフォルト判定: 除外")
+        return False, FilterReason.INFORMATIONAL_ONLY, CommentType.INFORMATIONAL
 
     def _analyze_coderabbit_comment(
         self, comment_body: str
     ) -> Tuple[bool, FilterReason, CommentType]:
-        """CodeRabbitコメントの詳細分析"""
+        """CodeRabbitコメントの詳細分析（厳格版）"""
 
-        # CodeRabbitの指摘タイプを分析
-        if any(
-            pattern in comment_body
-            for pattern in [
-                "_⚠️ Potential issue_",
-                "_🛠️ Refactor suggestion_",
-                "_💡 Verification agent_",
-                "_🔒 Security issue_",
-                "_⚡ Performance issue_",
-            ]
-        ):
-            return True, FilterReason.TECHNICAL_ISSUE, CommentType.ACTIONABLE
+        # 明確な技術的指摘タイプのみタスク化
+        technical_indicators = [
+            "_⚠️ Potential issue_",
+            "_🛠️ Refactor suggestion_",
+            "_💡 Verification agent_",
+            "_🔒 Security issue_",
+            "_⚡ Performance issue_",
+        ]
 
-        # 検証スクリプトや分析結果
-        if any(
-            pattern in comment_body
-            for pattern in [
-                "🧩 Analysis chain",
-                "🏁 Script executed:",
-                "検証スクリプト",
-                "分析結果",
-            ]
-        ):
-            return False, FilterReason.INFORMATIONAL_ONLY, CommentType.INFORMATIONAL
+        if any(indicator in comment_body for indicator in technical_indicators):
+            # さらに、実際に具体的な問題や修正提案があるかチェック
+            # ただし、Verification agentの検証スクリプトは除外
+            if "検証スクリプト" in comment_body or "rg -nP" in comment_body or "#!/bin/bash" in comment_body:
+                return False, FilterReason.AUTO_GENERATED, CommentType.AUTO_GENERATED
 
-        # 具体的な修正提案があるか
-        if "```diff" in comment_body or "```suggestion" in comment_body:
-            return True, FilterReason.TECHNICAL_ISSUE, CommentType.ACTIONABLE
+            if any(keyword in comment_body.lower() for keyword in [
+                "修正", "変更", "エラー", "問題", "脆弱性", "セキュリティ",
+                "fix", "change", "error", "issue", "vulnerability", "security",
+                "```diff", "```suggestion"
+            ]):
+                # 具体的な修正指示があるかさらにチェック
+                if any(concrete_fix in comment_body.lower() for concrete_fix in [
+                    "variable", "変数", "未定義", "undefined", "参照エラー", "reference error",
+                    "validation", "バリデーション", "runtime", "ランタイム",
+                    "環境変数", "environment"
+                ]):
+                    return True, FilterReason.TECHNICAL_ISSUE, CommentType.ACTIONABLE
 
-        # その他のCodeRabbitコメントは情報提供として扱う
+        # 以下は全て除外
+        exclusion_indicators = [
+            "🧩 Analysis chain",
+            "🏁 Script executed:",
+            "Summary by CodeRabbit",
+            "For best results",
+            "> For best results",
+            "検証スクリプト",
+            "分析結果",
+            "<!-- This is an auto-generated",
+            "This is an auto-generated",
+            "auto-generated comment: summari",
+            "auto-generated.*reply by CodeRab",
+            "Review triggered",
+            "Actions performed",
+            "Note: CodeRabbit is an incremental",
+        ]
+
+        if any(indicator in comment_body for indicator in exclusion_indicators):
+            return False, FilterReason.AUTO_GENERATED, CommentType.AUTO_GENERATED
+
+        # デフォルトはCodeRabbitコメントでも除外（厳格化）
+        # 技術的指摘タイプでも具体的な修正指示がない場合は除外
+        self.logger.debug(f"CodeRabbitコメント除外: 技術的修正指示なし")
         return False, FilterReason.INFORMATIONAL_ONLY, CommentType.INFORMATIONAL
 
     def _analyze_developer_comment(
         self, comment_body: str
     ) -> Tuple[bool, FilterReason, CommentType]:
-        """開発者コメントの詳細分析"""
+        """開発者コメントの詳細分析（厳格版）"""
 
-        # 進捗報告パターン
+        # 開発者コメントは基本的に除外（99%が進捗報告・やり取り）
+        # 進捗報告・完了報告パターン
         progress_indicators = [
+            "@coderabbitai",  # CodeRabbitへの指示・質問
             "完了報告",
             "対応完了",
             "修正完了",
@@ -229,41 +295,45 @@ class SmartCommentFilter:
             "解決済み",
             "確認しました",
             "対応しました",
+            "指摘された問題",
+            "既に解決済み",
+            "Analysis Results",
+            "現在のブランチ",
+            "コミット情報",
+            "未解決の課題",
+            "改めて確認",
         ]
 
         if any(indicator in comment_body for indicator in progress_indicators):
             return False, FilterReason.PROGRESS_REPORT, CommentType.PROGRESS_REPORT
 
-        # 質問・議論パターン
-        question_indicators = [
-            "？",
-            "?",
-            "質問",
-            "確認",
-            "どう思いますか",
-            "意見",
-            "提案",
+        # 質問・確認・議論パターン（基本的に除外）
+        discussion_indicators = [
+            "？", "?", "質問", "確認", "どう思いますか", "意見", "提案",
+            "検討", "相談", "どうでしょう", "いかがでしょう"
         ]
 
-        if any(indicator in comment_body for indicator in question_indicators):
-            return True, FilterReason.NEEDS_REVIEW, CommentType.DISCUSSION
+        if any(indicator in comment_body for indicator in discussion_indicators):
+            return False, FilterReason.INFORMATIONAL_ONLY, CommentType.DISCUSSION
 
-        # 技術的な指摘・提案
-        technical_indicators = [
-            "問題",
-            "バグ",
-            "エラー",
-            "修正",
-            "改善",
-            "最適化",
-            "リファクタリング",
+        # 短いコメントは除外
+        clean_body = comment_body.strip()
+        if len(clean_body) < 100:  # 開発者コメントは100文字未満は基本除外
+            return False, FilterReason.SHORT_COMMENT, CommentType.INFORMATIONAL
+
+        # 例外的に残すのは、明確な新しい技術的問題の報告のみ
+        critical_new_issue_indicators = [
+            "新たな問題を発見",
+            "重要なバグを発見",
+            "セキュリティ問題を発見",
+            "クリティカルな問題",
         ]
 
-        if any(indicator in comment_body for indicator in technical_indicators):
+        if any(indicator in comment_body for indicator in critical_new_issue_indicators):
             return True, FilterReason.TECHNICAL_ISSUE, CommentType.ACTIONABLE
 
-        # デフォルトは議論として扱う
-        return True, FilterReason.NEEDS_REVIEW, CommentType.DISCUSSION
+        # デフォルト: 開発者コメントは除外（厳格化）
+        return False, FilterReason.PROGRESS_REPORT, CommentType.PROGRESS_REPORT
 
     def filter_comments(self, comments: List[Dict[str, Any]]) -> Dict[str, Any]:
         """コメントリストをフィルタリング

@@ -30,6 +30,7 @@ else:
     from ..utils.duplicate_manager import DuplicateCommentManager
     from ..utils.reply_decision_matrix import ReplyDecisionMatrix
     from ..utils.resolution_master import ResolutionMasterController
+    from ..utils.parsers import extract_ai_agent_prompt
 
 logger = logging.getLogger(__name__)
 
@@ -76,6 +77,74 @@ class UnifiedPromptEngine:
         """メインプロンプトを生成（従来版ベース）"""
         if options is None:
             options = {}
+
+        # スマートフィルタリングを適用 - タスク化と返信判定を分離
+        actionable_comments = []
+        reply_required_comments = []
+
+        if comments:
+            try:
+                from ..utils.smart_comment_filter import SmartCommentFilter
+
+                smart_filter = SmartCommentFilter()
+                filter_results = smart_filter.filter_comments(comments)
+                actionable_comments = filter_results["actionable_comments"]
+
+                # シンプルな返信必要判定（CodeRabbitの技術的指摘）
+                for comment in comments:
+                    author = comment.get("user", {}).get("login", "")
+                    body = comment.get("body", "")
+
+                    # CodeRabbitの技術的指摘で返信必要なパターン
+                    if author == "coderabbitai[bot]":
+                        technical_indicators = [
+                            "_⚠️ Potential issue_",
+                            "_🛠️ Refactor suggestion_",
+                            "_💡 Verification agent_",
+                            "_🔒 Security issue_",
+                            "_⚡ Performance issue_"
+                        ]
+
+                        # 技術的指摘だが、検証スクリプトのみの場合は除外
+                        has_technical_indicator = any(indicator in body for indicator in technical_indicators)
+                        is_verification_script_only = (
+                            "検証スクリプト" in body or
+                            "rg -nP" in body or
+                            "#!/bin/bash" in body
+                        )
+
+                        # 技術的指摘があり、検証スクリプトのみでない場合は返信必要
+                        if has_technical_indicator and not is_verification_script_only:
+                            # 具体的な修正指示があるかチェック
+                            has_concrete_action = any(keyword in body.lower() for keyword in [
+                                "修正", "変更", "update", "fix", "change", "add", "remove",
+                                "variable", "変数", "validation", "バリデーション", "runtime"
+                            ])
+
+                            if has_concrete_action:
+                                reply_required_comments.append(comment)
+
+                # 結合: タスク化必要 + 返信のみ必要なコメント
+                # タスク化不要だが返信必要なコメントを追加
+                for comment in reply_required_comments:
+                    if comment not in actionable_comments:
+                        actionable_comments.append(comment)
+
+                # フィルタリング結果をログ出力
+                self.logger.info(
+                    f"フィルタリング結果: "
+                    f"総コメント数={filter_results['total_comments']}, "
+                    f"タスク化必要={len(filter_results['actionable_comments'])}, "
+                    f"返信必要={len(reply_required_comments)}, "
+                    f"表示対象={len(actionable_comments)}"
+                )
+
+            except Exception as e:
+                self.logger.warning(f"フィルタリング・返信判定失敗: {e}")
+                actionable_comments = comments
+
+        # 表示対象コメントを使用（タスク化 + 返信必要）
+        comments = actionable_comments
 
         prompt_parts = []
 
@@ -1377,6 +1446,9 @@ git log --oneline origin/[ブランチ名]..HEAD
         # スレッド情報の取得
         thread_info = comment.get("_thread_info", {})
 
+        # 🤖Prompt for AI Agentsの抽出
+        ai_agent_prompt = extract_ai_agent_prompt(body)
+
         # 自動分類とメタデータ生成
         classification_data = self._analyze_comment(body, file_path)
 
@@ -1401,8 +1473,25 @@ is_resolved: {str(thread_info.get('is_resolved', False)).lower()}"""
 
         yaml_data += "\n```"
 
-        # パターンベース最適化フォーマット
-        optimized_content = self._optimize_comment_format(body)
+        # AI Agentsプロンプトがある場合は優先表示
+        if ai_agent_prompt:
+            # AI Agentsプロンプトを優先表示
+            supplement_content = self._optimize_comment_format(body)
+            # 補足情報は200文字に制限
+            if len(supplement_content) > 200:
+                supplement_content = supplement_content[:200] + "...\n(詳細は元PRのコメント参照)"
+
+            optimized_content = f"""🤖 **Prompt for AI Agents** (優先対応指示)
+
+```
+{ai_agent_prompt}
+```
+
+**📋 補足情報** (元のコメント内容)
+{supplement_content}"""
+        else:
+            # 通常の最適化フォーマット
+            optimized_content = self._optimize_comment_format(body)
 
         # CodeRabbitの最新コメント情報を追加
         if thread_info.get("coderabbit_last_comment"):
@@ -1421,8 +1510,6 @@ is_resolved: {str(thread_info.get('is_resolved', False)).lower()}"""
             yaml_data,
             "",
             optimized_content,
-            "",
-            "**🎯 最終判断**: [ ] ✅実施 [ ] ❌対応不要 [ ] ⏳将来対応 [ ] 🤔要確認",
         ]
 
         return "\n".join(parts)

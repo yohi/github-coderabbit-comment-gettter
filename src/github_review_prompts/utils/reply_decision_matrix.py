@@ -21,6 +21,7 @@ class ActionType(Enum):
     FUTURE = "⏳ 将来対応"  # 将来のフェーズで対応
     INCORRECT = "⚠️ 指摘間違い"  # CodeRabbitの誤った指摘
     CLARIFY = "🤔 要確認"  # 追加情報が必要
+    AUTO_GENERATED = "🤖 自動生成"  # 自動生成・進捗報告（返信不要）
 
 
 class ReplyRequirement(Enum):
@@ -85,6 +86,13 @@ class ReplyDecisionMatrix:
                 "reason": "追加情報要求で議論継続",
                 "priority": "medium",
                 "estimated_time": 3,
+            },
+            ActionType.AUTO_GENERATED: {
+                "reply_required": ReplyRequirement.NOT_REQUIRED,
+                "template_type": None,
+                "reason": "自動生成・進捗報告のため返信不要",
+                "priority": "low",
+                "estimated_time": 0,
             },
         }
 
@@ -186,115 +194,103 @@ class ReplyDecisionMatrix:
     def _determine_action_type(
         self, comment_body: str, context: Dict[str, Any]
     ) -> ActionType:
-        """コメント内容から適切なアクションタイプを判定"""
+        """コメント内容から適切なアクションタイプを判定（改良版）"""
 
-        # セキュリティ関連の緊急指摘
-        security_patterns = [
-            r"セキュリティ",
-            r"security",
-            r"脆弱性",
-            r"vulnerability",
-            r"トークン",
-            r"token",
-            r"パスワード",
-            r"password",
-            r"認証",
-            r"authentication",
+        # まず、自動生成・進捗報告コメントを除外（大幅強化）
+        auto_generated_patterns = [
+            # CodeRabbit自動生成コメント
+            r"<!-- This is an auto-generated",
+            r"This is an auto-generated.*reply by CodeRab",
+            r"auto-generated.*comment.*summari",
+            r"Summary by CodeRabbit",
+            r"For best results, initiate chat",
+            r"> For best results, initiate chat",
+            r"🧩 Analysis chain",
+            r"🏁 Script executed:",
+            r"Actions performed",
+            r"Review triggered",
+            r"Workflow.*completed",
+
+            # 開発者の進捗報告
+            r"## CodeRabbit.*完了報告",
+            r"## .*レビューコメント.*対応完了報告",
+            r"## .*レビューコメント.*最終対応完了報告",
+            r"## CodeRabbitレビューコメント.*報告",
+            r"@coderabbitai.*既に解決済み",
+            r"@coderabbitai.*レビューコメント対応完了",
+            r"@coderabbitai.*指摘された問題.*既に解決済み",
+            r"@coderabbitai.*Analysis Results",
+            r"@coderabbitai.*現在のブランチ.*コミット情報",
+            r"@coderabbitai.*未解決の課題.*改めて確認",
+            r"🎯 現在のブランチ.*コミット情報",
+            r"After thoroughly examining.*modules",
+            r"✅.*完了した修正項目",
+            r"✅.*追加修正完了項目",
+            r"✅.*最終修正完了項目",
+
+            # やり取り中間コメント
+            r"^@coderabbitai review\s*$",
+            r"@coderabbitai review$",
+            r"^@coderabbitai\s*$",
+
+            # HTML詳細セクション
+            r"<details>.*</details>",
+            r"^<details>",
         ]
 
-        # 明らかな間違い指摘パターン
+        if any(re.search(pattern, comment_body, re.IGNORECASE | re.MULTILINE) for pattern in auto_generated_patterns):
+            return ActionType.AUTO_GENERATED
+
+        # 開発者の質問・確認コメント
+        developer_question_patterns = [
+            r"@coderabbitai.*未解決の課題",
+            r"@coderabbitai.*確認",
+            r"@coderabbitai.*詳細",
+            r"どう思いますか",
+            r"いかがでしょう",
+        ]
+
+        if any(re.search(pattern, comment_body, re.IGNORECASE) for pattern in developer_question_patterns):
+            return ActionType.CLARIFY
+
+        # 明確な技術的指摘（CodeRabbitの指摘タイプ）
+        technical_issue_patterns = [
+            r"_⚠️ Potential issue_",
+            r"_🛠️ Refactor suggestion_",
+            r"_💡 Verification agent_",
+            r"_🔒 Security issue_",
+            r"_⚡ Performance issue_",
+        ]
+
+        if any(pattern in comment_body for pattern in technical_issue_patterns):
+            # セキュリティ関連は緊急実施
+            security_keywords = ["セキュリティ", "security", "脆弱性", "vulnerability", "トークン", "token"]
+            if any(keyword in comment_body.lower() for keyword in security_keywords):
+                return ActionType.IMPLEMENT
+
+            # その他の技術的指摘は内容次第
+            if any(keyword in comment_body.lower() for keyword in ["エラー", "error", "バグ", "bug", "問題", "issue"]):
+                return ActionType.IMPLEMENT
+            else:
+                return ActionType.FUTURE  # 改善提案は将来対応
+
+        # 明らかな間違い指摘
         incorrect_patterns = [
             r"存在しない.*参照",
             r"undefined.*reference",
             r"不正な.*形式",
             r"invalid.*format",
-            r"間違った.*設定",
-            r"incorrect.*configuration",
         ]
 
-        # 将来対応パターン
-        future_patterns = [
-            r"リファクタリング",
-            r"refactor",
-            r"最適化",
-            r"optimization",
-            r"改善",
-            r"improvement",
-            r"ベストプラクティス",
-            r"best.*practice",
-        ]
-
-        # 要確認パターン
-        clarify_patterns = [
-            r"確認",
-            r"verify",
-            r"検証",
-            r"validation",
-            r"どちらか",
-            r"which.*one",
-            r"意図",
-            r"intention",
-        ]
-
-        # 対応不要パターン
-        reject_patterns = [
-            r"自動生成",
-            r"auto.*generated",
-            r"情報提供",
-            r"information.*only",
-            r"参考",
-            r"reference.*only",
-        ]
-
-        # パターンマッチングによる判定
-        if any(
-            re.search(pattern, comment_body, re.IGNORECASE)
-            for pattern in security_patterns
-        ):
-            # セキュリティ関連は基本的に実施
-            return ActionType.IMPLEMENT
-
-        if any(
-            re.search(pattern, comment_body, re.IGNORECASE)
-            for pattern in incorrect_patterns
-        ):
-            # 明らかな間違いは指摘間違いとして処理
+        if any(re.search(pattern, comment_body, re.IGNORECASE) for pattern in incorrect_patterns):
             return ActionType.INCORRECT
 
-        if any(
-            re.search(pattern, comment_body, re.IGNORECASE)
-            for pattern in reject_patterns
-        ):
-            # 対応不要パターン
-            return ActionType.REJECT
+        # 具体的な修正提案がある場合
+        if "```diff" in comment_body or "```suggestion" in comment_body:
+            return ActionType.IMPLEMENT
 
-        if any(
-            re.search(pattern, comment_body, re.IGNORECASE)
-            for pattern in future_patterns
-        ):
-            # 将来対応パターン
-            return ActionType.FUTURE
-
-        if any(
-            re.search(pattern, comment_body, re.IGNORECASE)
-            for pattern in clarify_patterns
-        ):
-            # 要確認パターン
-            return ActionType.CLARIFY
-
-        # コンテキストによる判定
-        current_phase = context.get("current_phase", "development")
-        if current_phase in ["mvp", "prototype"]:
-            # MVP/プロトタイプフェーズでは品質改善は将来対応
-            quality_patterns = [r"品質", r"quality", r"保守性", r"maintainability"]
-            if any(
-                re.search(pattern, comment_body, re.IGNORECASE)
-                for pattern in quality_patterns
-            ):
-                return ActionType.FUTURE
-
-        # デフォルトは実施
-        return ActionType.IMPLEMENT
+        # デフォルト: 対応不要（フィルタリングで残ったものも基本的に対応不要）
+        return ActionType.REJECT
 
     def generate_reply_message(
         self, decision: ReplyDecision, context: Dict[str, Any] = None
