@@ -28,7 +28,10 @@ else:
     from ..utils.ai_agent_optimizer import AIAgentOptimizer
     from ..utils.platform_detector import PlatformLimitationDetector
     from ..utils.duplicate_manager import DuplicateCommentManager
+    from ..utils.reply_decision_matrix import ReplyDecisionMatrix
     from ..utils.resolution_master import ResolutionMasterController
+    from ..utils.smart_comment_filter import SmartCommentFilter
+    from ..utils.parsers import extract_ai_agent_prompt
 
 logger = logging.getLogger(__name__)
 
@@ -48,6 +51,8 @@ class UnifiedPromptEngine:
             self.ai_optimizer = AIAgentOptimizer()
             self.platform_detector = PlatformLimitationDetector()
             self.duplicate_manager = DuplicateCommentManager()
+            self.reply_decision_matrix = ReplyDecisionMatrix()
+            self.smart_comment_filter = SmartCommentFilter()
 
             # 解決状態追跡システム（最新機能）
             self.resolution_master = ResolutionMasterController(
@@ -75,11 +80,158 @@ class UnifiedPromptEngine:
         if options is None:
             options = {}
 
+        # スマートフィルタリングを適用 - タスク化と返信判定を分離
+        actionable_comments = []
+        reply_required_comments = []
+
+        if comments:
+            try:
+                from ..utils.smart_comment_filter import SmartCommentFilter
+                from ..utils.parsers import extract_outside_diff_comments
+
+                smart_filter = SmartCommentFilter()
+                filter_results = smart_filter.filter_comments(comments)
+                actionable_comments = filter_results["actionable_comments"]
+
+                # Outside diff range commentsを処理
+                outside_diff_comments = []
+                for comment in comments:
+                    comment_body = comment.get("body", "")
+                    extracted_outside = extract_outside_diff_comments(comment_body)
+
+                    if extracted_outside:
+                        # Outside diff commentsを通常のコメント形式に変換
+                        for outside_comment in extracted_outside:
+                            synthetic_comment = {
+                                "id": f"{comment.get('id', 'unknown')}_outside_{len(outside_diff_comments)}",
+                                "body": f"🔧 **{outside_comment['title']}** (行: {outside_comment['line']})\n\n{outside_comment['content']}",
+                                "path": outside_comment["file_path"],
+                                "line": outside_comment["line"],
+                                "user": {"login": "coderabbitai[bot]"},
+                                "created_at": comment.get("created_at", ""),
+                                "priority": outside_comment["priority"],
+                                "category": outside_comment["category"],
+                                "is_outside_diff": True,
+                            }
+                            outside_diff_comments.append(synthetic_comment)
+
+                # シンプルな返信必要判定（CodeRabbitの技術的指摘）
+                for comment in comments:
+                    author = comment.get("user", {}).get("login", "")
+                    body = comment.get("body", "")
+
+                    # CodeRabbitの技術的指摘で返信必要なパターン
+                    if author and author.strip().lower().startswith("coderabbitai"):
+                        technical_indicators = [
+                            "_⚠️ Potential issue_",
+                            "_🛠️ Refactor suggestion_",
+                            "_💡 Verification agent_",
+                            "_🔒 Security issue_",
+                            "_⚡ Performance issue_",
+                        ]
+
+                        # 技術的指摘だが、検証スクリプトのみの場合は除外
+                        has_technical_indicator = any(
+                            indicator in body for indicator in technical_indicators
+                        )
+                        is_verification_script_only = (
+                            "検証スクリプト" in body
+                            or "rg -nP" in body
+                            or "#!/bin/bash" in body
+                        )
+
+                        # 技術的指摘があり、検証スクリプトのみでない場合は返信必要
+                        if has_technical_indicator and not is_verification_script_only:
+                            # 具体的な修正指示があるかチェック
+                            has_concrete_action = any(
+                                keyword in body.lower()
+                                for keyword in [
+                                    "修正",
+                                    "変更",
+                                    "update",
+                                    "fix",
+                                    "change",
+                                    "add",
+                                    "remove",
+                                    "variable",
+                                    "変数",
+                                    "validation",
+                                    "バリデーション",
+                                    "runtime",
+                                ]
+                            )
+
+                            if has_concrete_action:
+                                reply_required_comments.append(comment)
+
+                # Outside diff commentsもスマートフィルターを通す
+                outside_filter = SmartCommentFilter()
+                for comment in outside_diff_comments:
+                    should_task, reason, comment_type = (
+                        outside_filter.should_create_task(comment)
+                    )
+                    if should_task:
+                        if comment not in actionable_comments:
+                            actionable_comments.append(comment)
+                    else:
+                        # スマートフィルターで除外されたOutside diffコメントでも
+                        # 具体的な技術的修正提案がある場合は返信必要
+                        has_technical_indicator = any(
+                            indicator in comment.get("body", "")
+                            for indicator in [
+                                "_⚠️ Potential issue_",
+                                "_🛠️ Refactor suggestion_",
+                                "_🔒 Security issue_",
+                            ]
+                        )
+                        has_concrete_action = any(
+                            keyword in comment.get("body", "").lower()
+                            for keyword in [
+                                "修正",
+                                "変更",
+                                "fix",
+                                "change",
+                                "update",
+                                "variable",
+                                "変数",
+                            ]
+                        )
+                        if has_technical_indicator and has_concrete_action:
+                            reply_required_comments.append(comment)
+
+                # 結合: タスク化必要 + 返信のみ必要なコメント（スマートフィルター適用後）
+                for comment in reply_required_comments:
+                    if comment not in actionable_comments:
+                        # 返信必要コメントもスマートフィルターを通す
+                        outside_filter = SmartCommentFilter()
+                        should_task, reason, comment_type = (
+                            outside_filter.should_create_task(comment)
+                        )
+                        if should_task or comment_type.value == "actionable":
+                            actionable_comments.append(comment)
+
+                # フィルタリング結果をログ出力
+                self.logger.info(
+                    f"フィルタリング結果: "
+                    f"総コメント数={filter_results['total_comments']}, "
+                    f"タスク化必要={len(filter_results['actionable_comments'])}, "
+                    f"返信必要={len(reply_required_comments)}, "
+                    f"Outside diff={len(outside_diff_comments)}, "
+                    f"表示対象={len(actionable_comments)}"
+                )
+
+            except Exception as e:
+                self.logger.warning(f"フィルタリング・返信判定失敗: {e}")
+                actionable_comments = comments
+
+        # 表示対象コメントを使用（タスク化 + 返信必要）
+        comments = actionable_comments
+
         prompt_parts = []
 
         # 改善されたシンプルプロンプト
         prompt_parts.append(
-            f"""# 🎯 CodeRabbitレビュー対応プロンプト
+            """# 🎯 CodeRabbitレビュー対応プロンプト
 
 ## 🔑 作業開始前の必須確認
 
@@ -87,17 +239,22 @@ class UnifiedPromptEngine:
 
 ### GITHUB_TOKEN環境変数の確認
 ```bash
-echo $GITHUB_TOKEN
+if [ -z "$GITHUB_TOKEN" ]; then
+  echo "❌ GITHUB_TOKEN is NOT set"
+  exit 1
+else
+  printf "✅ GITHUB_TOKEN is set (prefix: %s***)\n" "${GITHUB_TOKEN:0:6}"
+fi
 ```
-**期待する結果**: `ghp_` または `github_pat_` で始まるトークンが表示される
+**期待する結果**: 「✅ GITHUB_TOKEN is set (prefix: ghp_***)」のような安全な表示
 
 **❌ もしトークンが表示されない場合**:
 ```bash
 # トークンを設定してください
 export GITHUB_TOKEN="your_github_token_here"
 
-# 設定確認
-echo $GITHUB_TOKEN
+# 設定確認（安全な方法）
+printf "✅ GITHUB_TOKEN is set (prefix: %s***)\n" "${GITHUB_TOKEN:0:6}"
 ```
 
 **🚨 重要**: GITHUB_TOKENが設定されていない場合、コメント返信のcurlコマンドが動作しません。必ず設定を確認してから作業を開始してください。
@@ -112,7 +269,7 @@ echo $GITHUB_TOKEN
 
 1. **認証情報保護**: `$GITHUB_TOKEN` 環境変数のみ使用（ハードコード禁止）
 2. **変更範囲限定**: 関連ファイルのみ修正（`git add .` 禁止）
-3. **トークン検証**: 作業前に必ず `echo $GITHUB_TOKEN` で設定確認
+3. **トークン検証**: 作業前に必ず安全な方法でGITHUB_TOKEN設定確認
 
 ## 優先度判定（3段階）
 🔴 **緊急**: セキュリティ・機能破綻
@@ -141,7 +298,7 @@ echo $GITHUB_TOKEN
 **成功基準**: 🟢項目50%以上完了（努力目標）
 
 ## 作業フロー（改良版）
-0. **🔑 環境確認**: `echo $GITHUB_TOKEN` でトークン設定確認（必須）
+0. **🔑 環境確認**: 安全な方法でGITHUB_TOKEN設定確認（必須）
 1. **🔍 事前分析**: 全コメントを🔴🟡🟢で完全分類
 2. **⚡ Phase 1実行**: 🔴緊急項目のみ集中対応
 3. **🛡️ 中間検証**: Git中間コミット・休憩
@@ -163,7 +320,7 @@ echo $GITHUB_TOKEN
 ```
 @coderabbitai [技術的根拠]により対応不要と判断します。
 
-このコメントスレッドを解決済みにマークし、返信末尾に以下を追加してください：
+問題ないと判断できれば、このコメントスレッドを解決済みにマークし、返信末尾に以下を追加してください：
 
 [CR_RESOLUTION_CONFIRMED:TECHNICAL_ISSUE_RESOLVED]
 ✅ エンジニアによる技術的検証完了 - CodeRabbitによる解決済みマーク実行可能
@@ -174,7 +331,7 @@ echo $GITHUB_TOKEN
 ```
 @coderabbitai 妥当な指摘ですが[現フェーズ]では対応しません。[将来フェーズ]で対応予定です。この課題を将来のタスクとして記憶し、[将来フェーズ]開始時に再度指摘してください。
 
-このコメントスレッドを解決済みにマークし、返信末尾に以下を追加してください：
+問題ないと判断できれば、このコメントスレッドを解決済みにマークし、返信末尾に以下を追加してください：
 
 [CR_RESOLUTION_CONFIRMED:TECHNICAL_ISSUE_RESOLVED]
 ✅ エンジニアによる技術的検証完了 - CodeRabbitによる解決済みマーク実行可能
@@ -216,7 +373,7 @@ echo $GITHUB_TOKEN
 依頼: この課題を将来のタスクとして記憶し、Phase2開始時または
       当該ファイルの次回修正時に再度指摘してください。
 
-このコメントスレッドを解決済みにマークし、返信末尾に以下を追加してください：
+問題ないと判断できれば、このコメントスレッドを解決済みにマークし、返信末尾に以下を追加してください：
 
 [CR_RESOLUTION_CONFIRMED:TECHNICAL_ISSUE_RESOLVED]
 ✅ エンジニアによる技術的検証完了 - CodeRabbitによる解決済みマーク実行可能
@@ -230,7 +387,7 @@ echo $GITHUB_TOKEN
 予定: Phase3（本格運用準備フェーズ）で対応予定
 依頼: この課題を将来のタスクとして記憶し、Phase3開始時に再度指摘してください。
 
-このコメントスレッドを解決済みにマークし、返信末尾に以下を追加してください：
+問題ないと判断できれば、このコメントスレッドを解決済みにマークし、返信末尾に以下を追加してください：
 
 [CR_RESOLUTION_CONFIRMED:TECHNICAL_ISSUE_RESOLVED]
 ✅ エンジニアによる技術的検証完了 - CodeRabbitによる解決済みマーク実行可能
@@ -250,7 +407,7 @@ echo $GITHUB_TOKEN
 @coderabbitai この指摘はXXXの理由により技術的に不適切です。
 [具体的な技術的根拠]
 
-このコメントスレッドを解決済みにマークし、返信末尾に以下を追加してください：
+問題ないと判断できれば、このコメントスレッドを解決済みにマークし、返信末尾に以下を追加してください：
 
 [CR_RESOLUTION_CONFIRMED:TECHNICAL_ISSUE_RESOLVED]
 ✅ エンジニアによる技術的検証完了 - CodeRabbitによる解決済みマーク実行可能
@@ -270,9 +427,9 @@ echo $GITHUB_TOKEN
 ## 🔍 最終検証チェックリスト（強化版）
 
 ### ✅ 環境設定検証（最優先）
-- [ ] **GITHUB_TOKEN確認**: `echo $GITHUB_TOKEN` でトークン表示確認
+- [ ] **GITHUB_TOKEN確認**: 安全な方法でトークン設定確認
 - [ ] **トークン形式確認**: `ghp_` または `github_pat_` で始まることを確認
-- [ ] **権限確認**: `curl -H "Authorization: Bearer $GITHUB_TOKEN" https://api.github.com/user` で認証テスト
+- [ ] **権限確認**: セキュアな方法で認証テスト実行
 
 ### ✅ 修正作業検証
 - [ ] 構文チェック: `python -m py_compile <ファイル名>`
@@ -312,8 +469,8 @@ echo $GITHUB_TOKEN
 **⚠️ 重要**: 全てのレビューコメント対応完了後、以下を**必ず実行**してください。
 
 ### Phase 0: 環境設定最終確認（必須）
-- [ ] **GITHUB_TOKEN設定確認**: `echo $GITHUB_TOKEN` 実行
-- [ ] **トークン有効性確認**: `curl -H "Authorization: Bearer $GITHUB_TOKEN" https://api.github.com/user` 実行
+- [ ] **GITHUB_TOKEN設定確認**: 安全な方法で設定確認実行
+- [ ] **トークン有効性確認**: セキュアな方法で認証API確認実行
 - [ ] **API権限確認**: レスポンスで認証成功を確認
 
 ### Phase 1: 最終検証（必須）
@@ -705,7 +862,42 @@ git log --oneline origin/[ブランチ名]..HEAD
 """
             )
 
+            # 返信判定マトリックスによる分析
+            reply_analysis = None
+            if self.enhanced_features_available and hasattr(
+                self, "reply_decision_matrix"
+            ):
+                try:
+                    context = {
+                        "current_phase": options.get("current_phase", "development"),
+                        "future_phase": options.get(
+                            "future_phase", "quality_improvement"
+                        ),
+                    }
+                    reply_analysis = (
+                        self.reply_decision_matrix.analyze_reply_requirements(
+                            comments, context
+                        )
+                    )
+
+                    # 返信チェックリストを追加
+                    checklist = self.reply_decision_matrix.get_reply_checklist(
+                        reply_analysis
+                    )
+                    prompt_parts.append(f"\n{checklist}\n")
+
+                except Exception as e:
+                    self.logger.warning(f"返信判定マトリックス処理エラー: {e}")
+
             for i, comment in enumerate(comments, 1):
+                # 返信判定マトリックスの結果を取得
+                reply_decision = None
+                if reply_analysis:
+                    for decision_info in reply_analysis["decisions"]:
+                        if decision_info["comment_id"] == comment.get("id"):
+                            reply_decision = decision_info["decision"]
+                            break
+
                 # セキュリティ関連かどうかの自動判定
                 is_security = any(
                     keyword.lower() in comment.get("body", "").lower()
@@ -732,12 +924,23 @@ git log --oneline origin/[ブランチ名]..HEAD
                 else:
                     classification = "[🔴緊急/🟡重要/🟢低優先] ← 内容確認して分類"
 
+                # 返信判定結果を追加
+                reply_info = ""
+                if reply_decision:
+                    reply_info = f"""
+**返信判定**: {reply_decision.action.value}
+**返信要否**: {'必要' if reply_decision.reply_required.name == 'REQUIRED' else '不要'}
+**推定時間**: {reply_decision.estimated_time}分
+"""
+
                 prompt_parts.append(
                     f"""
 ### TODO #{i}: {self._extract_comment_title(comment)}
 **分類**: {classification}
-
+{reply_info}
 {self._format_single_comment(comment, pr_info, github_token)}
+
+**🎯 最終判断**: [ ] ✅実施 [ ] ❌対応不要 [ ] ⏳将来対応 [ ] 🤔要確認
 
 ---"""
                 )
@@ -1329,6 +1532,14 @@ git log --oneline origin/[ブランチ名]..HEAD
         # スレッド情報の取得
         thread_info = comment.get("_thread_info", {})
 
+        # 🤖Prompt for AI Agentsの抽出
+        ai_agent_prompt = extract_ai_agent_prompt(body)
+        if ai_agent_prompt is None:
+            logger.warning(
+                f"AI Agent prompt extraction failed for comment {comment_id}"
+            )
+            ai_agent_prompt = ""  # デフォルト値を設定
+
         # 自動分類とメタデータ生成
         classification_data = self._analyze_comment(body, file_path)
 
@@ -1353,8 +1564,27 @@ is_resolved: {str(thread_info.get('is_resolved', False)).lower()}"""
 
         yaml_data += "\n```"
 
-        # パターンベース最適化フォーマット
-        optimized_content = self._optimize_comment_format(body)
+        # AI Agentsプロンプトがある場合は優先表示
+        if ai_agent_prompt:
+            # AI Agentsプロンプトを優先表示
+            supplement_content = self._optimize_comment_format(body)
+            # 補足情報は200文字に制限
+            if len(supplement_content) > 200:
+                supplement_content = (
+                    supplement_content[:200] + "...\n(詳細は元PRのコメント参照)"
+                )
+
+            optimized_content = f"""🤖 **Prompt for AI Agents** (優先対応指示)
+
+```
+{ai_agent_prompt}
+```
+
+**📋 補足情報** (元のコメント内容)
+{supplement_content}"""
+        else:
+            # 通常の最適化フォーマット
+            optimized_content = self._optimize_comment_format(body)
 
         # CodeRabbitの最新コメント情報を追加
         if thread_info.get("coderabbit_last_comment"):
@@ -1373,8 +1603,6 @@ is_resolved: {str(thread_info.get('is_resolved', False)).lower()}"""
             yaml_data,
             "",
             optimized_content,
-            "",
-            "**🎯 最終判断**: [ ] ✅実施 [ ] ❌対応不要 [ ] ⏳将来対応 [ ] 🤔要確認",
         ]
 
         return "\n".join(parts)
@@ -1936,17 +2164,75 @@ is_resolved: {str(thread_info.get('is_resolved', False)).lower()}"""
         pr_number = pr_info.get("number", "PR_NUMBER")
 
         return f"""
-## 返信方法
-GitHub UIまたはGitHub CLI推奨。curl使用時は：
+## ⚡ 効率的な並列返信方法（推奨）
+
+### **方法1: バックグラウンド並列実行（推奨）**
+複数のcurlコマンドを並列で実行して処理時間を短縮：
 
 ```bash
+# セキュアな並列実行で高速化（推奨）
+echo "Authorization: Bearer $GITHUB_TOKEN" > /tmp/github_headers
+{{
+  curl -X POST \\
+    -H @/tmp/github_headers \\
+    -H "Content-Type: application/json" \\
+    -d '{{"body": "返信内容1", "in_reply_to": COMMENT_ID1}}' \\
+    "https://api.github.com/repos/{owner}/{repo}/pulls/{pr_number}/comments" &
+
+  curl -X POST \\
+    -H @/tmp/github_headers \\
+    -H "Content-Type: application/json" \\
+    -d '{{"body": "返信内容2", "in_reply_to": COMMENT_ID2}}' \\
+    "https://api.github.com/repos/{owner}/{repo}/pulls/{pr_number}/comments" &
+
+  curl -X POST \\
+    -H @/tmp/github_headers \\
+    -H "Content-Type: application/json" \\
+    -d '{{"body": "返信内容3", "in_reply_to": COMMENT_ID3}}' \\
+    "https://api.github.com/repos/{owner}/{repo}/pulls/{pr_number}/comments" &
+
+  # 全ての並列処理の完了を待機
+  wait
+}}
+# セキュリティ: ヘッダファイルを削除
+rm /tmp/github_headers
+```
+
+### **方法2: xargs並列実行**
+```bash
+# セキュアなヘッダファイルを作成
+echo "Authorization: Bearer $GITHUB_TOKEN" > /tmp/github_headers
+
+# コマンドリストファイルを作成
+cat > reply_commands.txt << 'EOF'
+curl -X POST -H @/tmp/github_headers -H "Content-Type: application/json" -d '{{"body": "返信1", "in_reply_to": ID1}}' "https://api.github.com/repos/{owner}/{repo}/pulls/{pr_number}/comments"
+curl -X POST -H @/tmp/github_headers -H "Content-Type: application/json" -d '{{"body": "返信2", "in_reply_to": ID2}}' "https://api.github.com/repos/{owner}/{repo}/pulls/{pr_number}/comments"
+EOF
+
+# 並列実行（最大5並列）
+cat reply_commands.txt | xargs -I {{}} -P 5 bash -c "{{}}"
+
+# セキュリティ: ヘッダファイルを削除
+rm /tmp/github_headers
+```
+
+### **方法3: 個別実行（シンプル）**
+```bash
+# セキュアな個別実行
+echo "Authorization: Bearer $GITHUB_TOKEN" > /tmp/github_headers
 curl -X POST \\
-  -H "Authorization: Bearer $GITHUB_TOKEN" \\
+  -H @/tmp/github_headers \\
   -H "Content-Type: application/json" \\
   -d '{{"body": "返信内容", "in_reply_to": COMMENT_ID}}' \\
   https://api.github.com/repos/{owner}/{repo}/pulls/{pr_number}/comments
+rm /tmp/github_headers
 ```
 
+**🎯 推奨**: 方法1の並列実行で大幅な時間短縮を実現してください。
+**⚠️ 注意**:
+- 同時実行数は5件以下に制限（API制限考慮）
+- 各コマンドの末尾に`&`を付けてバックグラウンド実行
+- 最後に`wait`で全処理の完了を待機
 **重要**: セキュリティのため、実際のトークン値は環境変数から参照してください。"""
 
     def _extract_comment_title(self, comment: Dict) -> str:

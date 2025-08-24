@@ -171,6 +171,9 @@ class ProcessingStats(BaseModel):
     prompts_extracted: int = Field(
         default=0, ge=0, description="抽出されたプロンプト数"
     )
+    filtered_comments: int = Field(
+        default=0, ge=0, description="スマートフィルタで除外されたコメント数"
+    )
     processing_time: float = Field(default=0.0, ge=0.0, description="処理時間（秒）")
     api_calls: int = Field(default=0, ge=0, description="API呼び出し数")
     errors: List[str] = Field(default_factory=list, description="エラーリスト")

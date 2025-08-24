@@ -161,6 +161,11 @@ review_prompt_*.md
 *_todos.json
 *_todos.md
 
+# Auto-generated review metadata files
+outside_diff_structure.txt
+*_structure.txt
+pr*_outside_diff_*.txt
+
 # Development test environments
 test-env/
 .cursor/
