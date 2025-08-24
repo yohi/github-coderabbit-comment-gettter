@@ -366,10 +366,8 @@ def generate_coderabbit_curl_commands_for_comment(
         data_json = json.dumps(data, ensure_ascii=False).replace('"', '\\"')
 
         curl_command = f'''# {action}の場合
-# PR番号を正しく取得
-PR_NUMBER=$(gh pr view --json number -q .number 2>/dev/null || echo "{pr_number}")
 curl -X POST \\
-  "https://api.github.com/repos/{owner}/{repo}/pulls/$PR_NUMBER/comments/{comment_id}/replies" \\
+  "https://api.github.com/repos/{owner}/{repo}/pulls/{pr_number}/comments/{comment_id}/replies" \\
   -H "Authorization: token ${GITHUB_TOKEN}" \\
   -H "Accept: application/vnd.github.v3+json" \\
   -H "Content-Type: application/json" \\
