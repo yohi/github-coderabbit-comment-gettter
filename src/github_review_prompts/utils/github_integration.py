@@ -336,8 +336,10 @@ class GitHubIssuesIntegration:
                 else "♻️" if comment.category.value == "duplicate" else "🧹"
             )
 
+            title = getattr(comment, "title", f"{comment.file_path} のコメント")
+            desc_src = getattr(comment, "description", getattr(comment, "body", ""))
             body += f"""
-### {i}. {severity_icon} {comment.title}
+### {i}. {severity_icon} {title}
 
 - [ ] **対応完了**
 - **ファイル**: `{comment.file_path}`
@@ -345,7 +347,7 @@ class GitHubIssuesIntegration:
 - **カテゴリ**: {category_icon} {comment.category.value.title()}
 - **コメントID**: {comment.id}
 
-**詳細**: {comment.description[:200]}{'...' if len(comment.description) > 200 else ''}
+**詳細**: {desc_src[:200]}{'...' if len(desc_src) > 200 else ''}
 
 ---
 """
