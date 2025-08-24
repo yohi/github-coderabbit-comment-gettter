@@ -262,17 +262,17 @@ class ThreadContextAnalyzer:
             "crash",
         ]
 
-        # 全コメントでキーワードチェック
+        # 全コメントでキーワードチェック（CRITICAL を先）
         for comment in thread_comments:
             body = comment.get("body", "").lower()
-
-            # セキュリティ関連は高優先度
-            if any(keyword.lower() in body for keyword in security_keywords):
-                return ThreadPriority.HIGH
 
             # 緊急キーワードは最高優先度
             if any(keyword.lower() in body for keyword in critical_keywords):
                 return ThreadPriority.CRITICAL
+
+            # セキュリティ関連は高優先度
+            if any(keyword.lower() in body for keyword in security_keywords):
+                return ThreadPriority.HIGH
 
         # スレッドの長さによる判定
         if len(thread_comments) > 5:

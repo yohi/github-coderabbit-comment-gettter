@@ -117,8 +117,8 @@ curl -X POST \
     "body": "一括返信レビュー",
     "event": "COMMENT",
     "comments": [
-      {"path": "file.js", "line": 10, "body": "返信1"},
-      {"path": "file.py", "line": 25, "body": "返信2"}
+      {"path": "file.js", "position": 10, "body": "返信1", "commit_id": "<HEAD_commit_sha>"},
+      {"path": "file.py", "position": 25, "body": "返信2", "commit_id": "<HEAD_commit_sha>"}
     ]
   }'
 ```

@@ -148,8 +148,12 @@ print(f'平均効率性: {summary[\"average_efficiency\"]:.1f}%')
 
 #### **1. GitHub認証エラー**
 ```bash
-# トークンの確認
-echo $GITHUB_TOKEN
+# トークンの設定有無のみ確認（値は表示しない）
+if [ -n "${GITHUB_TOKEN:-}" ]; then
+  echo "GITHUB_TOKEN: <set>"
+else
+  echo "GITHUB_TOKEN: <not set>"
+fi
 
 # トークンの権限確認（以下が必要）
 # - repo (プライベートリポジトリの場合)
