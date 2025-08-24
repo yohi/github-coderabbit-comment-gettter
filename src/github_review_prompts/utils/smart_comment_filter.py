@@ -177,6 +177,9 @@ class SmartCommentFilter:
             "_🔒 Security issue_",
             "_⚡ Performance issue_",
             "_📝 Committable suggestion_",
+            "_💡 Nitpick comments_",
+            "_📊 Analysis chain_",
+            "_🔍 Verification agent_",
         ]
 
         has_technical_indicator = any(
@@ -248,6 +251,9 @@ class SmartCommentFilter:
             "_🔒 Security issue_",
             "_⚡ Performance issue_",
             "_📝 Committable suggestion_",
+            "_💡 Nitpick comments_",
+            "_📊 Analysis chain_",
+            "_🔍 Verification agent_",
         ]
 
         if any(indicator in comment_body for indicator in technical_indicators):

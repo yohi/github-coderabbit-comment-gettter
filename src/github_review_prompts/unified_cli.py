@@ -620,12 +620,12 @@ def get_graphql_resolved_comments(
 def extract_review_type(body: str) -> str:
     """レビュー種類を抽出"""
     review_types = {
-        "⚠️ Potential issue": "Potential issue",
-        "🛠️ Refactor suggestion": "Refactor suggestion",
-        "💡 Nitpick comments": "Nitpick comments",
-        "📝 Committable suggestion": "Committable suggestion",
-        "🔍 Verification agent": "Verification agent",
-        "📊 Analysis chain": "Analysis chain",
+        "_⚠️ Potential issue_": "Potential issue",
+        "_🛠️ Refactor suggestion_": "Refactor suggestion",
+        "_💡 Nitpick comments_": "Nitpick comments",
+        "_📝 Committable suggestion_": "Committable suggestion",
+        "_🔍 Verification agent_": "Verification agent",
+        "_📊 Analysis chain_": "Analysis chain",
     }
 
     for pattern, review_type in review_types.items():

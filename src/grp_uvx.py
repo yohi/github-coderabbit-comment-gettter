@@ -266,12 +266,12 @@ def get_graphql_resolved_comments(
 def extract_review_type(body: str) -> str:
     """レビュー種類を抽出"""
     review_types = {
-        "⚠️ Potential issue": "Potential issue",
-        "🛠️ Refactor suggestion": "Refactor suggestion",
-        "💡 Nitpick comments": "Nitpick comments",
-        "📝 Committable suggestion": "Committable suggestion",
-        "🔍 Verification agent": "Verification agent",
-        "📊 Analysis chain": "Analysis chain",
+        "_⚠️ Potential issue_": "Potential issue",
+        "_🛠️ Refactor suggestion_": "Refactor suggestion",
+        "_💡 Nitpick comments_": "Nitpick comments",
+        "_📝 Committable suggestion_": "Committable suggestion",
+        "_🔍 Verification agent_": "Verification agent",
+        "_📊 Analysis chain_": "Analysis chain",
     }
 
     for pattern, review_type in review_types.items():
@@ -637,6 +637,12 @@ def main():
         review_types[review_type] = review_types.get(review_type, 0) + 1
 
     print(f"処理対象: {len(coderabbit_comments)} 件")
+
+    # タスクタイプ別内訳を表示
+    if review_types:
+        print("タスク内訳:")
+        for review_type, count in sorted(review_types.items()):
+            print(f"  - {review_type}: {count} 件")
 
     # プロンプト生成
     review_prompt = get_default_review_prompt(args.no_confirm, args.auto_commit)
