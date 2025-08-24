@@ -938,18 +938,11 @@ class GitHubClient:
         if not original_comment:
             raise APIError(f"コメント ID {comment_id} が見つかりません")
 
-        # 返信作成のためのデータ
+        # 返信作成のためのデータ（GitHub API仕様: bodyとin_reply_toのみ）
         reply_data = {
             "body": reply_body,
             "in_reply_to": comment_id,
-            "path": original_comment["path"],
-            "line": original_comment.get("line"),
-            "side": original_comment.get("side", "RIGHT"),
         }
-
-        # diff_hunk の情報も必要な場合は追加
-        if original_comment.get("diff_hunk"):
-            reply_data["diff_hunk"] = original_comment["diff_hunk"]
 
         url = f"{self.base_url}/repos/{pr_info.owner}/{pr_info.repo}/pulls/{pr_info.pull_number}/comments"
 
@@ -1098,16 +1091,11 @@ class GitHubClient:
                 raise APIError(f"コメント ID {comment_id} が見つかりません")
 
             url = f"{self.base_url}/repos/{pr_info.owner}/{pr_info.repo}/pulls/{pr_info.pull_number}/comments"
+            # GitHub API仕様: コメント返信はbodyとin_reply_toのみ
             data = {
                 "body": reply_body,
                 "in_reply_to": comment_id,
-                "path": original_comment["path"],
-                "line": original_comment.get("line"),
-                "side": original_comment.get("side", "RIGHT"),
             }
-
-            if original_comment.get("diff_hunk"):
-                data["diff_hunk"] = original_comment["diff_hunk"]
 
             import json
 
