@@ -94,7 +94,7 @@ class BatchReply:
     impact_level: str = "medium"  # 影響レベル（low/medium/high）
     action_type: str = "unknown"  # アクションタイプ（実装/拒否/将来/確認）
     created_at: Optional[datetime] = None  # 作成時刻
-    
+
     def __post_init__(self):
         if self.created_at is None:
             self.created_at = datetime.now()
@@ -102,7 +102,7 @@ class BatchReply:
     def is_inline_comment(self) -> bool:
         """インラインコメントかどうか"""
         return self.file_path is not None and self.line_number is not None
-        
+
     def get_efficiency_score(self) -> float:
         """効率性スコアを計算（新機能）"""
         # 優先度ベースのスコア
@@ -111,11 +111,11 @@ class BatchReply:
             ReplyPriority.HIGH: 80.0,
             ReplyPriority.MEDIUM: 60.0,
             ReplyPriority.LOW: 40.0,
-            ReplyPriority.AUTO_REJECT: 20.0
+            ReplyPriority.AUTO_REJECT: 20.0,
         }
-        
+
         base_score = priority_scores.get(self.priority, 50.0)
-        
+
         # 時間効率性の調整
         if self.estimated_time <= 3:
             time_multiplier = 1.2
@@ -123,7 +123,7 @@ class BatchReply:
             time_multiplier = 1.0
         else:
             time_multiplier = 0.8
-            
+
         return base_score * time_multiplier
 
 

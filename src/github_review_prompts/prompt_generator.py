@@ -132,10 +132,12 @@ class AIPromptGenerator:
                 header_lines.append("- **確認スキップ**: 連続処理モード")
 
             if auto_commit:
-                header_lines.extend([
-                    "- **自動コミット**: 完了後に自動でgit add/commit/push実行",
-                    "- コミットメッセージ: `CodeRabbitレビューコメント対応 - #[PR番号]`",
-                ])
+                header_lines.extend(
+                    [
+                        "- **自動コミット**: 完了後に自動でgit add/commit/push実行",
+                        "- コミットメッセージ: `CodeRabbitレビューコメント対応 - #[PR番号]`",
+                    ]
+                )
 
             header_lines.append("")
 

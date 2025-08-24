@@ -291,7 +291,10 @@ class ReplyDecisionMatrix:
             return ActionType.INCORRECT
 
         # 明らかなコード修正提案の検出
-        if any(marker in comment_body for marker in ["```diff", "```suggestion", "+\t", "-\t"]):
+        if any(
+            marker in comment_body
+            for marker in ["```diff", "```suggestion", "+\t", "-\t"]
+        ):
             return self._analyze_code_change_impact(comment_body)
 
         # デフォルト: 対応不要（フィルタリングで残ったものも基本的に対応不要）
@@ -300,62 +303,92 @@ class ReplyDecisionMatrix:
     def _classify_technical_issue_priority(self, comment_body: str) -> ActionType:
         """技術的指摘の優先度を自動判定（新機能）"""
         comment_lower = comment_body.lower()
-        
+
         # 🔴 Critical - 緊急実施
         critical_keywords = [
             # セキュリティ関連
-            "security/detect", "prototype pollution", "command injection", 
-            "token", "credential", "secret", "ghp_", "github_pat",
-            "authorization", "bearer", "セキュリティ", "脆弱性",
+            "security/detect",
+            "prototype pollution",
+            "command injection",
+            "token",
+            "credential",
+            "secret",
+            "ghp_",
+            "github_pat",
+            "authorization",
+            "bearer",
+            "セキュリティ",
+            "脆弱性",
             # システム破綻
-            "null reference", "type error", "undefined", "infinite loop", 
-            "deadlock", "エラー", "バグ", "破綻",
+            "null reference",
+            "type error",
+            "undefined",
+            "infinite loop",
+            "deadlock",
+            "エラー",
+            "バグ",
+            "破綻",
             # データ整合性
-            "constraint violation", "transaction", "data integrity"
+            "constraint violation",
+            "transaction",
+            "data integrity",
         ]
-        
+
         if any(keyword in comment_lower for keyword in critical_keywords):
             return ActionType.IMPLEMENT
-            
+
         # 🟡 Important - 将来対応
         important_keywords = [
-            "performance", "memory leak", "n+1 query", "blocking operation",
-            "refactor", "maintainability", "best practice", 
-            "パフォーマンス", "改善", "リファクタリング"
+            "performance",
+            "memory leak",
+            "n+1 query",
+            "blocking operation",
+            "refactor",
+            "maintainability",
+            "best practice",
+            "パフォーマンス",
+            "改善",
+            "リファクタリング",
         ]
-        
+
         if any(keyword in comment_lower for keyword in important_keywords):
             return ActionType.FUTURE
-            
+
         # 🟢 Low - 基本的に対応不要
         style_keywords = [
-            "formatting", "naming", "import order", "comment",
-            "style", "whitespace", "スタイル", "フォーマット"
+            "formatting",
+            "naming",
+            "import order",
+            "comment",
+            "style",
+            "whitespace",
+            "スタイル",
+            "フォーマット",
         ]
-        
+
         if any(keyword in comment_lower for keyword in style_keywords):
             return ActionType.REJECT
-            
+
         # デフォルト: 要確認
         return ActionType.CLARIFY
-        
+
     def _analyze_code_change_impact(self, comment_body: str) -> ActionType:
         """コード変更の影響度を分析（新機能）"""
         # 変更範囲の分析
         if "```diff" in comment_body:
             lines_changed = comment_body.count("\n+") + comment_body.count("\n-")
-            
+
             # 大規模変更は将来対応
             if lines_changed > 10:
                 return ActionType.FUTURE
-                
+
             # 小規模変更は即対応
             return ActionType.IMPLEMENT
-            
+
         # suggestionブロックの場合
         if "```suggestion" in comment_body:
             return ActionType.IMPLEMENT
-            
+
         return ActionType.CLARIFY
 
     def generate_reply_message(
@@ -423,7 +456,9 @@ class ReplyDecisionMatrix:
             elif decision.template_type == "technical_correction":
                 return template.format(
                     specific_reason=context.get("specific_reason", "技術的理由"),
-                    issue_with_suggestion=context.get("issue_with_suggestion", "指摘内容の問題"),
+                    issue_with_suggestion=context.get(
+                        "issue_with_suggestion", "指摘内容の問題"
+                    ),
                     correct_technical_info=context.get(
                         "correct_info", "正しい技術情報"
                     ),
@@ -544,7 +579,7 @@ class ReplyDecisionMatrix:
         for i, item in enumerate(reply_required_items[:5], 1):  # 最大5件まで表示
             decision = item["decision"]
             comment_id = item["comment_id"]
-            
+
             # 簡潔な返信メッセージ
             if decision.template_type == "technical_rejection":
                 body = "@coderabbitai 技術的制約により対応不要。解決済みマーク依頼。"
@@ -554,7 +589,7 @@ class ReplyDecisionMatrix:
                 body = "@coderabbitai 詳細説明を依頼。"
             else:
                 body = "@coderabbitai 対応不要と判断。"
-                
+
             checklist += f"""
   curl -X POST -H "Authorization: Bearer $GITHUB_TOKEN" -H "Content-Type: application/json" \\
     -d '{{"body": "{body}", "in_reply_to": {comment_id}}}' \\

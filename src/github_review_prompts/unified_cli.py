@@ -393,11 +393,13 @@ def get_all_pr_comments_graphql(
             owner=owner,
             repo=repo,
             pull_number=pr_number,
-            url=f"https://github.com/{owner}/{repo}/pull/{pr_number}"
+            url=f"https://github.com/{owner}/{repo}/pull/{pr_number}",
         )
 
         # GraphQL APIでレビューとOutside diff commentsを取得
-        all_reviews, outside_diff_comments = client.get_pr_reviews_with_outside_diff_graphql(pr_info)
+        all_reviews, outside_diff_comments = (
+            client.get_pr_reviews_with_outside_diff_graphql(pr_info)
+        )
 
         # REST APIでレビューコメントも取得（互換性のため）
         review_comments = get_pr_review_comments(owner, repo, pr_number, token)
@@ -413,10 +415,12 @@ def get_all_pr_comments_graphql(
             "total_comments": len(all_comments),
         }
 
-        print(f"✅ GraphQL API取得完了: レビューコメント {stats['review_comments']} 件, "
-              f"GraphQLレビュー {stats['graphql_reviews']} 件, "
-              f"Outside diff {stats['outside_diff_comments']} 件, "
-              f"合計 {stats['total_comments']} 件")
+        print(
+            f"✅ GraphQL API取得完了: レビューコメント {stats['review_comments']} 件, "
+            f"GraphQLレビュー {stats['graphql_reviews']} 件, "
+            f"Outside diff {stats['outside_diff_comments']} 件, "
+            f"合計 {stats['total_comments']} 件"
+        )
 
         return all_comments, stats
 
