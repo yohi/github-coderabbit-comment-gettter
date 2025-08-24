@@ -859,9 +859,18 @@ class GitHubClient:
 
                     # Outside diff range commentsを抽出
                     if review_body and "Outside diff range comments" in review_body:
-                        from .utils.parsers import extract_outside_diff_comments
+                        try:
+                            from .utils.parsers import extract_outside_diff_comments
 
-                        extracted_outside = extract_outside_diff_comments(review_body)
+                            extracted_outside = extract_outside_diff_comments(
+                                review_body
+                            )
+                        except ImportError as e:
+                            logger.error(f"Outside diff parser import failed: {e}")
+                            extracted_outside = []
+                        except Exception as e:
+                            logger.error(f"Outside diff extraction failed: {e}")
+                            extracted_outside = []
 
                         if extracted_outside:
                             self.logger.info(

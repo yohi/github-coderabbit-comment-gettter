@@ -158,10 +158,13 @@ def reply_to_comment_with_curl(
             logger.error(f"Curl command failed: {result.stderr}")
             return False
 
-        # レスポンスを分解
-        output_lines = result.stdout.strip().split("\\n")
-        status_code = int(output_lines[-1])
-        response_body = "\\n".join(output_lines[:-1])
+        # レスポンスを分解（HTTPステータスコードを末尾から分離）
+        output = result.stdout.strip()
+        if "\n" in output:
+            response_body, _, status = output.rpartition("\n")
+        else:
+            response_body, status = output, ""
+        status_code = int(status) if status.isdigit() else 0
 
         if status_code == 201:
             # 成功
@@ -205,11 +208,11 @@ def handle_comment_reply(args) -> int:
     token = get_github_token()
 
     # PR URLをパース
-    try:
-        owner, repo, pr_number = parse_pr_url(args.pr_url)
-    except ValueError as e:
-        print(f"❌ エラー: {e}")
+    parsed = parse_pr_url(args.pr_url)
+    if not parsed:
+        print(f"❌ エラー: 無効なプルリクエストURLです: {args.pr_url}")
         return 1
+    owner, repo, pr_number = parsed
 
     # 返信メッセージを決定
     if args.reply_template:

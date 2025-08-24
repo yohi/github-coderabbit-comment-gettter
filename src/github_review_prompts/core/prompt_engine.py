@@ -1529,6 +1529,11 @@ git log --oneline origin/[ブランチ名]..HEAD
 
         # 🤖Prompt for AI Agentsの抽出
         ai_agent_prompt = extract_ai_agent_prompt(body)
+        if ai_agent_prompt is None:
+            logger.warning(
+                f"AI Agent prompt extraction failed for comment {comment_id}"
+            )
+            ai_agent_prompt = ""  # デフォルト値を設定
 
         # 自動分類とメタデータ生成
         classification_data = self._analyze_comment(body, file_path)

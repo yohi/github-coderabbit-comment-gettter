@@ -23,19 +23,24 @@ reply_single_comment() {
     local comment_id=$(echo "$comment_data" | jq -r '.id')
     local decision=$(echo "$comment_data" | jq -r '.decision')
     local reply_text=$(echo "$comment_data" | jq -r '.reply')
-    
+
     if [[ "$decision" == "✅" ]]; then
         echo "⏩ #$comment_id: コード修正のみ（返信不要）"
         return 0
     fi
-    
+
     echo "📤 #$comment_id: 返信送信中..."
-    
+
+    # JSON ペイロードを jq で安全に作成
+    local json_payload
+    json_payload=$(jq -n --arg body "$reply_text" --argjson in_reply_to "$comment_id" \
+        '{body: $body, in_reply_to: $in_reply_to}')
+
     if curl -s -X POST \
         -H "Authorization: Bearer $GITHUB_TOKEN" \
         -H "Accept: application/vnd.github.v3+json" \
         -H "Content-Type: application/json" \
-        -d "{\"body\": \"$reply_text\", \"in_reply_to\": $comment_id}" \
+        --data-binary "$json_payload" \
         "https://api.github.com/repos/$REPO_OWNER/$REPO_NAME/pulls/$PR_NUMBER/comments" > /dev/null; then
         echo "✅ #$comment_id: 返信完了"
     else

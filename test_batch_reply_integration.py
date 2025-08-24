@@ -10,7 +10,9 @@ project_root = Path(__file__).parent
 sys.path.insert(0, str(project_root / "src"))
 
 from github_review_prompts.utils.smart_batch_reply_manager import (
-    SmartBatchReplyManager, BatchReply, ReplyPriority
+    SmartBatchReplyManager,
+    BatchReply,
+    ReplyPriority,
 )
 from github_review_prompts.utils.reply_decision_matrix import ReplyDecisionMatrix
 
@@ -26,26 +28,26 @@ def test_integrated_batch_system():
             "id": 2296181566,
             "user": {"login": "coderabbitai[bot]"},
             "body": "_⚠️ Potential issue_\n\nセキュリティ上の問題があります。パスワードがハードコードされています。",
-            "created_at": "2025-01-24T10:00:00Z"
+            "created_at": "2025-01-24T10:00:00Z",
         },
         {
             "id": 2296272971,
             "user": {"login": "yohi"},
             "body": "@coderabbitai 指摘された問題の大部分は既に解決済みです。確認してください。",
-            "created_at": "2025-01-24T10:30:00Z"
+            "created_at": "2025-01-24T10:30:00Z",
         },
         {
             "id": 3217140550,
             "user": {"login": "coderabbitai[bot]"},
             "body": "<!-- This is an auto-generated reply by CodeRabbit -->\n✅ Actions performed\n\nReview triggered.",
-            "created_at": "2025-01-24T10:45:00Z"
-        }
+            "created_at": "2025-01-24T10:45:00Z",
+        },
     ]
 
     # 1. 返信判定マトリックスで分析
     print("\n1. 返信判定マトリックス分析...")
     matrix = ReplyDecisionMatrix()
-    context = {'current_phase': 'development', 'future_phase': 'quality_improvement'}
+    context = {"current_phase": "development", "future_phase": "quality_improvement"}
     analysis = matrix.analyze_reply_requirements(sample_comments, context)
 
     print(f"   総コメント数: {analysis['total_comments']}")
@@ -56,27 +58,31 @@ def test_integrated_batch_system():
     print("\n2. バッチ返信データ作成...")
     batch_replies = []
 
-    for decision_info in analysis['decisions']:
-        decision = decision_info['decision']
-        comment_id = decision_info['comment_id']
+    for decision_info in analysis["decisions"]:
+        decision = decision_info["decision"]
+        comment_id = decision_info["comment_id"]
 
-        if decision.reply_required.name == 'REQUIRED':
+        if decision.reply_required.name == "REQUIRED":
             # 返信内容を生成
             reply_context = {
-                'technical_reason': '技術的制約',
-                'detailed_explanation': 'この指摘は現在の実装方針と合致しません',
-                'reference': '公式ドキュメント参照'
+                "technical_reason": "技術的制約",
+                "detailed_explanation": "この指摘は現在の実装方針と合致しません",
+                "reference": "公式ドキュメント参照",
             }
 
             reply_body = matrix.generate_reply_message(decision, reply_context)
             if reply_body:
-                priority = ReplyPriority.CRITICAL if decision.priority == 'high' else ReplyPriority.NORMAL
+                priority = (
+                    ReplyPriority.CRITICAL
+                    if decision.priority == "high"
+                    else ReplyPriority.NORMAL
+                )
 
                 batch_reply = BatchReply(
                     comment_id=comment_id,
                     reply_body=reply_body,
                     priority=priority,
-                    template_type=decision.template_type or 'general'
+                    template_type=decision.template_type or "general",
                 )
                 batch_replies.append(batch_reply)
 
@@ -91,16 +97,14 @@ def test_integrated_batch_system():
     for i, batch in enumerate(batches, 1):
         priority_counts = {}
         for reply in batch:
-            priority_counts[reply.priority.value] = priority_counts.get(reply.priority.value, 0) + 1
+            priority_counts[reply.priority.value] = (
+                priority_counts.get(reply.priority.value, 0) + 1
+            )
         print(f"   バッチ {i}: {len(batch)}件 ({priority_counts})")
 
     # 4. GitHub API用のcurlコマンド生成
     print("\n4. GitHub API用コマンド生成...")
-    pr_info = {
-        "owner": "yohi",
-        "repo": "terraform",
-        "pull_number": 98
-    }
+    pr_info = {"owner": "yohi", "repo": "terraform", "pull_number": 98}
 
     commands = manager.generate_batch_commands(batches, pr_info)
     print(f"   生成されたcurlコマンド数: {len(commands)}")
@@ -111,7 +115,11 @@ def test_integrated_batch_system():
     # 従来方式（1コメント1API）vs バッチ方式
     traditional_api_calls = len(batch_replies)
     batch_api_calls = len(batches)
-    efficiency_improvement = ((traditional_api_calls - batch_api_calls) / traditional_api_calls * 100) if traditional_api_calls > 0 else 0
+    efficiency_improvement = (
+        ((traditional_api_calls - batch_api_calls) / traditional_api_calls * 100)
+        if traditional_api_calls > 0
+        else 0
+    )
 
     print(f"   従来方式: {traditional_api_calls}回のAPI呼び出し")
     print(f"   バッチ方式: {batch_api_calls}回のAPI呼び出し")
@@ -125,11 +133,11 @@ def test_integrated_batch_system():
         print("=" * 50)
 
     return {
-        'total_comments': len(sample_comments),
-        'replies_needed': len(batch_replies),
-        'batches_created': len(batches),
-        'api_efficiency': efficiency_improvement,
-        'commands_generated': len(commands)
+        "total_comments": len(sample_comments),
+        "replies_needed": len(batch_replies),
+        "batches_created": len(batches),
+        "api_efficiency": efficiency_improvement,
+        "commands_generated": len(commands),
     }
 
 
@@ -148,5 +156,6 @@ if __name__ == "__main__":
     except Exception as e:
         print(f"❌ テストエラー: {e}")
         import traceback
+
         traceback.print_exc()
         sys.exit(1)

@@ -581,13 +581,13 @@ if __name__ == "__main__":
         BatchReply(
             comment_id=456,
             reply_body="@coderabbitai 妥当な指摘ですが現フェーズでは対象外です。",
-            priority=ReplyPriority.NORMAL,
+            priority=ReplyPriority.MEDIUM,
             template_type="future_planning",
         ),
         BatchReply(
             comment_id=789,
             reply_body="@coderabbitai この点について詳細説明をお願いします。",
-            priority=ReplyPriority.NORMAL,
+            priority=ReplyPriority.MEDIUM,
             template_type="clarification_request",
             file_path="src/main.py",
             line_number=42,

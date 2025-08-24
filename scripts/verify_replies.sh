@@ -24,9 +24,13 @@ echo "📊 返信必要数: $TOTAL_REQUIRED件"
 
 # 実際の返信をチェック
 echo "🔎 実際の返信状況確認中..."
+
+# 現在のユーザー名を安全に取得
+CURRENT_USER=$(gh api user -q .login)
+
 SENT_REPLIES=$(curl -s -H "Authorization: Bearer $GITHUB_TOKEN" \
     "https://api.github.com/repos/$REPO_OWNER/$REPO_NAME/pulls/$PR_NUMBER/comments" | \
-    jq -r '.[] | select(.user.login == "'$(gh api user -q .login)'") | .in_reply_to_id // empty')
+    jq -r --arg user "$CURRENT_USER" '.[] | select(.user.login == $user) | .in_reply_to_id // empty')
 
 SENT_COUNT=0
 MISSING_REPLIES=""

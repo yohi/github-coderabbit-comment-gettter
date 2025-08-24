@@ -12,6 +12,7 @@ import requests
 from typing import Dict, List, Any
 from datetime import datetime
 
+
 class ImprovementIssueCreator:
     """改善項目Issue作成クラス"""
 
@@ -21,21 +22,19 @@ class ImprovementIssueCreator:
         self.github_token = github_token
         self.base_url = "https://api.github.com"
 
-    def create_issue(self, title: str, body: str, labels: List[str] = None) -> Dict[str, Any]:
+    def create_issue(
+        self, title: str, body: str, labels: List[str] = None
+    ) -> Dict[str, Any]:
         """GitHub Issueを作成"""
         url = f"{self.base_url}/repos/{self.repo_owner}/{self.repo_name}/issues"
 
         headers = {
             "Authorization": f"token {self.github_token}",
             "Accept": "application/vnd.github.v3+json",
-            "Content-Type": "application/json"
+            "Content-Type": "application/json",
         }
 
-        data = {
-            "title": title,
-            "body": body,
-            "labels": labels or []
-        }
+        data = {"title": title, "body": body, "labels": labels or []}
 
         response = requests.post(url, headers=headers, json=data)
 
@@ -43,6 +42,7 @@ class ImprovementIssueCreator:
             return response.json()
         else:
             raise Exception(f"Issue作成失敗: {response.status_code} - {response.text}")
+
 
 def get_critical_issues() -> List[Dict[str, Any]]:
     """🔴 緊急対応が必要な課題"""
@@ -109,7 +109,7 @@ async def process_comments_parallel(comments):
 2. 並列処理アーキテクチャ設計
 3. 段階的実装とテスト
 4. パフォーマンス測定と最適化
-"""
+""",
         },
         {
             "title": "🔴 [Critical] エラーハンドリング・信頼性の強化",
@@ -193,7 +193,7 @@ def process_comments_resilient(comments):
 2. エラー分類とハンドリング戦略設計
 3. チェックポイント・リカバリ機構実装
 4. 包括的なエラーテスト作成
-"""
+""",
         },
         {
             "title": "🔴 [Critical] 長文コメント処理の改善",
@@ -266,9 +266,10 @@ def smart_summarize_comment(comment_body: str, max_length: int = 2000) -> Dict[s
 2. 重要部分抽出アルゴリズム設計
 3. 要約・段階表示機能実装
 4. CodeRabbitコメント特化の最適化
-"""
-        }
+""",
+        },
     ]
+
 
 def get_high_priority_issues() -> List[Dict[str, Any]]:
     """🟡 重要な改善項目"""
@@ -354,7 +355,7 @@ class UnifiedConfig:
 2. 統一設定スキーマの設計
 3. マイグレーション機能の実装
 4. 既存機能の動作確認とテスト
-"""
+""",
         },
         {
             "title": "🟡 [High] テスト網羅性の向上",
@@ -432,7 +433,7 @@ class TestEndToEnd:
 2. テスト戦略とカバレッジ目標の設定
 3. 段階的なテスト追加（重要機能から）
 4. CI/CDパイプラインの構築
-"""
+""",
         },
         {
             "title": "🟡 [High] セキュリティ・認証の強化",
@@ -502,9 +503,10 @@ class SecureTokenManager:
 2. セキュアストレージの設計・実装
 3. 権限制御機能の追加
 4. 監査ログ機能の実装
-"""
-        }
+""",
+        },
     ]
+
 
 def get_medium_priority_issues() -> List[Dict[str, Any]]:
     """🟢 将来的な改善項目"""
@@ -577,7 +579,7 @@ class Plugin:
 2. プラグインシステム設計
 3. 段階的な実装とテスト
 4. サンプルプラグインの作成
-"""
+""",
         },
         {
             "title": "🟢 [Medium] Web UI・ダッシュボードの開発",
@@ -624,9 +626,10 @@ class Plugin:
 2. バックエンド API の設計
 3. フロントエンド開発
 4. 統合テストと最適化
-"""
-        }
+""",
+        },
     ]
+
 
 def create_master_issue() -> Dict[str, Any]:
     """マスター Issue（全体概要）"""
@@ -740,8 +743,9 @@ def create_master_issue() -> Dict[str, Any]:
 
 **最終更新**: 2025年1月24日
 **次回レビュー予定**: Phase 1完了時
-"""
+""",
     }
+
 
 def main():
     """メイン実行関数"""
@@ -764,9 +768,7 @@ def main():
         master_issue = create_master_issue()
         print(f"📋 マスターIssue作成中: {master_issue['title']}")
         master_result = creator.create_issue(
-            master_issue["title"],
-            master_issue["body"],
-            master_issue["labels"]
+            master_issue["title"], master_issue["body"], master_issue["labels"]
         )
         print(f"✅ マスターIssue作成完了: #{master_result['number']}")
 
@@ -775,9 +777,7 @@ def main():
         for issue in critical_issues:
             print(f"🔴 緊急Issue作成中: {issue['title']}")
             result = creator.create_issue(
-                issue["title"],
-                issue["body"],
-                issue["labels"]
+                issue["title"], issue["body"], issue["labels"]
             )
             print(f"✅ Issue作成完了: #{result['number']}")
 
@@ -786,9 +786,7 @@ def main():
         for issue in high_priority_issues:
             print(f"🟡 重要Issue作成中: {issue['title']}")
             result = creator.create_issue(
-                issue["title"],
-                issue["body"],
-                issue["labels"]
+                issue["title"], issue["body"], issue["labels"]
             )
             print(f"✅ Issue作成完了: #{result['number']}")
 
@@ -797,18 +795,19 @@ def main():
         for issue in medium_priority_issues:
             print(f"🟢 中優先度Issue作成中: {issue['title']}")
             result = creator.create_issue(
-                issue["title"],
-                issue["body"],
-                issue["labels"]
+                issue["title"], issue["body"], issue["labels"]
             )
             print(f"✅ Issue作成完了: #{result['number']}")
 
         print("\n🎉 全てのIssue作成が完了しました！")
-        print(f"📊 作成されたIssue数: {1 + len(critical_issues) + len(high_priority_issues) + len(medium_priority_issues)}件")
+        print(
+            f"📊 作成されたIssue数: {1 + len(critical_issues) + len(high_priority_issues) + len(medium_priority_issues)}件"
+        )
         print(f"🔗 リポジトリ: https://github.com/{repo_owner}/{repo_name}/issues")
 
     except Exception as e:
         print(f"❌ エラーが発生しました: {e}")
+
 
 if __name__ == "__main__":
     main()

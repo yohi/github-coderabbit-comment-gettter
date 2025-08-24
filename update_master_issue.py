@@ -9,6 +9,7 @@ import os
 import requests
 from typing import Dict, Any
 
+
 class MasterIssueUpdater:
     """マスターIssue更新クラス"""
 
@@ -18,14 +19,16 @@ class MasterIssueUpdater:
         self.github_token = github_token
         self.base_url = "https://api.github.com"
 
-    def update_issue(self, issue_number: int, title: str = None, body: str = None) -> Dict[str, Any]:
+    def update_issue(
+        self, issue_number: int, title: str = None, body: str = None
+    ) -> Dict[str, Any]:
         """GitHub Issueを更新"""
         url = f"{self.base_url}/repos/{self.repo_owner}/{self.repo_name}/issues/{issue_number}"
 
         headers = {
             "Authorization": f"token {self.github_token}",
             "Accept": "application/vnd.github.v3+json",
-            "Content-Type": "application/json"
+            "Content-Type": "application/json",
         }
 
         data = {}
@@ -34,12 +37,21 @@ class MasterIssueUpdater:
         if body:
             data["body"] = body
 
-        response = requests.patch(url, headers=headers, json=data)
-
-        if response.status_code == 200:
+        try:
+            response = requests.patch(url, headers=headers, json=data, timeout=10)
+            response.raise_for_status()
             return response.json()
-        else:
-            raise Exception(f"Issue更新失敗: {response.status_code} - {response.text}")
+        except requests.exceptions.Timeout:
+            raise Exception(
+                "Issue更新タイムアウト: リクエストが10秒以内に完了しませんでした"
+            )
+        except requests.exceptions.RequestException as e:
+            status_code = getattr(e.response, "status_code", "Unknown")
+            response_text = getattr(e.response, "text", "No response body")
+            raise Exception(
+                f"Issue更新失敗: HTTP {status_code} - {response_text[:200]}..."
+            )
+
 
 def get_updated_master_issue_body() -> str:
     """更新されたマスターIssueの本文を生成"""
@@ -221,6 +233,7 @@ uv run pytest src/github_review_prompts/tests/
 4. 実装・テスト・検証のサイクル実行
 """
 
+
 def main():
     """メイン実行関数"""
     # 環境変数から設定取得
@@ -243,10 +256,7 @@ def main():
         updated_body = get_updated_master_issue_body()
 
         print(f"📝 マスターIssue #{master_issue_number} を更新中...")
-        result = updater.update_issue(
-            master_issue_number,
-            body=updated_body
-        )
+        result = updater.update_issue(master_issue_number, body=updated_body)
 
         print(f"✅ マスターIssue更新完了!")
         print(f"🔗 URL: {result['html_url']}")
@@ -258,6 +268,7 @@ def main():
 
     except Exception as e:
         print(f"❌ エラーが発生しました: {e}")
+
 
 if __name__ == "__main__":
     main()

@@ -611,8 +611,9 @@ class CommentProcessor:
 
         # ファイルパターンフィルター
         if file_patterns:
+            prev_filtered = filtered_prompts
             filtered_prompts = []
-            for prompt in filtered_prompts:
+            for prompt in prev_filtered:
                 if any(
                     self._match_file_pattern(prompt.file_path, pattern)
                     for pattern in file_patterns
