@@ -11,7 +11,7 @@ echo $GITHUB_TOKEN | grep -E '^(ghp_|github_pat_)' || echo "❌ TOKEN未設定"
 ### 2. 高速実行
 ```bash
 # 並列処理で効率化
-./scripts/batch_reply.sh --concurrent=5 --timeout=45min
+./scripts/batch_reply.sh 5 45
 ```
 
 ### 3. 結果確認
