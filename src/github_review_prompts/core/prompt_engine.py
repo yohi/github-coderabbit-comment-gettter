@@ -167,7 +167,9 @@ class UnifiedPromptEngine:
                 # Outside diff commentsもスマートフィルターを通す
                 outside_filter = SmartCommentFilter()
                 for comment in outside_diff_comments:
-                    should_task, reason, comment_type = outside_filter.should_create_task(comment)
+                    should_task, reason, comment_type = (
+                        outside_filter.should_create_task(comment)
+                    )
                     if should_task:
                         if comment not in actionable_comments:
                             actionable_comments.append(comment)
@@ -175,12 +177,24 @@ class UnifiedPromptEngine:
                         # スマートフィルターで除外されたOutside diffコメントでも
                         # 具体的な技術的修正提案がある場合は返信必要
                         has_technical_indicator = any(
-                            indicator in comment.get('body', '') 
-                            for indicator in ['_⚠️ Potential issue_', '_🛠️ Refactor suggestion_', '_🔒 Security issue_']
+                            indicator in comment.get("body", "")
+                            for indicator in [
+                                "_⚠️ Potential issue_",
+                                "_🛠️ Refactor suggestion_",
+                                "_🔒 Security issue_",
+                            ]
                         )
                         has_concrete_action = any(
-                            keyword in comment.get('body', '').lower()
-                            for keyword in ['修正', '変更', 'fix', 'change', 'update', 'variable', '変数']
+                            keyword in comment.get("body", "").lower()
+                            for keyword in [
+                                "修正",
+                                "変更",
+                                "fix",
+                                "change",
+                                "update",
+                                "variable",
+                                "変数",
+                            ]
                         )
                         if has_technical_indicator and has_concrete_action:
                             reply_required_comments.append(comment)
@@ -190,8 +204,10 @@ class UnifiedPromptEngine:
                     if comment not in actionable_comments:
                         # 返信必要コメントもスマートフィルターを通す
                         outside_filter = SmartCommentFilter()
-                        should_task, reason, comment_type = outside_filter.should_create_task(comment)
-                        if should_task or comment_type.value == 'actionable':
+                        should_task, reason, comment_type = (
+                            outside_filter.should_create_task(comment)
+                        )
+                        if should_task or comment_type.value == "actionable":
                             actionable_comments.append(comment)
 
                 # フィルタリング結果をログ出力

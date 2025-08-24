@@ -139,31 +139,30 @@ class GitHubClient:
         except requests.exceptions.RequestException as e:
             raise APIError(f"GitHub API リクエストエラー: {str(e)}") from e
 
-    def _make_graphql_request(self, query: str, variables: Dict[str, Any]) -> requests.Response:
+    def _make_graphql_request(
+        self, query: str, variables: Dict[str, Any]
+    ) -> requests.Response:
         """GraphQLリクエストの実行"""
         url = "https://api.github.com/graphql"
-        payload = {
-            "query": query,
-            "variables": variables
-        }
+        payload = {"query": query, "variables": variables}
         return self._make_request("POST", url, json=payload)
 
     def _has_coderabbit_resolution_marker(self, comment_body: str) -> bool:
         """CodeRabbitの解決済みマーカーが含まれているかチェック"""
         if not comment_body:
             return False
-        
+
         resolution_markers = [
             r"\[CR_RESOLUTION_CONFIRMED:.*?\]",
             r"✅ エンジニアによる技術的検証完了.*CodeRabbitによる解決済みマーク実行可能",
-            r"\[/CR_RESOLUTION_CONFIRMED\]"
+            r"\[/CR_RESOLUTION_CONFIRMED\]",
         ]
-        
+
         # すべてのマーカーが含まれているかチェック
         for marker in resolution_markers:
             if not re.search(marker, comment_body, re.DOTALL | re.IGNORECASE):
                 return False
-        
+
         return True
 
     def test_authentication(self) -> Dict[str, Any]:
@@ -237,7 +236,7 @@ class GitHubClient:
         """プルリクエストのレビューコメントを取得（未解決フィルタ対応）"""
         if unresolved_only:
             return self._get_unresolved_review_comments(pr_info, page_size)
-        
+
         # 従来の全件取得
         all_comments = []
         page = 1
@@ -284,9 +283,11 @@ class GitHubClient:
         self, pr_info: GitHubPRInfo, page_size: int = 100
     ) -> List[Dict[str, Any]]:
         """未解決のレビューコメントのみを取得（GraphQL使用）"""
-        
-        self.logger.info(f"未解決レビューコメント取得開始: {pr_info.owner}/{pr_info.repo}#{pr_info.pull_number}")
-        
+
+        self.logger.info(
+            f"未解決レビューコメント取得開始: {pr_info.owner}/{pr_info.repo}#{pr_info.pull_number}"
+        )
+
         # GraphQLクエリで未解決スレッドのみ取得
         query = """
         query GetUnresolvedReviewComments($owner: String!, $repo: String!, $number: Int!) {
@@ -320,40 +321,46 @@ class GitHubClient:
           }
         }
         """
-        
+
         variables = {
             "owner": pr_info.owner,
             "repo": pr_info.repo,
-            "number": pr_info.pull_number
+            "number": pr_info.pull_number,
         }
-        
+
         try:
             response = self._make_graphql_request(query, variables)
             data = response.json()
-            
+
             if "errors" in data:
                 raise APIError(f"GraphQL API エラー: {data['errors']}")
-            
-            review_threads = data["data"]["repository"]["pullRequest"]["reviewThreads"]["nodes"]
+
+            review_threads = data["data"]["repository"]["pullRequest"]["reviewThreads"][
+                "nodes"
+            ]
             unresolved_comments = []
-            
+
             for thread in review_threads:
                 # スレッドの未解決状態をチェック
                 thread_is_resolved = thread["isResolved"]
-                
+
                 # スレッド内のコメントをチェック（時系列順）
                 thread_comments = thread["comments"]["nodes"]
                 if not thread_comments:
                     continue
-                
+
                 # CodeRabbitの解決済みマーカーチェック
                 # 最後のコメントがcoderabbitaiかつ解決済みマーカーがある場合は解決済みとみなす
                 last_comment = thread_comments[-1]
-                if (last_comment["author"]["login"] in ["coderabbitai", "coderabbitai[bot]"] and
-                    self._has_coderabbit_resolution_marker(last_comment["body"])):
+                if last_comment["author"]["login"] in [
+                    "coderabbitai",
+                    "coderabbitai[bot]",
+                ] and self._has_coderabbit_resolution_marker(last_comment["body"]):
                     thread_is_resolved = True
-                    self.logger.debug(f"CodeRabbit解決済みマーカー検出: thread {thread['id']}")
-                
+                    self.logger.debug(
+                        f"CodeRabbit解決済みマーカー検出: thread {thread['id']}"
+                    )
+
                 # 未解決スレッドのみを処理
                 if not thread_is_resolved:
                     for comment in thread_comments:
@@ -370,14 +377,20 @@ class GitHubClient:
                                 "line": comment["line"],
                                 "diff_hunk": comment["diffHunk"],
                                 "outdated": comment["outdated"],
-                                "pull_request_review_id": comment["pullRequestReview"]["id"] if comment["pullRequestReview"] else None,
-                                "is_resolved": False  # 明示的に未解決マーク
+                                "pull_request_review_id": (
+                                    comment["pullRequestReview"]["id"]
+                                    if comment["pullRequestReview"]
+                                    else None
+                                ),
+                                "is_resolved": False,  # 明示的に未解決マーク
                             }
                             unresolved_comments.append(rest_format_comment)
-            
-            self.logger.info(f"未解決レビューコメント取得完了: {len(unresolved_comments)} 件")
+
+            self.logger.info(
+                f"未解決レビューコメント取得完了: {len(unresolved_comments)} 件"
+            )
             return unresolved_comments
-            
+
         except Exception as e:
             raise APIError(f"未解決レビューコメント取得エラー: {str(e)}") from e
 
@@ -447,16 +460,25 @@ class GitHubClient:
         try:
             # GraphQL APIでレビューとOutside diff commentsを取得
             self.logger.info("GraphQL APIでOutside diff range comments取得を試行...")
-            graphql_reviews, outside_diff_comments = self.get_pr_reviews_with_outside_diff_graphql(pr_info, page_size)
+            graphql_reviews, outside_diff_comments = (
+                self.get_pr_reviews_with_outside_diff_graphql(pr_info, page_size)
+            )
 
             # REST APIでレビューコメントも取得（未解決のみ）
-            review_comments = self.get_pr_review_comments(pr_info, page_size, unresolved_only=True)
+            review_comments = self.get_pr_review_comments(
+                pr_info, page_size, unresolved_only=True
+            )
 
             # Issue コメント（Outside diff range含む）を取得
             issue_comments = self.get_pr_issue_comments(pr_info, page_size)
 
             # 全コメントを結合
-            all_comments = review_comments + graphql_reviews + outside_diff_comments + issue_comments
+            all_comments = (
+                review_comments
+                + graphql_reviews
+                + outside_diff_comments
+                + issue_comments
+            )
 
             # 統計情報
             stats = {
@@ -478,11 +500,15 @@ class GitHubClient:
             return all_comments, stats
 
         except Exception as e:
-            self.logger.warning(f"GraphQL API取得失敗、REST APIにフォールバック: {str(e)}")
+            self.logger.warning(
+                f"GraphQL API取得失敗、REST APIにフォールバック: {str(e)}"
+            )
 
             # フォールバック: 既存のREST API使用
             # レビューコメント（diff range内、未解決のみ）を取得
-            review_comments = self.get_pr_review_comments(pr_info, page_size, unresolved_only=True)
+            review_comments = self.get_pr_review_comments(
+                pr_info, page_size, unresolved_only=True
+            )
 
             # Issue コメント（Outside diff range含む）を取得
             issue_comments = self.get_pr_issue_comments(pr_info, page_size)
@@ -819,15 +845,17 @@ class GitHubClient:
                     review_body = review.get("body", "")
 
                     # レビュー全体を保存
-                    all_reviews.append({
-                        "id": review["id"],
-                        "body": review_body,
-                        "state": review.get("state", ""),
-                        "author": review.get("author", {}).get("login", ""),
-                        "created_at": review.get("createdAt", ""),
-                        "updated_at": review.get("updatedAt", ""),
-                        "comment_type": "review_comment",
-                    })
+                    all_reviews.append(
+                        {
+                            "id": review["id"],
+                            "body": review_body,
+                            "state": review.get("state", ""),
+                            "author": review.get("author", {}).get("login", ""),
+                            "created_at": review.get("createdAt", ""),
+                            "updated_at": review.get("updatedAt", ""),
+                            "comment_type": "review_comment",
+                        }
+                    )
 
                     # Outside diff range commentsを抽出
                     if review_body and "Outside diff range comments" in review_body:
@@ -836,22 +864,28 @@ class GitHubClient:
                         extracted_outside = extract_outside_diff_comments(review_body)
 
                         if extracted_outside:
-                            self.logger.info(f"Outside diff comments発見: {len(extracted_outside)}件")
+                            self.logger.info(
+                                f"Outside diff comments発見: {len(extracted_outside)}件"
+                            )
 
                             # Outside diff commentsを通常のコメント形式に変換
                             for outside_comment in extracted_outside:
                                 synthetic_comment = {
-                                    'id': f"{review['id']}_outside_{len(outside_diff_comments)}",
-                                    'body': f"🔧 **{outside_comment['title']}** (行: {outside_comment['line']})\n\n{outside_comment['content']}",
-                                    'path': outside_comment['file_path'],
-                                    'line': outside_comment['line'],
-                                    'user': {'login': review.get("author", {}).get("login", "")},
-                                    'created_at': review.get("createdAt", ""),
-                                    'priority': outside_comment['priority'],
-                                    'category': outside_comment['category'],
-                                    'is_outside_diff': True,
-                                    'comment_type': 'outside_diff_comment',
-                                    'original_review_id': review['id']
+                                    "id": f"{review['id']}_outside_{len(outside_diff_comments)}",
+                                    "body": f"🔧 **{outside_comment['title']}** (行: {outside_comment['line']})\n\n{outside_comment['content']}",
+                                    "path": outside_comment["file_path"],
+                                    "line": outside_comment["line"],
+                                    "user": {
+                                        "login": review.get("author", {}).get(
+                                            "login", ""
+                                        )
+                                    },
+                                    "created_at": review.get("createdAt", ""),
+                                    "priority": outside_comment["priority"],
+                                    "category": outside_comment["category"],
+                                    "is_outside_diff": True,
+                                    "comment_type": "outside_diff_comment",
+                                    "original_review_id": review["id"],
                                 }
                                 outside_diff_comments.append(synthetic_comment)
 

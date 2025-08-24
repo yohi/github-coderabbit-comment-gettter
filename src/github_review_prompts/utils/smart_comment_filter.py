@@ -169,7 +169,40 @@ class SmartCommentFilter:
 
         self.logger.debug(f"コメント分析開始: ID={comment_id}, Author={author}")
 
-        # 1. 除外パターンチェック（強化）
+        # 0. 最初に技術的指摘マーカーをチェック（除外パターンより優先）
+        technical_indicators = [
+            "_⚠️ Potential issue_",
+            "_🛠️ Refactor suggestion_",
+            "_💡 Verification agent_",
+            "_🔒 Security issue_",
+            "_⚡ Performance issue_",
+            "_📝 Committable suggestion_",
+        ]
+
+        has_technical_indicator = any(
+            indicator in comment_body for indicator in technical_indicators
+        )
+        if has_technical_indicator:
+            self.logger.debug(f"技術的指摘マーカー検出 - 除外パターンをスキップ")
+            # CodeRabbitコメントなら詳細分析、そうでなければactionable扱い
+            if author in ["coderabbitai[bot]", "coderabbitai"]:
+                return self._analyze_coderabbit_comment(comment_body)
+            else:
+                return True, FilterReason.TECHNICAL_ISSUE, CommentType.ACTIONABLE
+
+        # 1. 解決済みマーカーチェック（技術的指摘がない場合のみ）
+        for marker in self.resolved_markers:
+            if re.search(marker, comment_body, re.IGNORECASE):
+                self.logger.debug(f"解決済みマーカー検出: {marker}")
+                return False, FilterReason.RESOLVED_DISCUSSION, CommentType.RESOLVED
+
+        # 2. CodeRabbitコメントの判定（技術的指摘がない場合）
+        if author in ["coderabbitai[bot]", "coderabbitai"]:
+            # CodeRabbitコメント（outside diff commentsは"coderabbitai"で来る）
+            self.logger.debug(f"CodeRabbitコメント分析（技術的指摘なし）: {author}")
+            return self._analyze_coderabbit_comment(comment_body)
+
+        # 3. 除外パターンチェック（CodeRabbit以外のコメント）
         for pattern in self.exclusion_patterns:
             if re.search(
                 pattern, comment_body, re.IGNORECASE | re.MULTILINE | re.DOTALL
@@ -177,23 +210,11 @@ class SmartCommentFilter:
                 self.logger.debug(f"除外パターンマッチ: {pattern}")
                 return False, FilterReason.AUTO_GENERATED, CommentType.AUTO_GENERATED
 
-        # 2. 情報提供のみパターンチェック
+        # 4. 情報提供のみパターンチェック
         for pattern in self.info_only_patterns:
             if re.search(pattern, comment_body, re.MULTILINE):
                 self.logger.debug(f"情報提供パターンマッチ: {pattern}")
                 return False, FilterReason.PROGRESS_REPORT, CommentType.PROGRESS_REPORT
-
-        # 3. 解決済みマーカーチェック
-        for marker in self.resolved_markers:
-            if re.search(marker, comment_body, re.IGNORECASE):
-                self.logger.debug(f"解決済みマーカー検出: {marker}")
-                return False, FilterReason.RESOLVED_DISCUSSION, CommentType.RESOLVED
-
-        # 4. CodeRabbitコメントの判定（botありとbotなし両方を対象）
-        if author in ["coderabbitai[bot]", "coderabbitai"]:
-            # CodeRabbitコメント（outside diff commentsは"coderabbitai"で来る）
-            self.logger.debug(f"CodeRabbitコメント分析: {author}")
-            return self._analyze_coderabbit_comment(comment_body)
 
         # 5. 開発者コメントの詳細分析
         # CodeRabbit以外の作者のコメントを分析
@@ -226,36 +247,54 @@ class SmartCommentFilter:
             "_💡 Verification agent_",
             "_🔒 Security issue_",
             "_⚡ Performance issue_",
+            "_📝 Committable suggestion_",
         ]
 
         if any(indicator in comment_body for indicator in technical_indicators):
-            # さらに、実際に具体的な問題や修正提案があるかチェック
-            # ただし、Verification agentの検証スクリプトは除外
+            # Verification agentの検証スクリプトのみの場合は除外
+            # しかし、実際の問題指摘や修正提案があるVerification agentは含める
             if (
-                "検証スクリプト" in comment_body
-                or "rg -nP" in comment_body
-                or "#!/bin/bash" in comment_body
+                "_💡 Verification agent_" in comment_body
+                and (
+                    "検証スクリプト" in comment_body
+                    or "rg -nP" in comment_body
+                    or "#!/bin/bash" in comment_body
+                )
+                and len(re.sub(r"```.*?```", "", comment_body, flags=re.DOTALL).strip())
+                < 100
             ):
+                self.logger.debug("検証スクリプトのみのVerification agent - 除外")
                 return False, FilterReason.AUTO_GENERATED, CommentType.AUTO_GENERATED
 
             # 技術的指摘マーカーがある場合はactionable
+            self.logger.debug(f"技術的指摘マーカー検出 - タスク化")
             return True, FilterReason.TECHNICAL_ISSUE, CommentType.ACTIONABLE
 
         # コードブロックや修正提案があるコメントをactionableとする
         code_indicators = [
-            "```diff", "```suggestion", "```typescript", "```javascript", "```python",
-            "```json", "```yaml", "```yml", "```bash", "```sh"
+            "```diff",
+            "```suggestion",
+            "```typescript",
+            "```javascript",
+            "```python",
+            "```json",
+            "```yaml",
+            "```yml",
+            "```bash",
+            "```sh",
         ]
-        
+
         if any(indicator in comment_body for indicator in code_indicators):
             self.logger.debug(f"コード関連マーカーを検出")
             return True, FilterReason.TECHNICAL_ISSUE, CommentType.ACTIONABLE
-        
+
         # コメントの長さでフィルタリング（非常に実質的なコメントのみ）
         clean_body = re.sub(r"<[^>]+>", "", comment_body)  # HTMLタグ除去
         clean_body = clean_body.strip()
         if len(clean_body) > 200:  # 200文字以上の実質的なコメント
-            self.logger.debug(f"実質的な長いコメントをactionableと判定: {len(clean_body)}文字")
+            self.logger.debug(
+                f"実質的な長いコメントをactionableと判定: {len(clean_body)}文字"
+            )
             return True, FilterReason.TECHNICAL_ISSUE, CommentType.ACTIONABLE
 
         # 以下は全て除外
