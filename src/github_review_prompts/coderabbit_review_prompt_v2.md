@@ -99,6 +99,18 @@ graph TD
 2. **並列処理**: 最大5件同時実行
 3. **タイムアウト**: 45分で強制終了
 4. **自動検証**: スクリプトによる漏れチェック
+5. **🚫 Gitコミット禁止文言**: 「CodeRabbit」をコミットメッセージに含めない
+
+### 🔒 Gitコミットメッセージ規則
+```bash
+# ✅ 良い例
+git commit -m "fix: セキュリティ脆弱性修正 - 暗号化方式をbcryptに変更"
+git commit -m "refactor: エラーハンドリング改善"
+
+# ❌ 悪い例（禁止）
+git commit -m "CodeRabbitの指摘に対応"
+git commit -m "CodeRabbitレビュー修正完了"
+```
 
 ---
 

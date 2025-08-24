@@ -1103,11 +1103,101 @@ def run_lightweight_mode(args) -> int:
     combined_output = "\n".join(output)
     output_file = "review_prompt_with_todos.md"
 
+    # コメント内訳分析関数
+    def analyze_comment_breakdown(comments):
+        """コメントの種類別内訳を分析"""
+        breakdown = {
+            "outside_diff": 0,
+            "potential_issue": 0,
+            "refactor_suggestion": 0,
+            "nitpick": 0,
+            "committable_suggestion": 0,
+            "verification": 0,
+            "analysis_chain": 0,
+            "other": 0,
+        }
+
+        for comment in comments:
+            body = comment.get("body", "").lower()
+
+            # outside diff の判定
+            if "outside diff" in body or "outside the diff hunk" in body:
+                breakdown["outside_diff"] += 1
+            # potential issue の判定
+            elif (
+                ("potential" in body and "issue" in body)
+                or "security" in body
+                or "bug" in body
+                or "vulnerability" in body
+            ):
+                breakdown["potential_issue"] += 1
+            # refactor suggestion の判定
+            elif (
+                "refactor" in body
+                or "improve" in body
+                or "consider" in body
+                or "suggestion" in body
+            ):
+                breakdown["refactor_suggestion"] += 1
+            # committable suggestion の判定
+            elif "committable suggestion" in body or "```suggestion" in body:
+                breakdown["committable_suggestion"] += 1
+            # nitpick の判定
+            elif (
+                "nitpick" in body or "nit:" in body or "minor" in body or "typo" in body
+            ):
+                breakdown["nitpick"] += 1
+            # verification agent の判定
+            elif "verification" in body or "verify" in body or "analysis agent" in body:
+                breakdown["verification"] += 1
+            # analysis chain の判定
+            elif "analysis chain" in body or "scripts executed" in body:
+                breakdown["analysis_chain"] += 1
+            else:
+                breakdown["other"] += 1
+
+        return breakdown
+
+    # コメント内訳の分析
+    breakdown = analyze_comment_breakdown(actionable_comments)
+
     # 統計情報とファイル情報を先に表示
     print()
     print("=" * 80)
     print("✅ レビュープロンプトとTODOリストを生成しました")
     print(f"📋 処理対象コメント: {len(actionable_comments)} 件")
+
+    # 詳細内訳の表示
+    if len(actionable_comments) > 0:
+        print("📊 内訳詳細:")
+        details = []
+        if breakdown["outside_diff"] > 0:
+            details.append(f"Outside Diff: {breakdown['outside_diff']}件")
+        if breakdown["potential_issue"] > 0:
+            details.append(f"Potential Issue: {breakdown['potential_issue']}件")
+        if breakdown["refactor_suggestion"] > 0:
+            details.append(f"Refactor Suggestion: {breakdown['refactor_suggestion']}件")
+        if breakdown["committable_suggestion"] > 0:
+            details.append(
+                f"Committable Suggestion: {breakdown['committable_suggestion']}件"
+            )
+        if breakdown["nitpick"] > 0:
+            details.append(f"Nitpick: {breakdown['nitpick']}件")
+        if breakdown["verification"] > 0:
+            details.append(f"Verification: {breakdown['verification']}件")
+        if breakdown["analysis_chain"] > 0:
+            details.append(f"Analysis Chain: {breakdown['analysis_chain']}件")
+        if breakdown["other"] > 0:
+            details.append(f"その他: {breakdown['other']}件")
+
+        # 内訳を2列で表示
+        for i in range(0, len(details), 2):
+            line_parts = details[i : i + 2]
+            print(
+                f"   {line_parts[0]}"
+                + (f"  {line_parts[1]}" if len(line_parts) > 1 else "")
+            )
+
     if "filter_results" in locals():
         print(
             f"🗂️ 除外コメント: {len(filter_results['filtered_out'])} 件 (自動生成・進捗報告等)"

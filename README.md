@@ -65,7 +65,7 @@ GitHub プルリクエストのレビューコメントから AI エージェン
 <a id="install"></a>
 
 ### 必要環境
-- Python 3.8+
+- Python 3.13+
 - GitHub API トークン
 
 ### uv を使用した環境セットアップ（推奨）
@@ -526,10 +526,10 @@ uv build --wheel
 
 ### パッケージ情報
 
-- **パッケージ名**: `github-coderabbit-comment-getter`
-- **実行コマンド**: `gh-review-prompts`
-- **Python要件**: >=3.8
-- **依存関係**: `requests>=2.31.0`
+- **パッケージ名**: `github-review-prompts-ai-agent`
+- **実行コマンド**: `grp`, `github-review-prompts`, `gh-review-prompts`
+- **Python要件**: >=3.13
+- **依存関係**: `requests>=2.32.0`, `pydantic>=2.10.0`, `pyyaml>=6.0.1`, `rich>=13.9.0`
 
 ## 🔧 開発
 <a id="development"></a>
@@ -610,6 +610,22 @@ MIT License
 
 ## 📈 変更履歴
 <a id="changelog"></a>
+
+### v2.0.0 (2025-08-24) - メジャーアップデート: CodeRabbit Enhanced System
+- 🚀 **Production Ready**: プロダクション環境での本格運用に対応
+- 🏗️ **CodeRabbit Enhanced System**: 大幅なアーキテクチャ改善とシステム統合
+  - 高度なコメント解析エンジン
+  - インテリジェントな優先度分類システム
+  - 包括的なエラー処理とレジリエンス機能
+- ⚙️ **Python 3.13 対応**: 最新Python環境での完全対応とパフォーマンス最適化
+- 🔧 **統合CLI**: 複数エントリーポイントの統一とユーザビリティ向上
+  - `grp` (軽量版)
+  - `github-review-prompts` (フル機能版)
+  - `gh-review-prompts` (エイリアス)
+- 🧪 **包括的テストスイート**: 実際のPRデータを使用した品質保証
+- 📊 **詳細分析機能**: プロダクション環境での運用監視とメトリクス収集
+- 🛡️ **セキュリティ強化**: エンタープライズ級のセキュリティ機能実装
+- 📚 **完全なドキュメント**: プロダクション展開ガイドと運用手順書
 
 ### v1.4.1 (2025-08-23) - セキュリティ・機能改善アップデート
 - 🔒 **セキュリティ強化**: GitHubトークン漏洩リスクを完全除去
