@@ -28,6 +28,7 @@ else:
     from ..utils.ai_agent_optimizer import AIAgentOptimizer
     from ..utils.platform_detector import PlatformLimitationDetector
     from ..utils.duplicate_manager import DuplicateCommentManager
+    from ..utils.reply_decision_matrix import ReplyDecisionMatrix
     from ..utils.resolution_master import ResolutionMasterController
 
 logger = logging.getLogger(__name__)
@@ -48,6 +49,7 @@ class UnifiedPromptEngine:
             self.ai_optimizer = AIAgentOptimizer()
             self.platform_detector = PlatformLimitationDetector()
             self.duplicate_manager = DuplicateCommentManager()
+            self.reply_decision_matrix = ReplyDecisionMatrix()
 
             # 解決状態追跡システム（最新機能）
             self.resolution_master = ResolutionMasterController(
@@ -705,7 +707,42 @@ git log --oneline origin/[ブランチ名]..HEAD
 """
             )
 
+            # 返信判定マトリックスによる分析
+            reply_analysis = None
+            if self.enhanced_features_available and hasattr(
+                self, "reply_decision_matrix"
+            ):
+                try:
+                    context = {
+                        "current_phase": options.get("current_phase", "development"),
+                        "future_phase": options.get(
+                            "future_phase", "quality_improvement"
+                        ),
+                    }
+                    reply_analysis = (
+                        self.reply_decision_matrix.analyze_reply_requirements(
+                            comments, context
+                        )
+                    )
+
+                    # 返信チェックリストを追加
+                    checklist = self.reply_decision_matrix.get_reply_checklist(
+                        reply_analysis
+                    )
+                    prompt_parts.append(f"\n{checklist}\n")
+
+                except Exception as e:
+                    self.logger.warning(f"返信判定マトリックス処理エラー: {e}")
+
             for i, comment in enumerate(comments, 1):
+                # 返信判定マトリックスの結果を取得
+                reply_decision = None
+                if reply_analysis:
+                    for decision_info in reply_analysis["decisions"]:
+                        if decision_info["comment_id"] == comment.get("id"):
+                            reply_decision = decision_info["decision"]
+                            break
+
                 # セキュリティ関連かどうかの自動判定
                 is_security = any(
                     keyword.lower() in comment.get("body", "").lower()
@@ -732,12 +769,23 @@ git log --oneline origin/[ブランチ名]..HEAD
                 else:
                     classification = "[🔴緊急/🟡重要/🟢低優先] ← 内容確認して分類"
 
+                # 返信判定結果を追加
+                reply_info = ""
+                if reply_decision:
+                    reply_info = f"""
+**返信判定**: {reply_decision.action.value}
+**返信要否**: {'必要' if reply_decision.reply_required.name == 'REQUIRED' else '不要'}
+**推定時間**: {reply_decision.estimated_time}分
+"""
+
                 prompt_parts.append(
                     f"""
 ### TODO #{i}: {self._extract_comment_title(comment)}
 **分類**: {classification}
-
+{reply_info}
 {self._format_single_comment(comment, pr_info, github_token)}
+
+**🎯 最終判断**: [ ] ✅実施 [ ] ❌対応不要 [ ] ⏳将来対応 [ ] 🤔要確認
 
 ---"""
                 )

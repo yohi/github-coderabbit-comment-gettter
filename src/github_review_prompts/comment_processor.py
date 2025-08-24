@@ -20,6 +20,7 @@ from .utils.parsers import (
 )
 from .utils.validators import sanitize_content
 from .utils.outside_diff_parser import OutsideDiffParser
+from .utils.smart_comment_filter import SmartCommentFilter
 from .github_client import GitHubClient
 from .comment_thread_processor import CommentThreadProcessor
 
@@ -33,13 +34,24 @@ class CommentProcessor:
         re.DOTALL | re.IGNORECASE,
     )
 
-    def __init__(self, github_client: GitHubClient):
+    def __init__(
+        self, github_client: GitHubClient, enable_smart_filtering: bool = True
+    ):
         self.github_client = github_client
         self.logger = logging.getLogger(__name__)
         self.stats = ProcessingStats()
         self.auto_resolved_comments = []  # 自動解決されたコメントのログ
         self.thread_processor = CommentThreadProcessor(github_client)
         self.outside_diff_parser = OutsideDiffParser()
+
+        # スマートフィルタリング機能
+        self.enable_smart_filtering = enable_smart_filtering
+        if enable_smart_filtering:
+            self.smart_filter = SmartCommentFilter()
+            self.logger.info("スマートフィルタリング機能が有効です")
+        else:
+            self.smart_filter = None
+            self.logger.info("スマートフィルタリング機能が無効です")
 
     def detect_resolution_markers(self, comment_bodies: Dict[int, str]) -> Set[int]:
         """コメント本文からCodeRabbit解決済みマーカーを検出
@@ -276,6 +288,22 @@ class CommentProcessor:
 
         self.stats.total_comments = len(comments)
         self.logger.info(f"コメント処理開始: {len(comments)} 件")
+
+        # スマートフィルタリングの実行
+        if self.enable_smart_filtering and self.smart_filter:
+            self.logger.info("スマートフィルタリングを実行中...")
+            filter_results = self.smart_filter.filter_comments(comments)
+
+            # フィルタリング結果をログ出力
+            self.logger.info(self.smart_filter.get_filter_summary(filter_results))
+
+            # フィルタリング後のコメントを使用
+            comments = filter_results["actionable_comments"]
+            self.stats.filtered_comments = len(filter_results["filtered_out"])
+
+            self.logger.info(
+                f"スマートフィルタリング完了: {len(comments)} 件が対応対象"
+            )
 
         # スレッド処理が有効な場合、コメントをスレッド処理
         if enable_thread_processing:

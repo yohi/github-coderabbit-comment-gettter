@@ -135,6 +135,11 @@ class CLIInterface:
             "--include-resolved", action="store_true", help="解決済みコメントも含める"
         )
         filter_group.add_argument(
+            "--disable-smart-filter",
+            action="store_true",
+            help="スマートフィルタリングを無効にする（全コメントを処理）",
+        )
+        filter_group.add_argument(
             "--categories",
             nargs="+",
             choices=["security", "performance", "style", "logic", "general"],
@@ -381,7 +386,10 @@ class CLIInterface:
 
             # コメント処理
             self.logger.info("コメント処理開始...")
-            processor = CommentProcessor(github_client)
+            enable_smart_filtering = not args.disable_smart_filter
+            processor = CommentProcessor(
+                github_client, enable_smart_filtering=enable_smart_filtering
+            )
             prompts, stats = processor.process_comments(
                 all_comments,
                 resolved_ids,
