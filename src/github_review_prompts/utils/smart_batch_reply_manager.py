@@ -318,12 +318,15 @@ class SmartBatchReplyManager:
         # JSONペイロードを整形
         json_payload = json.dumps(payload, indent=2, ensure_ascii=False)
 
-        curl_command = f"""curl -X POST \\
+        # ヒアドキュメントで安全にJSONを渡す（変数展開・コマンド置換を抑止）
+        curl_command = f"""cat <<'JSON' | curl -sS -X POST \\
   -H "Authorization: Bearer $GITHUB_TOKEN" \\
   -H "Accept: application/vnd.github+json" \\
   -H "Content-Type: application/json" \\
   "{url}" \\
-  -d '{json_payload}'"""
+  --data-binary @-
+{json_payload}
+JSON"""
 
         return curl_command
 
@@ -514,11 +517,14 @@ class SmartBatchReplyManager:
 
         for i, batch in enumerate(batches, 1):
             review_request = self.create_review_request(batch, pr_info)
-            result = self.execute_batch_review(review_request, pr_info)
 
-            if result["status"] == "success":
-                command = f"# バッチ {i}: {len(batch)}件のコメント\n{result['curl_command']}\n"
-                commands.append(command)
+            # 副作用なしでcurlコマンドを直接生成
+            url = review_request["url"]
+            payload = review_request["payload"]
+            curl_command = self._generate_curl_command(url, payload)
+
+            command = f"# バッチ {i}: {len(batch)}件のコメント\n{curl_command}\n"
+            commands.append(command)
 
         return commands
 

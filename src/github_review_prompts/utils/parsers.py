@@ -259,15 +259,22 @@ def extract_outside_diff_comments(comment_body: str) -> list:
         file_info = match.group(1).strip()
         comment_content = match.group(2).strip()
 
-        # ファイル名と行番号を抽出
-        file_match = re.match(r"([^(]+)\s*\(\d+\)", file_info)
+        # ファイル名と行番号を抽出（L接頭辞・レンジ対応）
+        file_match = re.match(r"([^(]+)\s*\(\s*L?\d+(?:-L?\d+)?\s*\)", file_info)
         if file_match:
             file_path = file_match.group(1).strip()
 
-            # 行番号とタイトルを抽出
-            line_match = re.search(r"`(\d+-\d+|\d+)`:\s*\*\*(.*?)\*\*", comment_content)
+            # 行番号とタイトルを抽出（L接頭辞・レンジ対応）
+            line_match = re.search(
+                r"`(L?\d+(?:-L?\d+)?)`:\s*\*\*(.*?)\*\*", comment_content
+            )
             line_info = line_match.group(1) if line_match else "unknown"
             title = line_match.group(2) if line_match else "修正が必要"
+        else:
+            # フォールバック処理
+            file_path = file_info.strip()
+            line_info = "unknown"
+            title = "修正が必要"
 
             # コメント本文をクリーンアップ
             clean_content = _clean_extracted_comment(comment_content)
