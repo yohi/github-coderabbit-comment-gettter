@@ -62,13 +62,11 @@ class SmartCommentFilter:
             r"^<!-- This is an auto-generated comment: summari",
             r"^## Summary by CodeRabbit",
             r"^> For best results",
-
             # ユーザーコマンド・指示（強化版）
             r"^@coderabbitai review\s*$",
             r"^@coderabbitai\s*$",
             r"^@coderabbitai$",
             r"@coderabbitai review$",
-
             # 開発者の作業報告・進捗報告（大幅強化）
             r"## CodeRabbit.*完了報告",
             r"## .*レビューコメント.*対応完了報告",
@@ -81,7 +79,6 @@ class SmartCommentFilter:
             r"@coderabbitai.*未解決の課題.*改めて確認",
             r"🎯 現在のブランチ.*コミット情報",
             r"After thoroughly examining.*modules",
-
             # 具体的なパターン（実際の出力から）
             r"指摘された問題の大部分は既に解決済みです",
             r"## CodeRabbitレビューコメント追加対応完了報告",
@@ -90,18 +87,15 @@ class SmartCommentFilter:
             r"@coderabbitai\s+🎯 現在のブランチ",
             r"@coderabbitai\s+未解決の課題を改めて確認",
             r"@coderabbitai\s+レビューコメント対応完了報告",
-
             # HTML詳細セクション（強化版）
             r"<details>.*</details>",
             r"^<details>",
             r"<!-- This is an auto-generated reply by CodeRab",
             r"auto-generated comment: summari",
-
             # 検証スクリプトのみのコメント
             r"#!/bin/bash\n# 参照有無の確認\nrg -nP",
             r"検証スクリプト.*:\n```shell\n#!/bin/bash",
             r"^_💡 Verification agent_\n\n\*\*検証スクリプト\*\*:",
-
             # 情報提供・確認完了コメント（強化版）
             r"✅.*完了した修正項目",
             r"✅.*追加修正完了項目",
@@ -132,11 +126,9 @@ class SmartCommentFilter:
             r"_💡 Verification agent_",
             r"_🔒 Security issue_",
             r"_⚡ Performance issue_",
-
             # 具体的な修正提案
             r"```diff",
             r"```suggestion",
-
             # 重要度の高い問題のみ（より限定的）
             r"セキュリティ上の問題",
             r"脆弱性",
@@ -179,7 +171,9 @@ class SmartCommentFilter:
 
         # 1. 除外パターンチェック（強化）
         for pattern in self.exclusion_patterns:
-            if re.search(pattern, comment_body, re.IGNORECASE | re.MULTILINE | re.DOTALL):
+            if re.search(
+                pattern, comment_body, re.IGNORECASE | re.MULTILINE | re.DOTALL
+            ):
                 self.logger.debug(f"除外パターンマッチ: {pattern}")
                 return False, FilterReason.AUTO_GENERATED, CommentType.AUTO_GENERATED
 
@@ -195,11 +189,11 @@ class SmartCommentFilter:
                 self.logger.debug(f"解決済みマーカー検出: {marker}")
                 return False, FilterReason.RESOLVED_DISCUSSION, CommentType.RESOLVED
 
-        # 4. 開発者コメントの事前除外（厳格化）
+        # 4. 開発者コメントの詳細分析
         if author != "coderabbitai[bot]":
-            # 開発者コメントは基本的にタスク化しない（進捗報告・質問が多い）
+            # 開発者コメントを詳細分析（重要な技術的指摘を見逃さない）
             self.logger.debug(f"開発者コメント分析: {author}")
-            return False, FilterReason.PROGRESS_REPORT, CommentType.PROGRESS_REPORT
+            return self._analyze_developer_comment(comment_body)
 
         # 5. CodeRabbitコメントの厳格判定
         if author == "coderabbitai[bot]":
@@ -237,20 +231,50 @@ class SmartCommentFilter:
         if any(indicator in comment_body for indicator in technical_indicators):
             # さらに、実際に具体的な問題や修正提案があるかチェック
             # ただし、Verification agentの検証スクリプトは除外
-            if "検証スクリプト" in comment_body or "rg -nP" in comment_body or "#!/bin/bash" in comment_body:
+            if (
+                "検証スクリプト" in comment_body
+                or "rg -nP" in comment_body
+                or "#!/bin/bash" in comment_body
+            ):
                 return False, FilterReason.AUTO_GENERATED, CommentType.AUTO_GENERATED
 
-            if any(keyword in comment_body.lower() for keyword in [
-                "修正", "変更", "エラー", "問題", "脆弱性", "セキュリティ",
-                "fix", "change", "error", "issue", "vulnerability", "security",
-                "```diff", "```suggestion"
-            ]):
+            if any(
+                keyword in comment_body.lower()
+                for keyword in [
+                    "修正",
+                    "変更",
+                    "エラー",
+                    "問題",
+                    "脆弱性",
+                    "セキュリティ",
+                    "fix",
+                    "change",
+                    "error",
+                    "issue",
+                    "vulnerability",
+                    "security",
+                    "```diff",
+                    "```suggestion",
+                ]
+            ):
                 # 具体的な修正指示があるかさらにチェック
-                if any(concrete_fix in comment_body.lower() for concrete_fix in [
-                    "variable", "変数", "未定義", "undefined", "参照エラー", "reference error",
-                    "validation", "バリデーション", "runtime", "ランタイム",
-                    "環境変数", "environment"
-                ]):
+                if any(
+                    concrete_fix in comment_body.lower()
+                    for concrete_fix in [
+                        "variable",
+                        "変数",
+                        "未定義",
+                        "undefined",
+                        "参照エラー",
+                        "reference error",
+                        "validation",
+                        "バリデーション",
+                        "runtime",
+                        "ランタイム",
+                        "環境変数",
+                        "environment",
+                    ]
+                ):
                     return True, FilterReason.TECHNICAL_ISSUE, CommentType.ACTIONABLE
 
         # 以下は全て除外
@@ -309,8 +333,17 @@ class SmartCommentFilter:
 
         # 質問・確認・議論パターン（基本的に除外）
         discussion_indicators = [
-            "？", "?", "質問", "確認", "どう思いますか", "意見", "提案",
-            "検討", "相談", "どうでしょう", "いかがでしょう"
+            "？",
+            "?",
+            "質問",
+            "確認",
+            "どう思いますか",
+            "意見",
+            "提案",
+            "検討",
+            "相談",
+            "どうでしょう",
+            "いかがでしょう",
         ]
 
         if any(indicator in comment_body for indicator in discussion_indicators):
@@ -329,7 +362,9 @@ class SmartCommentFilter:
             "クリティカルな問題",
         ]
 
-        if any(indicator in comment_body for indicator in critical_new_issue_indicators):
+        if any(
+            indicator in comment_body for indicator in critical_new_issue_indicators
+        ):
             return True, FilterReason.TECHNICAL_ISSUE, CommentType.ACTIONABLE
 
         # デフォルト: 開発者コメントは除外（厳格化）
@@ -428,7 +463,7 @@ class SmartCommentFilter:
 - 📝 **短文**: {stats['short_comment']}件
 
 ### 🎯 効果
-- **ノイズ削減**: {((total-actionable)/total*100):.1f}%のノイズを除去
+- **ノイズ削減**: {(((total-actionable)/total*100) if total else 0):.1f}%のノイズを除去
 - **作業効率**: 実際に対応が必要なコメントのみに集中可能
 """
         return summary.strip()

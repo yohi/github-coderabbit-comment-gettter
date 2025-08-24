@@ -85,10 +85,33 @@ class UnifiedPromptEngine:
         if comments:
             try:
                 from ..utils.smart_comment_filter import SmartCommentFilter
+                from ..utils.parsers import extract_outside_diff_comments
 
                 smart_filter = SmartCommentFilter()
                 filter_results = smart_filter.filter_comments(comments)
                 actionable_comments = filter_results["actionable_comments"]
+
+                # Outside diff range commentsを処理
+                outside_diff_comments = []
+                for comment in comments:
+                    comment_body = comment.get("body", "")
+                    extracted_outside = extract_outside_diff_comments(comment_body)
+
+                    if extracted_outside:
+                        # Outside diff commentsを通常のコメント形式に変換
+                        for outside_comment in extracted_outside:
+                            synthetic_comment = {
+                                "id": f"{comment.get('id', 'unknown')}_outside_{len(outside_diff_comments)}",
+                                "body": f"🔧 **{outside_comment['title']}** (行: {outside_comment['line']})\n\n{outside_comment['content']}",
+                                "path": outside_comment["file_path"],
+                                "line": outside_comment["line"],
+                                "user": {"login": "coderabbitai[bot]"},
+                                "created_at": comment.get("created_at", ""),
+                                "priority": outside_comment["priority"],
+                                "category": outside_comment["category"],
+                                "is_outside_diff": True,
+                            }
+                            outside_diff_comments.append(synthetic_comment)
 
                 # シンプルな返信必要判定（CodeRabbitの技術的指摘）
                 for comment in comments:
@@ -96,33 +119,51 @@ class UnifiedPromptEngine:
                     body = comment.get("body", "")
 
                     # CodeRabbitの技術的指摘で返信必要なパターン
-                    if author == "coderabbitai[bot]":
+                    if author and author.strip().lower().startswith("coderabbitai"):
                         technical_indicators = [
                             "_⚠️ Potential issue_",
                             "_🛠️ Refactor suggestion_",
                             "_💡 Verification agent_",
                             "_🔒 Security issue_",
-                            "_⚡ Performance issue_"
+                            "_⚡ Performance issue_",
                         ]
 
                         # 技術的指摘だが、検証スクリプトのみの場合は除外
-                        has_technical_indicator = any(indicator in body for indicator in technical_indicators)
+                        has_technical_indicator = any(
+                            indicator in body for indicator in technical_indicators
+                        )
                         is_verification_script_only = (
-                            "検証スクリプト" in body or
-                            "rg -nP" in body or
-                            "#!/bin/bash" in body
+                            "検証スクリプト" in body
+                            or "rg -nP" in body
+                            or "#!/bin/bash" in body
                         )
 
                         # 技術的指摘があり、検証スクリプトのみでない場合は返信必要
                         if has_technical_indicator and not is_verification_script_only:
                             # 具体的な修正指示があるかチェック
-                            has_concrete_action = any(keyword in body.lower() for keyword in [
-                                "修正", "変更", "update", "fix", "change", "add", "remove",
-                                "variable", "変数", "validation", "バリデーション", "runtime"
-                            ])
+                            has_concrete_action = any(
+                                keyword in body.lower()
+                                for keyword in [
+                                    "修正",
+                                    "変更",
+                                    "update",
+                                    "fix",
+                                    "change",
+                                    "add",
+                                    "remove",
+                                    "variable",
+                                    "変数",
+                                    "validation",
+                                    "バリデーション",
+                                    "runtime",
+                                ]
+                            )
 
                             if has_concrete_action:
                                 reply_required_comments.append(comment)
+
+                # Outside diff commentsはすべて返信必要として追加
+                reply_required_comments.extend(outside_diff_comments)
 
                 # 結合: タスク化必要 + 返信のみ必要なコメント
                 # タスク化不要だが返信必要なコメントを追加
@@ -136,6 +177,7 @@ class UnifiedPromptEngine:
                     f"総コメント数={filter_results['total_comments']}, "
                     f"タスク化必要={len(filter_results['actionable_comments'])}, "
                     f"返信必要={len(reply_required_comments)}, "
+                    f"Outside diff={len(outside_diff_comments)}, "
                     f"表示対象={len(actionable_comments)}"
                 )
 
@@ -1479,7 +1521,9 @@ is_resolved: {str(thread_info.get('is_resolved', False)).lower()}"""
             supplement_content = self._optimize_comment_format(body)
             # 補足情報は200文字に制限
             if len(supplement_content) > 200:
-                supplement_content = supplement_content[:200] + "...\n(詳細は元PRのコメント参照)"
+                supplement_content = (
+                    supplement_content[:200] + "...\n(詳細は元PRのコメント参照)"
+                )
 
             optimized_content = f"""🤖 **Prompt for AI Agents** (優先対応指示)
 

@@ -43,18 +43,37 @@ class InlineComment:
     position: Optional[int] = None  # diff上の位置（positionモード）
 
     def to_dict(self) -> Dict[str, Any]:
-        """辞書形式に変換"""
-        result = {"path": self.path, "body": self.body}
+        """辞書形式に変換（GitHub API仕様準拠）"""
+        result: Dict[str, Any] = {"path": self.path, "body": self.body}
+
+        # 1) 単一行（position モード）
         if self.position is not None:
             result["position"] = self.position
-        else:
-            if self.line is not None:
-                result["line"] = self.line
-            result["side"] = self.side
-            if self.start_line is not None:
-                result["start_line"] = self.start_line
-                if self.start_side:
-                    result["start_side"] = self.start_side
+            return result
+
+        # 2) 複数行（range モード）
+        if self.start_line is not None or self.start_side is not None:
+            if self.start_line is None or self.start_side is None or self.line is None:
+                raise ValueError(
+                    "Range comments require start_line, start_side, line, and side."
+                )
+            result.update(
+                {
+                    "start_line": self.start_line,
+                    "start_side": self.start_side,
+                    "line": self.line,
+                    "side": self.side,
+                }
+            )
+            return result
+
+        # 3) 単一行（line + side モード）
+        if self.line is None:
+            raise ValueError(
+                "Single-line comments require either position or line+side."
+            )
+        result["line"] = self.line
+        result["side"] = self.side
         return result
 
 
