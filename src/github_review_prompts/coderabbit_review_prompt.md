@@ -54,8 +54,8 @@ curl -X POST \
   -H @/tmp/github_headers \
   -H "Accept: application/vnd.github.v3+json" \
   -H "Content-Type: application/json" \
-  -d '{"body": "返信メッセージ", "in_reply_to": COMMENT_ID}' \
-  https://api.github.com/repos/OWNER/REPO/pulls/PR_NUMBER/comments
+  -d '{"body": "返信メッセージ"}' \
+  https://api.github.com/repos/OWNER/REPO/pulls/comments/COMMENT_ID/replies
 rm /tmp/github_headers
 ```
 
