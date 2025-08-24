@@ -591,9 +591,11 @@ class ReplyDecisionMatrix:
                 body = "@coderabbitai 対応不要と判断。"
 
             checklist += f"""
-  curl -X POST -H "Authorization: Bearer $GITHUB_TOKEN" -H "Content-Type: application/json" \\
+  echo "Authorization: Bearer $GITHUB_TOKEN" > /tmp/github_headers
+  curl -X POST -H @/tmp/github_headers -H "Content-Type: application/json" \\
     -d '{{"body": "{body}", "in_reply_to": {comment_id}}}' \\
-    "https://api.github.com/repos/OWNER/REPO/pulls/PR_NUMBER/comments" &"""
+    "https://api.github.com/repos/OWNER/REPO/pulls/PR_NUMBER/comments" &
+  rm /tmp/github_headers"""
 
         if len(reply_required_items) > 5:
             checklist += f"\n  # ... 残り{len(reply_required_items) - 5}件も同様に追加"
@@ -636,7 +638,7 @@ class ReplyDecisionMatrix:
                 reply_body = f"@coderabbitai コメント#{comment_id}への返信"
 
             # curlコマンドを生成
-            curl_cmd = f'curl -X POST -H "Authorization: Bearer $GITHUB_TOKEN" -H "Content-Type: application/json" -d \'{{"body": "{reply_body}", "in_reply_to": {comment_id}}}\' "https://api.github.com/repos/OWNER/REPO/pulls/PR_NUMBER/comments"'
+            curl_cmd = f'echo "Authorization: Bearer $GITHUB_TOKEN" > /tmp/github_headers && curl -X POST -H @/tmp/github_headers -H "Content-Type: application/json" -d \'{{"body": "{reply_body}", "in_reply_to": {comment_id}}}\' "https://api.github.com/repos/OWNER/REPO/pulls/PR_NUMBER/comments" && rm /tmp/github_headers'
             commands.append(f"# 返信 #{i} (コメント#{comment_id})")
             commands.append(curl_cmd)
             commands.append("")
@@ -668,7 +670,7 @@ class ReplyDecisionMatrix:
                 reply_body = f"@coderabbitai コメント#{comment_id}への返信"
 
             # バックグラウンド実行用のcurlコマンドを生成
-            curl_cmd = f'  curl -X POST -H "Authorization: Bearer $GITHUB_TOKEN" -H "Content-Type: application/json" -d \'{{"body": "{reply_body}", "in_reply_to": {comment_id}}}\' "https://api.github.com/repos/OWNER/REPO/pulls/PR_NUMBER/comments" &'
+            curl_cmd = f'  echo "Authorization: Bearer $GITHUB_TOKEN" > /tmp/github_headers_{comment_id} && curl -X POST -H @/tmp/github_headers_{comment_id} -H "Content-Type: application/json" -d \'{{"body": "{reply_body}", "in_reply_to": {comment_id}}}\' "https://api.github.com/repos/OWNER/REPO/pulls/PR_NUMBER/comments" && rm /tmp/github_headers_{comment_id} &'
             commands.append(f"  # 返信 #{i} (コメント#{comment_id}) - {template_name}")
             commands.append(curl_cmd)
 

@@ -4,8 +4,13 @@
 
 ### 1. 環境確認
 ```bash
-# 必須チェック
-echo $GITHUB_TOKEN | grep -E '^(ghp_|github_pat_)' || echo "❌ TOKEN未設定"
+# 必須チェック - セキュアな方法
+if [ -z "$GITHUB_TOKEN" ]; then
+  echo "❌ GITHUB_TOKEN is NOT set"
+  exit 1
+else
+  printf "✅ GITHUB_TOKEN is set (prefix: %s***)\n" "${GITHUB_TOKEN:0:6}"
+fi
 ```
 
 ### 2. 高速実行

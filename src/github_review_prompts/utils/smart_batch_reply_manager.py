@@ -353,14 +353,16 @@ class SmartBatchReplyManager:
         json_payload = json.dumps(payload, indent=2, ensure_ascii=False)
 
         # ヒアドキュメントで安全にJSONを渡す（変数展開・コマンド置換を抑止）
-        curl_command = f"""cat <<'JSON' | curl -sS -X POST \\
-  -H "Authorization: Bearer $GITHUB_TOKEN" \\
+        curl_command = f"""echo "Authorization: Bearer $GITHUB_TOKEN" > /tmp/github_headers_$$
+cat <<'JSON' | curl -sS -X POST \\
+  -H @/tmp/github_headers_$$ \\
   -H "Accept: application/vnd.github+json" \\
   -H "Content-Type: application/json" \\
   "{url}" \\
   --data-binary @-
 {json_payload}
-JSON"""
+JSON
+rm /tmp/github_headers_$$"""
 
         return curl_command
 

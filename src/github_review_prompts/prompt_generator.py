@@ -340,9 +340,11 @@ curl -X POST \\
 
 ### 基本テンプレート
 ```bash
-curl -X POST -H "Authorization: Bearer $GITHUB_TOKEN" -H "Content-Type: application/json" \\
+echo "Authorization: Bearer $GITHUB_TOKEN" > /tmp/github_headers
+curl -X POST -H @/tmp/github_headers -H "Content-Type: application/json" \\
   -d '{"body": "返信メッセージ", "in_reply_to": COMMENT_ID}' \\
   "https://api.github.com/repos/OWNER/REPO/pulls/PR_NUMBER/comments"
+rm /tmp/github_headers
 ```
 
 ### 返信パターン
