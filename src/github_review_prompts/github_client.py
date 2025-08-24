@@ -4,6 +4,7 @@ from contextlib import suppress
 import json
 import logging
 import os
+import re
 import time
 from typing import Dict, List, Optional, Set, Tuple, Any
 import requests
@@ -138,6 +139,33 @@ class GitHubClient:
         except requests.exceptions.RequestException as e:
             raise APIError(f"GitHub API リクエストエラー: {str(e)}") from e
 
+    def _make_graphql_request(self, query: str, variables: Dict[str, Any]) -> requests.Response:
+        """GraphQLリクエストの実行"""
+        url = "https://api.github.com/graphql"
+        payload = {
+            "query": query,
+            "variables": variables
+        }
+        return self._make_request("POST", url, json=payload)
+
+    def _has_coderabbit_resolution_marker(self, comment_body: str) -> bool:
+        """CodeRabbitの解決済みマーカーが含まれているかチェック"""
+        if not comment_body:
+            return False
+        
+        resolution_markers = [
+            r"\[CR_RESOLUTION_CONFIRMED:.*?\]",
+            r"✅ エンジニアによる技術的検証完了.*CodeRabbitによる解決済みマーク実行可能",
+            r"\[/CR_RESOLUTION_CONFIRMED\]"
+        ]
+        
+        # すべてのマーカーが含まれているかチェック
+        for marker in resolution_markers:
+            if not re.search(marker, comment_body, re.DOTALL | re.IGNORECASE):
+                return False
+        
+        return True
+
     def test_authentication(self) -> Dict[str, Any]:
         """認証テストとユーザー情報取得"""
         try:
@@ -204,9 +232,13 @@ class GitHubClient:
             raise APIError(f"プルリクエスト情報取得エラー: {str(e)}") from e
 
     def get_pr_review_comments(
-        self, pr_info: GitHubPRInfo, page_size: int = 100
+        self, pr_info: GitHubPRInfo, page_size: int = 100, unresolved_only: bool = False
     ) -> List[Dict[str, Any]]:
-        """プルリクエストのレビューコメントを全件取得（ページネーション対応）"""
+        """プルリクエストのレビューコメントを取得（未解決フィルタ対応）"""
+        if unresolved_only:
+            return self._get_unresolved_review_comments(pr_info, page_size)
+        
+        # 従来の全件取得
         all_comments = []
         page = 1
 
@@ -247,6 +279,107 @@ class GitHubClient:
 
         self.logger.info(f"レビューコメント取得完了: {len(all_comments)} 件")
         return all_comments
+
+    def _get_unresolved_review_comments(
+        self, pr_info: GitHubPRInfo, page_size: int = 100
+    ) -> List[Dict[str, Any]]:
+        """未解決のレビューコメントのみを取得（GraphQL使用）"""
+        
+        self.logger.info(f"未解決レビューコメント取得開始: {pr_info.owner}/{pr_info.repo}#{pr_info.pull_number}")
+        
+        # GraphQLクエリで未解決スレッドのみ取得
+        query = """
+        query GetUnresolvedReviewComments($owner: String!, $repo: String!, $number: Int!) {
+          repository(owner: $owner, name: $repo) {
+            pullRequest(number: $number) {
+              reviewThreads(first: 100) {
+                nodes {
+                  id
+                  isResolved
+                  comments(first: 10) {
+                    nodes {
+                      id
+                      author {
+                        login
+                      }
+                      body
+                      createdAt
+                      updatedAt
+                      line
+                      path
+                      diffHunk
+                      outdated
+                      pullRequestReview {
+                        id
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+        """
+        
+        variables = {
+            "owner": pr_info.owner,
+            "repo": pr_info.repo,
+            "number": pr_info.pull_number
+        }
+        
+        try:
+            response = self._make_graphql_request(query, variables)
+            data = response.json()
+            
+            if "errors" in data:
+                raise APIError(f"GraphQL API エラー: {data['errors']}")
+            
+            review_threads = data["data"]["repository"]["pullRequest"]["reviewThreads"]["nodes"]
+            unresolved_comments = []
+            
+            for thread in review_threads:
+                # スレッドの未解決状態をチェック
+                thread_is_resolved = thread["isResolved"]
+                
+                # スレッド内のコメントをチェック（時系列順）
+                thread_comments = thread["comments"]["nodes"]
+                if not thread_comments:
+                    continue
+                
+                # CodeRabbitの解決済みマーカーチェック
+                # 最後のコメントがcoderabbitaiかつ解決済みマーカーがある場合は解決済みとみなす
+                last_comment = thread_comments[-1]
+                if (last_comment["author"]["login"] in ["coderabbitai", "coderabbitai[bot]"] and
+                    self._has_coderabbit_resolution_marker(last_comment["body"])):
+                    thread_is_resolved = True
+                    self.logger.debug(f"CodeRabbit解決済みマーカー検出: thread {thread['id']}")
+                
+                # 未解決スレッドのみを処理
+                if not thread_is_resolved:
+                    for comment in thread_comments:
+                        # インラインコメントのみ（pathとlineがあるもの）
+                        if comment["path"] and comment["line"]:
+                            # REST API形式に変換
+                            rest_format_comment = {
+                                "id": comment["id"],
+                                "user": {"login": comment["author"]["login"]},
+                                "body": comment["body"],
+                                "created_at": comment["createdAt"],
+                                "updated_at": comment["updatedAt"],
+                                "path": comment["path"],
+                                "line": comment["line"],
+                                "diff_hunk": comment["diffHunk"],
+                                "outdated": comment["outdated"],
+                                "pull_request_review_id": comment["pullRequestReview"]["id"] if comment["pullRequestReview"] else None,
+                                "is_resolved": False  # 明示的に未解決マーク
+                            }
+                            unresolved_comments.append(rest_format_comment)
+            
+            self.logger.info(f"未解決レビューコメント取得完了: {len(unresolved_comments)} 件")
+            return unresolved_comments
+            
+        except Exception as e:
+            raise APIError(f"未解決レビューコメント取得エラー: {str(e)}") from e
 
     def get_pr_issue_comments(
         self, pr_info: GitHubPRInfo, page_size: int = 100
@@ -306,33 +439,70 @@ class GitHubClient:
     def get_all_pr_comments(
         self, pr_info: GitHubPRInfo, page_size: int = 100
     ) -> Tuple[List[Dict[str, Any]], Dict[str, int]]:
-        """プルリクエストの全コメント（レビューコメント + Issue コメント）を取得
+        """プルリクエストの全コメント（GraphQL API優先、Outside diff range comments対応）
 
         Returns:
             Tuple[List[Dict], Dict]: (全コメントリスト, 統計情報)
         """
-        # レビューコメント（diff range内）を取得
-        review_comments = self.get_pr_review_comments(pr_info, page_size)
+        try:
+            # GraphQL APIでレビューとOutside diff commentsを取得
+            self.logger.info("GraphQL APIでOutside diff range comments取得を試行...")
+            graphql_reviews, outside_diff_comments = self.get_pr_reviews_with_outside_diff_graphql(pr_info, page_size)
 
-        # Issue コメント（Outside diff range含む）を取得
-        issue_comments = self.get_pr_issue_comments(pr_info, page_size)
+            # REST APIでレビューコメントも取得（未解決のみ）
+            review_comments = self.get_pr_review_comments(pr_info, page_size, unresolved_only=True)
 
-        # 統計情報
-        stats = {
-            "review_comments": len(review_comments),
-            "issue_comments": len(issue_comments),
-            "total_comments": len(review_comments) + len(issue_comments),
-        }
+            # Issue コメント（Outside diff range含む）を取得
+            issue_comments = self.get_pr_issue_comments(pr_info, page_size)
 
-        # 全コメントを結合
-        all_comments = review_comments + issue_comments
+            # 全コメントを結合
+            all_comments = review_comments + graphql_reviews + outside_diff_comments + issue_comments
 
-        self.logger.info(
-            f"全コメント取得完了: レビューコメント {stats['review_comments']} 件, "
-            f"Issue コメント {stats['issue_comments']} 件, 合計 {stats['total_comments']} 件"
-        )
+            # 統計情報
+            stats = {
+                "review_comments": len(review_comments),
+                "graphql_reviews": len(graphql_reviews),
+                "outside_diff_comments": len(outside_diff_comments),
+                "issue_comments": len(issue_comments),
+                "total_comments": len(all_comments),
+            }
 
-        return all_comments, stats
+            self.logger.info(
+                f"GraphQL API取得完了: レビューコメント {stats['review_comments']} 件, "
+                f"GraphQLレビュー {stats['graphql_reviews']} 件, "
+                f"Outside diff {stats['outside_diff_comments']} 件, "
+                f"Issue コメント {stats['issue_comments']} 件, "
+                f"合計 {stats['total_comments']} 件"
+            )
+
+            return all_comments, stats
+
+        except Exception as e:
+            self.logger.warning(f"GraphQL API取得失敗、REST APIにフォールバック: {str(e)}")
+
+            # フォールバック: 既存のREST API使用
+            # レビューコメント（diff range内、未解決のみ）を取得
+            review_comments = self.get_pr_review_comments(pr_info, page_size, unresolved_only=True)
+
+            # Issue コメント（Outside diff range含む）を取得
+            issue_comments = self.get_pr_issue_comments(pr_info, page_size)
+
+            # 統計情報
+            stats = {
+                "review_comments": len(review_comments),
+                "issue_comments": len(issue_comments),
+                "total_comments": len(review_comments) + len(issue_comments),
+            }
+
+            # 全コメントを結合
+            all_comments = review_comments + issue_comments
+
+            self.logger.info(
+                f"REST API取得完了: レビューコメント {stats['review_comments']} 件, "
+                f"Issue コメント {stats['issue_comments']} 件, 合計 {stats['total_comments']} 件"
+            )
+
+            return all_comments, stats
 
     def get_pr_reviews(
         self, pr_info: GitHubPRInfo, page_size: int = 100
@@ -546,6 +716,162 @@ class GitHubClient:
         )
 
         return resolved_comment_ids, comment_bodies
+
+    def get_pr_reviews_with_outside_diff_graphql(
+        self, pr_info: GitHubPRInfo, page_size: int = 100
+    ) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
+        """GraphQL APIを使用してPRレビューとOutside diff range commentsを取得
+
+        Returns:
+            Tuple[List[Dict], List[Dict]]: (全レビューコメント, Outside diff range comments)
+        """
+        if not self.token:
+            self.logger.warning("GraphQL APIにはトークンが必要です")
+            return [], []
+
+        all_reviews = []
+        outside_diff_comments = []
+
+        # GraphQL クエリ実行のためのヘッダー
+        graphql_headers = {
+            "Authorization": f"Bearer {os.getenv('GITHUB_TOKEN') or self.token}",
+            "Content-Type": "application/json",
+        }
+
+        # ページネーション用の変数
+        has_next_page = True
+        after_cursor = None
+        page_count = 0
+
+        self.logger.info(
+            f"GraphQL APIでレビュー・Outside diff取得開始: {pr_info.owner}/{pr_info.repo}#{pr_info.pull_number}"
+        )
+
+        while has_next_page:
+            page_count += 1
+            self.logger.debug(f"GraphQL ページ {page_count} 処理中...")
+
+            query = """
+            query($owner: String!, $repo: String!, $number: Int!, $after: String) {
+              repository(owner: $owner, name: $repo) {
+                pullRequest(number: $number) {
+                  reviews(first: 10, after: $after) {
+                    pageInfo {
+                      hasNextPage
+                      endCursor
+                    }
+                    nodes {
+                      id
+                      body
+                      state
+                      author {
+                        login
+                      }
+                      createdAt
+                      updatedAt
+                    }
+                  }
+                }
+              }
+            }
+            """
+
+            variables = {
+                "owner": pr_info.owner,
+                "repo": pr_info.repo,
+                "number": pr_info.pull_number,
+                "after": after_cursor,
+            }
+
+            try:
+                response = self._make_request(
+                    "POST",
+                    self.graphql_url,
+                    json={"query": query, "variables": variables},
+                    headers=graphql_headers,
+                )
+
+                data = response.json()
+
+                if "errors" in data:
+                    error_messages = [
+                        error.get("message", str(error)) for error in data["errors"]
+                    ]
+                    raise APIError(f"GraphQL エラー: {'; '.join(error_messages)}")
+
+                if not data.get("data", {}).get("repository", {}).get("pullRequest"):
+                    raise APIError(
+                        "GraphQL レスポンスにプルリクエストデータが含まれていません"
+                    )
+
+                reviews_data = data["data"]["repository"]["pullRequest"]["reviews"]
+                reviews = reviews_data["nodes"]
+                page_info = reviews_data["pageInfo"]
+
+                # ページネーション情報を更新
+                has_next_page = page_info["hasNextPage"]
+                after_cursor = page_info["endCursor"]
+
+                self.logger.debug(f"ページ {page_count}: {len(reviews)} レビュー処理")
+
+                # レビューを処理してOutside diff range commentsを抽出
+                for review in reviews:
+                    review_body = review.get("body", "")
+
+                    # レビュー全体を保存
+                    all_reviews.append({
+                        "id": review["id"],
+                        "body": review_body,
+                        "state": review.get("state", ""),
+                        "author": review.get("author", {}).get("login", ""),
+                        "created_at": review.get("createdAt", ""),
+                        "updated_at": review.get("updatedAt", ""),
+                        "comment_type": "review_comment",
+                    })
+
+                    # Outside diff range commentsを抽出
+                    if review_body and "Outside diff range comments" in review_body:
+                        from .utils.parsers import extract_outside_diff_comments
+
+                        extracted_outside = extract_outside_diff_comments(review_body)
+
+                        if extracted_outside:
+                            self.logger.info(f"Outside diff comments発見: {len(extracted_outside)}件")
+
+                            # Outside diff commentsを通常のコメント形式に変換
+                            for outside_comment in extracted_outside:
+                                synthetic_comment = {
+                                    'id': f"{review['id']}_outside_{len(outside_diff_comments)}",
+                                    'body': f"🔧 **{outside_comment['title']}** (行: {outside_comment['line']})\n\n{outside_comment['content']}",
+                                    'path': outside_comment['file_path'],
+                                    'line': outside_comment['line'],
+                                    'user': {'login': review.get("author", {}).get("login", "")},
+                                    'created_at': review.get("createdAt", ""),
+                                    'priority': outside_comment['priority'],
+                                    'category': outside_comment['category'],
+                                    'is_outside_diff': True,
+                                    'comment_type': 'outside_diff_comment',
+                                    'original_review_id': review['id']
+                                }
+                                outside_diff_comments.append(synthetic_comment)
+
+                # APIレート制限を考慮した遅延
+                time.sleep(0.2)
+
+            except APIError:
+                raise
+            except Exception as e:
+                raise APIError(
+                    f"GraphQL API 実行エラー (ページ {page_count}): {str(e)}"
+                ) from e
+
+        self.logger.info(
+            f"GraphQL API完了: {page_count}ページ, "
+            f"レビュー: {len(all_reviews)}件, "
+            f"Outside diff: {len(outside_diff_comments)}件"
+        )
+
+        return all_reviews, outside_diff_comments
 
     def get_processing_stats(self) -> ProcessingStats:
         """処理統計を取得（後でCommentProcessorで更新される）"""

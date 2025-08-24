@@ -16,10 +16,13 @@ logger = logging.getLogger(__name__)
 
 
 class ReplyPriority(Enum):
-    """返信優先度"""
+    """返信優先度（改良版：より詳細な分類）"""
 
-    CRITICAL = "critical"  # 緊急（❌対応不要、⚠️指摘間違い）
-    NORMAL = "normal"  # 通常（⏳将来対応、🤔要確認）
+    CRITICAL = "critical"  # 🔴緊急（セキュリティ、システム破綻）
+    HIGH = "high"  # 🟠高（機能問題、重要な技術指摘）
+    MEDIUM = "medium"  # 🟡中（改善提案、将来対応）
+    LOW = "low"  # 🟢低（スタイル、軽微な指摘）
+    AUTO_REJECT = "auto_reject"  # ❌自動拒否（対応不要）
 
 
 class ReviewEvent(Enum):
@@ -35,8 +38,8 @@ class InlineComment:
     """インラインコメント"""
 
     path: str  # ファイルパス
-    line: Optional[int] = None  # 行番号（line/side モード）
     body: str  # コメント内容
+    line: Optional[int] = None  # 行番号（line/side モード）
     side: str = "RIGHT"  # RIGHT or LEFT
     start_line: Optional[int] = None  # マルチライン開始行
     start_side: Optional[str] = None  # マルチライン開始側
@@ -79,7 +82,7 @@ class InlineComment:
 
 @dataclass
 class BatchReply:
-    """バッチ返信データ"""
+    """バッチ返信データ（改良版：効率性とトラッキングを向上）"""
 
     comment_id: int  # 元のコメントID
     reply_body: str  # 返信内容
@@ -87,10 +90,41 @@ class BatchReply:
     template_type: str  # テンプレートタイプ
     file_path: Optional[str] = None  # ファイルパス（インライン用）
     line_number: Optional[int] = None  # 行番号（インライン用）
+    estimated_time: int = 5  # 推定処理時間（分）
+    impact_level: str = "medium"  # 影響レベル（low/medium/high）
+    action_type: str = "unknown"  # アクションタイプ（実装/拒否/将来/確認）
+    created_at: Optional[datetime] = None  # 作成時刻
+    
+    def __post_init__(self):
+        if self.created_at is None:
+            self.created_at = datetime.now()
 
     def is_inline_comment(self) -> bool:
         """インラインコメントかどうか"""
         return self.file_path is not None and self.line_number is not None
+        
+    def get_efficiency_score(self) -> float:
+        """効率性スコアを計算（新機能）"""
+        # 優先度ベースのスコア
+        priority_scores = {
+            ReplyPriority.CRITICAL: 100.0,
+            ReplyPriority.HIGH: 80.0,
+            ReplyPriority.MEDIUM: 60.0,
+            ReplyPriority.LOW: 40.0,
+            ReplyPriority.AUTO_REJECT: 20.0
+        }
+        
+        base_score = priority_scores.get(self.priority, 50.0)
+        
+        # 時間効率性の調整
+        if self.estimated_time <= 3:
+            time_multiplier = 1.2
+        elif self.estimated_time <= 10:
+            time_multiplier = 1.0
+        else:
+            time_multiplier = 0.8
+            
+        return base_score * time_multiplier
 
 
 @dataclass

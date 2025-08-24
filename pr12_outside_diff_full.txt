@@ -1,0 +1,1708 @@
+**Actionable comments posted: 7**
+
+> [!CAUTION]
+> Some comments are outside the diff and can’t be posted inline due to platform limitations.
+> 
+> 
+> 
+> <details>
+> <summary>⚠️ Outside diff range comments (10)</summary><blockquote>
+> 
+> <details>
+> <summary>shin-supercursor-framework/src/application/handlers/analyze-command.handler.ts (1)</summary><blockquote>
+> 
+> `271-296`: **メソッド戻り値を直接返却＋型安全なOutputFormatマッピングを導入**
+> 
+> 以下の修正を必須でお願いします。
+> 
+> - `Promise.resolve(…)` は冗長なため削除し、直接オブジェクトを返却  
+> - `options.outputFormat as OutputFormat` のunsafe castを廃止し、`OutputFormat` enum（TEXT, JSON）との安全なマッピング関数 `mapOutputFormat` を利用
+> 
+> 対象ファイル: `shin-supercursor-framework/src/application/handlers/analyze-command.handler.ts`  
+> 該当行: 271–296
+> 
+> ```diff
+> -      return Promise.resolve({
+> +      return {
+>          commandId: command.id,
+>          success: true,
+>          output: {
+>            data: output,
+>            summary: `分析完了: ${analysisResult.fileCount}ファイル、${analysisResult.lineCount}行を分析`,
+>            details: analysisResult
+>          },
+> -        format: options.outputFormat as import('../../domain/types/index.js').OutputFormat,
+> +        format: this.mapOutputFormat(options.outputFormat),
+>          metadata: {
+>            executionTime,
+>            cacheHit: false, // TODO: キャッシング実装時に更新
+>            resourcesUsed: {
+>              memory: process.memoryUsage().heapUsed,
+>              cpu: 0, // TODO: CPU使用率測定実装
+>              diskIO: analysisResult.fileCount * 1024, // 概算
+>              networkIO: 0
+>            }
+>          },
+>          performance: {
+>            startTime: startTime as import('../../domain/types/base.js').Timestamp,
+>            endTime: Date.now() as import('../../domain/types/base.js').Timestamp,
+>            duration: executionTime
+>          }
+> -      });
+> +      };
+> ```
+> 
+> クラス内に以下ユーティリティメソッドを追加してください。  
+> ※`shin-supercursor-framework/src/domain/types/base.ts` で `OutputFormat` は enum（TEXT, JSON）のみ定義されていますことを確認済みです。
+> 
+> ```ts
+> import { OutputFormat } from '../../domain/types/index.js';
+> 
+> private mapOutputFormat(fmt: string): OutputFormat {
+>   switch (fmt) {
+>     case 'text':
+>       return OutputFormat.TEXT;
+>     case 'json':
+>       return OutputFormat.JSON;
+>     default:
+>       // 想定外のフォーマットはデフォルト TEXT にフォールバック。
+>       // 必要に応じてエラー投げやログ出力も検討してください。
+>       return OutputFormat.TEXT;
+>   }
+> }
+> ```
+> 
+> 将来的にMarkdown等のenum追加があれば、同メソッドにケースを追記してください。
+> 
+> </blockquote></details>
+> <details>
+> <summary>shin-supercursor-framework/src/infrastructure/adapters/cursor-api.adapter.ts (1)</summary><blockquote>
+> 
+> `257-265`: **shell:true によるコマンドインジェクションリスク（不要なら無効化推奨）**
+> 
+> `spawnOptions.shell = true` は引数の解釈をシェルに委ねるため、ユーザ入力が紛れ込むとコマンドインジェクションの攻撃面が広がります。本実装は独自の `parseCommand` で引数を分割しており、ネイティブ引数渡しで十分です。`shell: false`（デフォルト）に戻すことを推奨します。  
+> 
+> 
+> 提案差分:
+> 
+> ```diff
+> -        shell: true,
+> +        // セキュリティ上の理由でシェルを介さない
+> +        shell: false,
+> ```
+> 
+> Windows 対応が必要で `shell:true` を維持する場合は、許可リスト方式のコマンド・引数検証と、引用符・メタ文字の厳格なエスケープを必須化してください。
+> 
+> </blockquote></details>
+> <details>
+> <summary>shin-supercursor-framework/src/infrastructure/modules/command.module.ts (2)</summary><blockquote>
+> 
+> `96-120`: **forRoot は `DynamicModule` を返すべきです（現在は互換オブジェクトだが型が外れている）**
+> 
+> Nest の慣習に合わせ、戻り値を `DynamicModule`、`providers` の型を `Provider[]` にしてください。`COMMAND_ROUTING_CONFIG` の `useFactory` も引数型を明示するとさらに安全です。  
+> 
+> 
+> 提案差分:
+> 
+> ```diff
+> -  static forRoot(options: CommandModuleOptions = {}): { module: typeof CommandModule; providers: ModuleProvider[] } {
+> +  static forRoot(options: CommandModuleOptions = {}): import('@nestjs/common').DynamicModule {
+>      return {
+>        module: CommandModule,
+> -      providers: [
+> +      providers: [
+>          {
+>            provide: 'COMMAND_MODULE_OPTIONS',
+>            useValue: options
+>          },
+>          {
+>            provide: 'COMMAND_ROUTING_CONFIG',
+> -          useFactory: (...args: unknown[]): Record<string, unknown> => {
+> -            const opts = args[0] as CommandModuleOptions;
+> +          useFactory: (opts: CommandModuleOptions): Record<string, unknown> => {
+>              return {
+>              enableValidation: opts.enableValidation ?? (process.env.COMMAND_ENABLE_VALIDATION !== 'false'),
+>              enableCaching: opts.enableCaching ?? (process.env.COMMAND_ENABLE_CACHING !== 'false'),
+>              enableMetrics: opts.enableMetrics ?? (process.env.COMMAND_ENABLE_METRICS !== 'false'),
+>              defaultTimeout: opts.defaultTimeout ?? parseInt(process.env.COMMAND_DEFAULT_TIMEOUT ?? '30000', 10),
+>              maxConcurrentCommands: opts.maxConcurrentCommands ?? parseInt(process.env.MAX_CONCURRENT_COMMANDS ?? '10', 10),
+>            };
+>            },
+>            inject: ['COMMAND_MODULE_OPTIONS'],
+>          }
+>        ]
+>      };
+>    }
+> ```
+> 
+> 加えてファイル冒頭のインポートを以下のように調整してください（追加提案・通常コードブロック）:
+> 
+> ```ts
+> import { Module, CqrsModule, type DynamicModule } from '@nestjs/common';
+> import type { Provider } from '@nestjs/common';
+> ```
+> 
+> ---
+> 
+> `128-153`: **forRootAsync も `DynamicModule` と `Provider[]` に揃え、useFactory の引数を厳密化**
+> 
+> 現状の `(...args: unknown[])` は型安全性を損ねます。`useFactory: (opts: CommandModuleOptions)` にして、`COMMAND_ROUTING_CONFIG` の `useFactory` も同様に揃えてください。  
+> 
+> 
+> 提案差分:
+> 
+> ```diff
+> -  }): { module: typeof CommandModule; providers: ModuleProvider[] } {
+> +  }): import('@nestjs/common').DynamicModule {
+>      return {
+>        module: CommandModule,
+> -      providers: [
+> +      providers: [
+>          {
+>            provide: 'COMMAND_MODULE_OPTIONS',
+>            useFactory: options.useFactory,
+>            inject: options.inject ?? []
+>          },
+>          {
+>            provide: 'COMMAND_ROUTING_CONFIG',
+> -          useFactory: (...args: unknown[]): Record<string, unknown> => {
+> -            const opts = args[0] as CommandModuleOptions;
+> +          useFactory: (opts: CommandModuleOptions): Record<string, unknown> => {
+>              return {
+>              enableValidation: opts.enableValidation ?? (process.env.COMMAND_ENABLE_VALIDATION !== 'false'),
+>              enableCaching: opts.enableCaching ?? (process.env.COMMAND_ENABLE_CACHING !== 'false'),
+>              enableMetrics: opts.enableMetrics ?? (process.env.COMMAND_ENABLE_METRICS !== 'false'),
+>              defaultTimeout: opts.defaultTimeout ?? parseInt(process.env.COMMAND_DEFAULT_TIMEOUT ?? '30000', 10),
+>              maxConcurrentCommands: opts.maxConcurrentCommands ?? parseInt(process.env.MAX_CONCURRENT_COMMANDS ?? '10', 10),
+>            };
+>            },
+>            inject: ['COMMAND_MODULE_OPTIONS'],
+>          }
+>        ]
+>      };
+>    }
+> ```
+> 
+> 型をさらに上げる場合は、`COMMAND_ROUTING_CONFIG` 用の構成型（例: `CommandRoutingConfig`）を導入し、`Record<string, unknown>` を置き換えるとよいです。
+> 
+> </blockquote></details>
+> <details>
+> <summary>shin-supercursor-framework/src/domain/services/command-routing.service.ts (2)</summary><blockquote>
+> 
+> `346-391`: **オプション連想配列のプロトタイプ汚染対策とキーサニタイズ**
+> 
+> `Record<string, ...> = {}` に動的キー代入しているため、`__proto__` 等でのプロト汚染余地があります。`Object.create(null)` でプロト無し辞書を使い、禁止キーを遮断すると `eslint-plugin-security` の抑止コメントも不要になります。
+> 
+> ```diff
+> -    const options: Record<string, string | boolean> = {};
+> +    const options: Record<string, string | boolean> = Object.create(null);
+> @@
+> -        const [key, ...valueParts] = part.substring(2).split('=');
+> +        const [rawKey, ...valueParts] = part.substring(2).split('=');
+> +        const key = this.sanitizeOptionKey(rawKey);
+> @@
+> -          if (key) { options[key] = valueParts.join('='); }
+> +          if (key) { options[key] = valueParts.join('='); }
+> @@
+> -          const nextPart = parts.at(i + 1);
+> +          const nextPart = parts.at(i + 1);
+>            if (nextPart && !nextPart.startsWith('-')) {
+> -            // eslint-disable-next-line security/detect-object-injection
+>              options[key] = nextPart;
+>              i++;
+>            }
+> @@
+> -          // eslint-disable-next-line security/detect-object-injection
+>            options[key] = true;
+> @@
+> -        const key = part.substring(1);
+> +        const key = this.sanitizeOptionKey(part.substring(1));
+> @@
+> -          const nextPart = parts.at(i + 1);
+> +          const nextPart = parts.at(i + 1);
+>            if (nextPart && !nextPart.startsWith('-')) {
+> -            // eslint-disable-next-line security/detect-object-injection
+>              options[key] = nextPart;
+>              i++;
+>            }
+> @@
+> -          // eslint-disable-next-line security/detect-object-injection
+>            options[key] = true;
+> ```
+> 
+> 追加（クラス内のプライベートヘルパーとして定義）:
+> ```ts
+> private sanitizeOptionKey(key: string): string {
+>   const k = key.trim();
+>   if (!k || /^(?:__proto__|prototype|constructor)$/i.test(k)) return `_invalid_${Date.now()}`;
+>   return k;
+> }
+> ```
+> 
+> ---
+> 
+> `604-615`: **Promise.race + timeout の未クリアで未処理拒否が発生し得る**
+> 
+> `Promise.race` に与えた `timeoutPromise` のタイマーが、先に `executionPromise` が解決した後で拒否され未処理拒否になる恐れがあります。タイマーIDを保持し、レース後に必ず `clearTimeout` してください。
+> 
+> ```diff
+> -      const timeoutPromise = new Promise<never>((_resolve, reject) => {
+> -        setTimeout(() => {
+> -          reject(new CommandExecutionError('コマンド実行がタイムアウトしました', { specificCode: 'TIMEOUT' } as const));
+> -        }, command.metadata.timeout);
+> -      });
+> +      let timeoutId: NodeJS.Timeout;
+> +      const timeoutPromise = new Promise<never>((_resolve, reject) => {
+> +        timeoutId = setTimeout(() => {
+> +          reject(new CommandExecutionError('コマンド実行がタイムアウトしました', { specificCode: 'TIMEOUT' } as const));
+> +        }, command.metadata.timeout);
+> +      });
+> @@
+> -      const result = await Promise.race([executionPromise, timeoutPromise]);
+> +      const result = await Promise.race([executionPromise, timeoutPromise]);
+> +      clearTimeout(timeoutId!);
+> ```
+> 
+> </blockquote></details>
+> <details>
+> <summary>shin-supercursor-framework/src/domain/entities/framework.entity.ts (1)</summary><blockquote>
+> 
+> `307-353`: **`command/result` のシャドーイングにより catch 側で常に `undefined` になるバグ**
+> 
+> `try` ブロック内で同名の `let command/result` を再宣言しており、外側の変数が更新されません。catch で `command?.id` が常に未定義になり得ます。内側の再宣言を削除してください。
+> 
+> ```diff
+> -    let command: Command | undefined;
+> -    let result: CommandResult;
+> +    let command: Command | undefined;
+> +    let result: CommandResult;
+> @@
+> -      // 変数宣言
+> -      let command: Command;
+> -      let result: CommandResult;
+> +      // 以降は外側の変数を使用
+> @@
+> -      // eslint-disable-next-line prefer-const
+>        command = this.buildCommand(parsedCommand, executionContext);
+> @@
+> -      // eslint-disable-next-line prefer-const
+>        result = await this._commandEngine.execute(command);
+> ```
+> 
+> 
+> Also applies to: 360-394
+> 
+> </blockquote></details>
+> <details>
+> <summary>shin-supercursor-framework/src/infrastructure/persistence/persona.repository.impl.ts (3)</summary><blockquote>
+> 
+> `689-696`: **update で未定義フィールドが DB に書き戻る恐れ（部分更新の扱い）**
+> 
+> `mapDomainToEntity(updates as AIPersona)` は `Partial` を全面展開しており、`undefined` が含まれると不本意な上書きを招く可能性があります。定義済みのキーのみ落とし込む形にしましょう。
+> 
+> 
+> 例（最小修正）:
+> 
+> ```diff
+> -      await this.personaRepository.update(id as string, {
+> -        ...this.mapDomainToEntity(updates as AIPersona),
+> -        updatedAt: new Date()
+> -      } as any);
+> +      const candidate = this.mapDomainToEntity(updates as AIPersona);
+> +      const patch = Object.fromEntries(Object.entries(candidate).filter(([, v]) => v !== undefined));
+> +      await this.personaRepository.update(id as string, {
+> +        ...(patch as Partial<PersonaEntity>),
+> +        updatedAt: new Date(),
+> +      });
+> ```
+> 
+> ---
+> 
+> `655-660`: **transaction の中で this の通常リポジトリを使っており、実際にはトランザクションに乗らない**
+> 
+> TypeORM のトランザクションコールバック内で、`manager.getRepository(...)` から生成したリポジトリを使う必要があります。現在の実装だと `operation(this)` で「非トランザクション」の `this` を渡しているため、原子的でありません。
+> 
+> 
+> 修正案（同クラスのスコープドインスタンスを生成）:
+> 
+> ```diff
+> -  async transaction<T>(operation: (repo: PersonaRepository) => Promise<T>): Promise<T> {
+> -    // TypeORMのトランザクション実装
+> -    return await this.personaRepository.manager.transaction(async () => {
+> -      return await operation(this);
+> -    });
+> -  }
+> +  async transaction<T>(operation: (repo: PersonaRepository) => Promise<T>): Promise<T> {
+> +    return await this.personaRepository.manager.transaction(async (manager) => {
+> +      const scoped = new PersonaRepositoryImpl(
+> +        manager.getRepository(PersonaEntity),
+> +        manager.getRepository(PersonaInteractionEntity),
+> +        manager.getRepository(PersonaFeedbackEntity),
+> +      );
+> +      return await operation(scoped);
+> +    });
+> +  }
+> ```
+> 
+> ---
+> 
+> `560-576`: **重要: 生 SQL のカラム名とプレースホルダの不整合による潜在的な障害**  
+> 
+> 現在、560～576行目の raw SQL では `persona_id` を参照していますが、NamingStrategy を未設定のままのエンティティ定義では実カラム名が property 名のまま `personaId` となっているため、このまま実行すると「列が存在しない」エラーになります。  
+> また `LIMIT ?` は SQLite では問題なく動作しますが、Postgres や MySQL 等の他ドライバでは `$1` など異なるプレースホルダ形式を要求されるため、将来的な DB 切り替え時にトラブルを招きかねません。  
+> 
+> 上記を回避し、ドライバ依存性を排除するために、TypeORM の QueryBuilder への置き換えを必須でお願いします。
+> 
+> — 対象箇所 —  
+> ファイル: shin-supercursor-framework/src/infrastructure/persistence/persona.repository.impl.ts  
+> 行: 560～576（popularPersonaQuery 定義および `this.personaRepository.query(...)`）
+> 
+> — 修正イメージ —  
+> ```diff
+> - const popularPersonaQuery = `
+> -   SELECT 
+> -     p.id,
+> -     COUNT(i.id) as usage_count,
+> -     COALESCE(AVG(f.rating), 0) as average_rating
+> -   FROM personas p
+> -   LEFT JOIN persona_interactions i ON p.id = i.persona_id
+> -   LEFT JOIN persona_feedbacks f ON p.id = f.persona_id
+> -   WHERE p.active = true
+> -   GROUP BY p.id
+> -   HAVING COUNT(i.id) > 0
+> -   ORDER BY COUNT(i.id) DESC, COALESCE(AVG(f.rating), 0) DESC
+> -   LIMIT ?
+> - `;
+> -
+> - const results: Array<{ id: string; usage_count: string; average_rating: string }> =
+> -   await this.personaRepository.query(popularPersonaQuery, [limit]);
+> - const popularPersonas: { persona: AIPersona; usageCount: number; averageRating: number; }[] = [];
+> + const popularPersonas = await this.personaRepository
+> +   .createQueryBuilder('p')
+> +   .leftJoin(PersonaInteractionEntity, 'i', 'i.personaId = p.id')
+> +   .leftJoin(PersonaFeedbackEntity, 'f', 'f.personaId = p.id')
+> +   .where('p.active = :active', { active: true })
+> +   .select('p.id', 'id')
+> +   .addSelect('COUNT(i.id)', 'usageCount')
+> +   .addSelect('COALESCE(AVG(f.rating), 0)', 'averageRating')
+> +   .groupBy('p.id')
+> +   .having('COUNT(i.id) > 0')
+> +   .orderBy('COUNT(i.id)', 'DESC')
+> +   .addOrderBy('COALESCE(AVG(f.rating), 0)', 'DESC')
+> +   .limit(limit)
+> +   .getRawMany();
+> ```
+> 
+> </blockquote></details>
+> 
+> </blockquote></details>
+
+<details>
+<summary>🧹 Nitpick comments (54)</summary><blockquote>
+
+<details>
+<summary>shin-supercursor-framework/src/infrastructure/modules/persona.module.ts (1)</summary><blockquote>
+
+`193-201`: **`any`キャストとeslint-disableを排し、NestJSの公式型で整合させましょう**
+
+現状は `imports`/`inject` に対して `as any` と eslint-disable を付与していますが、`PersonaModuleAsyncOptions` の型を NestJS の `ModuleMetadata['imports']` と `InjectionToken[]` に揃えれば、ここでの抑制は不要になります。PRの「型安全・セキュリティ強化」の方向性にも合致します。
+
+- 変更点（この範囲内での最小修正）
+
+```diff
+-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-explicit-any
+-      imports: (options.imports ?? []) as any,
++      imports: options.imports ?? [],
+@@
+-          // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-explicit-any
+-          inject: (options.inject ?? []) as any
++          inject: options.inject ?? []
+```
+
+- 併せて必要な型の見直し（別箇所の追補。この変更により上記のdisable不要になります）
+
+```ts
+// 先頭付近のimportを拡張
+import type { ModuleMetadata, InjectionToken } from '@nestjs/common';
+
+// 型の見直し
+export interface PersonaModuleAsyncOptions {
+  readonly imports?: ModuleMetadata['imports'];
+  readonly useFactory: (...args: unknown[]) => Promise<PersonaModuleOptions> | PersonaModuleOptions;
+  readonly inject?: ReadonlyArray<InjectionToken>;
+}
+```
+
+この対応で `@typescript-eslint/no-unsafe-assignment` と `no-explicit-any` の抑制を削除できます。  
+
+
+`tsc --noEmit` 相当の型チェックがCIで回る前提ですが、型変更の影響範囲を確認するため、`PersonaModule.forRootAsync(...)` の呼び出し元が `imports`/`inject` に不適切な型を渡していないかを軽く検索確認してください（`rg -n "forRootAsync\(" -C2` など）。
+
+</blockquote></details>
+<details>
+<summary>shin-supercursor-framework/src/application/commands/execute-supercursor.command.ts (1)</summary><blockquote>
+
+`18-24`: **型の集約ポイントを `index.js` に寄せるリファクタはOK**
+
+型の再エクスポート方針に沿ったimport整理で、一貫性・可読性が向上しています。関連ファイルの循環参照が発生していない限り、この変更は安全です。
+
+
+補足: 同ファイル内の `environmentVariables` 生成（Line 131-136付近）は `Object.freeze(...)` を噛ませると `DeepReadonly` の意図と整合します。また、`__proto__` 等の危険キー除外は `commands.ts` と同様に検討余地があります。
+
+</blockquote></details>
+<details>
+<summary>shin-supercursor-framework/src/application/handlers/analyze-command.handler.ts (2)</summary><blockquote>
+
+`236-241`: **`async` 内の `Promise.resolve` は冗長です**
+
+`async` 関数は戻り値を自動的に `Promise` 化します。ここはオブジェクトをそのまま返して簡潔にできます。
+
+```diff
+-    return Promise.resolve({
++    return {
+       valid: errors.length === 0,
+       errors,
+       warnings
+-    });
++    };
+```
+
+---
+
+`302-324`: **エラーパスも `Promise.resolve` を削除して簡潔に**
+
+こちらも `async` のため直接オブジェクトを返してOKです。
+
+```diff
+-      return Promise.resolve({
++      return {
+         commandId: command.id,
+         success: false,
+         output: { data: null },
+         format: OutputFormat.TEXT,
+         metadata: {
+           executionTime,
+           cacheHit: false,
+           resourcesUsed: {
+             memory: 0,
+             cpu: 0,
+             diskIO: 0,
+             networkIO: 0
+           }
+         },
+         errors: [new CommandExecutionError(normalized.message)],
+         performance: {
+           startTime: startTime as import('../../domain/types/base.js').Timestamp,
+           endTime: Date.now() as import('../../domain/types/base.js').Timestamp,
+           duration: executionTime
+         }
+-      });
++      };
+```
+
+</blockquote></details>
+<details>
+<summary>shin-supercursor-framework/src/infrastructure/command-execution-engine.impl.ts (1)</summary><blockquote>
+
+`195-201`: **不要な Promise.resolve の使用。**
+
+async 関数内で既にオブジェクトを返している場合、Promise.resolve でラップする必要はありません。TypeScript は自動的に Promise でラップします。
+
+
+以下のようにシンプルに記述できます：
+
+```diff
+  async getActiveExecutions(): Promise<readonly ActiveExecution[]> {
+    // Return readonly view of active executions without AbortController
+-    return Promise.resolve(Array.from(this.activeExecutions.values()).map(exec => ({
++    return Array.from(this.activeExecutions.values()).map(exec => ({
+      commandId: exec.commandId,
+      status: exec.status,
+      startTime: exec.startTime,
+      progress: exec.progress,
+      estimatedCompletion: exec.estimatedCompletion
+-    })));
++    }));
+  }
+```
+
+</blockquote></details>
+<details>
+<summary>shin-supercursor-framework/src/infrastructure/persona-repository.inmemory.ts (3)</summary><blockquote>
+
+`141-141`: **不要な Promise.resolve の使用。**
+
+async 関数内でオブジェクトを直接返す場合、Promise.resolve でラップする必要はありません。TypeScript が自動的に Promise でラップします。
+
+
+```diff
+-    return Promise.resolve(persona);
++    return persona;
+```
+
+---
+
+`158-158`: **不要な Promise.resolve の使用。**
+
+async 関数内での不要な Promise.resolve ラップです。
+
+
+```diff
+-    return Promise.resolve(updated);
++    return updated;
+```
+
+---
+
+`195-203`: **不要な Promise.resolve の使用。**
+
+async 関数内での不要な Promise.resolve ラップです。
+
+
+```diff
+-    return Promise.resolve({
++    return {
+      totalPersonas: this.personas.size,
+      activePersonas: activePersonas.length,
+      archivedPersonas: archivedCount,
+      personasByType,
+      averageRating,
+      totalUsage: this.interactions.size,
+      lastUpdated: Date.now() as Timestamp
+-    });
++    };
+```
+
+</blockquote></details>
+<details>
+<summary>shin-supercursor-framework/src/application/services/persona-management.service.ts (2)</summary><blockquote>
+
+`241-241`: **不要な Promise.resolve の使用。**
+
+async 関数内でプリミティブ値を直接返す場合、Promise.resolve でラップする必要はありません。
+
+
+```diff
+-      return Promise.resolve(true);
++      return true;
+
+-      return Promise.resolve(false);
++      return false;
+```
+
+
+Also applies to: 247-247
+
+---
+
+`496-514`: **学習データ収集の実装が不完全。**
+
+関数が実際のデータ取得を行わず、空の配列を返しています。TODO コメントが示すように、実装が必要です。また、不要な Promise.resolve の使用も見受けられます。
+
+
+実際の学習データ取得実装を追加するか、プレースホルダーであることをより明確にする必要があります。以下の修正を提案します：
+
+```diff
+  private async collectLearningData(_context: ExecutionContext): Promise<import('../../domain/types/personas.js').LearningData | undefined> {
+    if (!this.config.enableLearning) {
+-      return Promise.resolve(undefined);
++      return undefined;
+    }
+
+    try {
+-      // TODO: 実装時に非同期処理を追加
+-      const interactions: PersonaInteraction[] = [];
+-      const feedbacks: PersonaFeedback[] = [];
++      // TODO: 実際の学習データ取得ロジックを実装
++      // const interactions = await this.personaRepository.getSessionHistory(context.sessionId);
++      // const feedbacks = await this.personaRepository.getUserFeedbacks(context.userId);
++      
++      // 暫定的に空のデータを返す
++      const interactions: PersonaInteraction[] = [];
++      const feedbacks: PersonaFeedback[] = [];
+
+-      return Promise.resolve({
++      return {
+        interactions,
+        feedbacks,
+        adaptations: [] // 適応データ
+-      });
++      };
+    } catch {
+-      return Promise.resolve(undefined);
++      return undefined;
+    }
+  }
+```
+
+この TODO アイテムの実装をお手伝いしましょうか？新しい issue を作成することもできます。
+
+</blockquote></details>
+<details>
+<summary>shin-supercursor-framework/src/domain/services/persona-selection.service.ts (2)</summary><blockquote>
+
+`507-510`: **detect-object-injection の無効化を外せる形に修正しましょう（Map で安全アクセス）**
+
+`scores[level]` は enum キーによる添字アクセスのため実害は薄いものの、`eslint-plugin-security` のルールに継続的に引っかかります。`Map<ExpertiseLevel, number>` に置き換えることで、ルール無効化コメントを除去しつつ安全にアクセスできます。  
+
+
+最小変更案（このメソッド全体の置換を提案）:
+
+```ts
+private getExpertiseLevelScore(level: ExpertiseLevel): number {
+  const scores = new Map<ExpertiseLevel, number>([
+    [ExpertiseLevel.BEGINNER, 0.2],
+    [ExpertiseLevel.INTERMEDIATE, 0.4],
+    [ExpertiseLevel.ADVANCED, 0.7],
+    [ExpertiseLevel.EXPERT, 0.9],
+    [ExpertiseLevel.MASTER, 1.0],
+  ]);
+  return scores.get(level) ?? 0.4;
+}
+```
+
+該当行だけの差分（ルール無効化コメントの撤去を含む）:
+
+```diff
+-    // eslint-disable-next-line security/detect-object-injection
+-    const score = scores[level];
+-    return score ?? 0.4;
++    return scores.get(level) ?? 0.4;
+```
+
+---
+
+`531-548`: **経験×冗長性マトリクス：DEBUG レベル未対応と型安全性の不足（ルール無効化不要にできます）**
+
+- `VerbosityLevel` には `DEBUG` が存在しますが、マトリクスにキーがなく常に 0.5 デフォルトになります。意図であればコメント化、そうでなければマトリクスに追加を。  
+- 文字列キーでの動的添字により `security/detect-object-injection` を無効化していますが、`Map` を使えば無効化不要になります。  
+
+
+型安全かつルールに抵触しない実装例（メソッド全置換を提案）:
+
+```ts
+type ExperienceLevel = 'beginner' | 'intermediate' | 'advanced' | 'expert';
+
+private getExperienceVerbosityMatch(
+  experience: string,
+  verbosity: VerbosityLevel
+): number {
+  const matrix = new Map<ExperienceLevel, Map<VerbosityLevel, number>>([
+    ['beginner', new Map<VerbosityLevel, number>([
+      [VerbosityLevel.VERBOSE, 1.0],
+      [VerbosityLevel.NORMAL, 0.8],
+      [VerbosityLevel.MINIMAL, 0.3],
+      [VerbosityLevel.DEBUG, 0.6], // 追加: DEBUG
+    ])],
+    ['intermediate', new Map<VerbosityLevel, number>([
+      [VerbosityLevel.VERBOSE, 0.7],
+      [VerbosityLevel.NORMAL, 1.0],
+      [VerbosityLevel.MINIMAL, 0.6],
+      [VerbosityLevel.DEBUG, 0.7], // 追加: DEBUG
+    ])],
+    ['advanced', new Map<VerbosityLevel, number>([
+      [VerbosityLevel.VERBOSE, 0.5],
+      [VerbosityLevel.NORMAL, 0.8],
+      [VerbosityLevel.MINIMAL, 1.0],
+      [VerbosityLevel.DEBUG, 0.8], // 追加: DEBUG
+    ])],
+    ['expert', new Map<VerbosityLevel, number>([
+      [VerbosityLevel.VERBOSE, 0.3],
+      [VerbosityLevel.NORMAL, 0.6],
+      [VerbosityLevel.MINIMAL, 1.0],
+      [VerbosityLevel.DEBUG, 0.8], // 追加: DEBUG
+    ])],
+  ]);
+
+  const ex = matrix.get(experience as ExperienceLevel);
+  if (!ex) return 0.5;
+  return ex.get(verbosity) ?? 0.5;
+}
+```
+
+上記により、2 箇所の `eslint-disable security/detect-object-injection` を削除可能です。  
+なお、`DEBUG` のスコアは暫定値です。仕様があればそれに合わせて調整してください。
+
+</blockquote></details>
+<details>
+<summary>shin-supercursor-framework/src/infrastructure/adapters/cursor-api.adapter.ts (2)</summary><blockquote>
+
+`205-206`: **非リテラルなパス書き込みは妥当だが、スコープを限定した検証を**
+
+`createFile` は引数経由のパスを書き込みます。無効化コメントは理解できますが、パス検証（例: 許可ディレクトリ配下のみ）を併用できるとより安全です。共通のファイルシステムアダプタ（本リポジトリ内）に委譲するのも手です。
+
+---
+
+`349-351`: **この ESLint 無効化は不要に見えます**
+
+`command[i]` は文字列のインデックスアクセスであり、`security/detect-object-injection` の対象ではありません。無効化行は削除し、ルール健全性を維持しましょう。  
+
+
+```diff
+-      // eslint-disable-next-line security/detect-object-injection
+       const char = command[i];
+```
+
+</blockquote></details>
+<details>
+<summary>shin-supercursor-framework/src/domain/types/base.ts (2)</summary><blockquote>
+
+`83-105`: **派生クラスでの `code/severity/recoverable` 再定義は動作しますが、二重初期化を避ける設計に寄せたい**
+
+現在は基底でデフォルトを代入→派生でプロパティ再代入の順に評価されます。動作上は問題ないものの、責務の分散がわかりづらくなります。派生側は `super(...)` に明示引数を渡し、プロパティ初期化子を撤去する方が一貫します。  
+
+
+例（`ConfigurationError` のみ例示）:
+
+```diff
+-export class ConfigurationError extends FrameworkError {
+-  public readonly code = 'CONFIGURATION_ERROR';
+-  public readonly severity = ErrorSeverity.HIGH;
+-  public readonly recoverable = true;
+-}
++export class ConfigurationError extends FrameworkError {
++  constructor(message: string, context?: Record<string, unknown>) {
++    super(message, context, 'CONFIGURATION_ERROR', ErrorSeverity.HIGH, true);
++  }
++}
+```
+
+この方針に揃えるなら他の派生エラーも同様に置換してください。
+
+---
+
+`112-124`: **toJSON の `stack` と `context` は情報漏えいリスクになり得ます**
+
+API 経由で外部に出る場合は、PII/シークレットが `context` に含まれない保証が必要です。運用環境では `stack` を除外するか、出力をサニタイズする仕組みを追加することを推奨します。  
+
+
+簡易案:
+
+```ts
+public toJSON(): Record<string, unknown> {
+  const base = {
+    name: this.name,
+    message: this.message,
+    code: this.code,
+    severity: this.severity,
+    recoverable: this.recoverable,
+    timestamp: this.timestamp,
+  };
+  if (process.env.NODE_ENV !== 'production') {
+    return { ...base, context: this.context, stack: this.stack };
+  }
+  return base;
+}
+```
+
+</blockquote></details>
+<details>
+<summary>shin-supercursor-framework/src/infrastructure/adapters/file-system.adapter.ts (3)</summary><blockquote>
+
+`6-7`: **ファイル全体の `detect-non-literal-fs-filename` 無効化は強力すぎます**
+
+本ファイルは経路検証を実装しており妥当性は高いですが、可能であれば該当箇所のみの行単位無効化へ縮小してください。将来の変更で不用意な fs 操作が混入した際の検知力を維持できます。
+
+---
+
+`417-425`: **`exists` にも `validatePath` を適用するか要検討（情報漏えいの最小化）**
+
+現状 `exists` は未検証パスでも真偽を返します。許可外パスの存在有無を推測される懸念がある場合、`validatePath` を先に適用し、許可外は例外にする方が安全です。ユースケースにより賛否あるため、仕様の確認をお願いします。  
+
+
+期待動作の差分例:
+
+```diff
+   async exists(path: string): Promise<boolean> {
+-    try {
+-      const absolutePath = this.resolvePath(path);
++    try {
++      const absolutePath = this.resolvePath(path);
++      this.validatePath(absolutePath);
+       await fs.access(absolutePath);
+       return true;
+     } catch {
+       return false;
+     }
+   }
+```
+
+---
+
+`390-410`: **Windows 環境の互換性注意（権限/拒否パス）**
+
+`fsConstants.S_IRUSR` 等のビットやデフォルト `deniedPaths` は POSIX 前提のため、Windows では意味が薄い箇所があります。必要であればプラットフォーム分岐（`process.platform === 'win32'`）で `deniedPaths` を切り替える仕組みを入れると堅牢です。
+
+</blockquote></details>
+<details>
+<summary>shin-supercursor-framework/src/domain/services/command-routing.service.ts (5)</summary><blockquote>
+
+`184-191`: **実行キュー上限チェックはTOCTOUの余地あり**
+
+`this.executionQueue.size` を確認してから `set` するまでに同時到達で上限を超える可能性があります。実害は小さいですが、トークン化（セマフォ）の導入か、チェックと登録を同一クリティカルセクションにまとめると堅牢になります。
+
+---
+
+`189-198`: **エラーパスの結果IDと原因保持の改善**
+
+- 失敗時の `commandId` を毎回 `createCommandId()` で新規採番していますが、ビルド済みコマンドがあるケースではそのIDを優先して保持した方が追跡性が上がります。
+- ラップした `CommandExecutionError` に元エラーを `cause` 相当で引き継げるなら、付与を検討してください。
+
+
+```diff
+-        commandId: createCommandId(),
++        commandId: typeof (parsedCommand as any)?.id === 'string' ? (parsedCommand as any).id : createCommandId(),
+...
+-        errors: [error instanceof FrameworkError ? error : new CommandExecutionError(this.formatErrorMessage(error), { specificCode: 'EXECUTION_ERROR' } as const)],
++        errors: [error instanceof FrameworkError 
++          ? error 
++          : new CommandExecutionError(this.formatErrorMessage(error), { specificCode: 'EXECUTION_ERROR' } as const /* , { cause: error } */)
++        ],
+```
+
+
+Also applies to: 199-224
+
+---
+
+`296-336`: **空白分割の扱いを広げるか、仕様として明記を**
+
+現在は区切り文字が半角スペース `' '` のみです。タブや複数空白、全角スペースを仕様として不許可にするなら注記、許可するなら `\s` 系の判定へ拡張を検討ください。
+
+---
+
+`503-531`: **`indexOf` 多用による O(n^2) 退行の回避と検証の一貫性**
+
+`handler.parameters.indexOf(param)` をループ内で都度呼ぶため、パラメータ数が増えると退行します。添字付きループで一度の走査にまとめると読みやすく、パフォーマンスも改善します。また `command.options[param.name]` アクセスは `hasOwnProperty` を用いて存在確認するのが無難です。
+
+```diff
+-    const requiredParams = handler.parameters.filter(p => p.required);
+-    
+-    for (const param of requiredParams) {
+-      const hasArgument = command.arguments.length > handler.parameters.indexOf(param);
+-      const hasOption = command.options[param.name] !== undefined;
++    const requiredParams = handler.parameters
++      .map((p, idx) => [p, idx] as const)
++      .filter(([p]) => p.required);
++    
++    for (const [param, idx] of requiredParams) {
++      const hasArgument = command.arguments.length > idx;
++      const hasOption = Object.prototype.hasOwnProperty.call(command.options, param.name);
+@@
+-    for (const param of handler.parameters) {
+-      const value = command.options[param.name] ?? command.arguments[handler.parameters.indexOf(param)];
++    for (const [param, idx] of handler.parameters.map((p, i) => [p, i] as const)) {
++      const value = (Object.prototype.hasOwnProperty.call(command.options, param.name)
++        ? command.options[param.name]
++        : command.arguments[idx]);
+```
+
+---
+
+`458-466`: **類似度計算の配列アクセスに関する小さな整形提案**
+
+`eslint-disable security/detect-object-injection` は基本的に配列添字への適用は過剰です。サイズを先に固定してから代入すると抑止コメントを減らせます（任意）。
+
+```diff
+-    const firstRow = matrix.at(0);
+-    if (firstRow) {
+-      for (let j = 0; j <= len2; j++) {
+-        // eslint-disable-next-line security/detect-object-injection
+-        firstRow[j] = j;
+-      }
+-    }
++    matrix[0] = Array.from({ length: len2 + 1 }, (_, j) => j);
+```
+
+
+Also applies to: 471-485, 490-492
+
+</blockquote></details>
+<details>
+<summary>shin-supercursor-framework/src/infrastructure/persona-manager.impl.ts (6)</summary><blockquote>
+
+`42-42`: **logger の仮実装は OK。次段で置換計画を**
+
+`console` 直書きからロガー注入へ進める布石として妥当です。将来的に `Logger` インターフェース（`error/info/warn/debug`）へ差し替え可能なDIにしておくとテストもしやすいです。
+
+---
+
+`93-95`: **ネストした三項演算の冗長化を解消してください**
+
+`error instanceof Error ? error instanceof Error ? ...` は二重で冗長です。読みやすさおよびlint適合のため簡約を。
+
+```diff
+-      const errorMessage = error instanceof Error ? error instanceof Error ? error.message : String(error) : String(error);
++      const errorMessage = error instanceof Error ? error.message : String(error);
+```
+
+---
+
+`173-186`: **同期化された適合度選別はOK。しきい値は設定値に寄せられます**
+
+ハードコードの `> 0.3` は十分ですが、`mergedConfig.confidenceThreshold` に合わせると全体設定と整合します（任意）。
+
+```diff
+-        if (confidence > 0.3) { // Minimum threshold for suitability
++        if (confidence > Math.min(merged.confidenceThreshold ?? 0.3, 0.95)) {
+```
+別途:
+```ts
+const merged = this.mergedConfig;
+```
+
+
+Also applies to: 178-182
+
+---
+
+`261-262`: **`Promise.resolve(delete ...)` は可読だが冗長**
+
+そのままでも動作に問題ありませんが、async 関数なので `return this.activeSessions.delete(sessionId);` で十分です（任意）。
+
+```diff
+-    return Promise.resolve(this.activeSessions.delete(sessionId));
++    return this.activeSessions.delete(sessionId);
+```
+
+---
+
+`322-326`: **新規作成時のフィールド除外はOK。型整合の確認だけ依頼**
+
+`personaRepository.create(personaData)` のシグネチャが `Omit<AIPersona, 'id'|'createdAt'|'updatedAt'>` を受けるか確認してください。必要なら型注釈/キャストを追加しましょう。
+
+
+```diff
+-      await this.personaRepository.create(personaData);
++      await this.personaRepository.create(personaData as Omit<AIPersona, 'id' | 'createdAt' | 'updatedAt'>);
+```
+
+---
+
+`430-431`: **エラーログの三項演算子の重複を整理**
+
+同様の冗長パターンが複数箇所にあります。簡約してノイズを減らしてください。
+
+```diff
+-      this.logger.error(`Failed to store interaction for learning: ${error instanceof Error ? error instanceof Error ? error.message : String(error) : String(error)}`);
++      this.logger.error(`Failed to store interaction for learning: ${error instanceof Error ? error.message : String(error)}`);
+@@
+-      this.logger.error(`Failed to store feedback: ${error instanceof Error ? error instanceof Error ? error.message : String(error) : String(error)}`);
++      this.logger.error(`Failed to store feedback: ${error instanceof Error ? error.message : String(error)}`);
+@@
+-      this.logger.error(`Failed to get fallback persona: ${error instanceof Error ? error.message : String(error)}`);
++      this.logger.error(`Failed to get fallback persona: ${error instanceof Error ? error.message : String(error)}`);
+```
+
+
+Also applies to: 438-439, 448-449
+
+</blockquote></details>
+<details>
+<summary>shin-supercursor-framework/src/supercursor.module.ts (5)</summary><blockquote>
+
+`33-75`: **FrameworkConfig のローカル定義がドメイン側の設定型と乖離**
+
+本モジュール内の `FrameworkConfig` は `FrameworkEntity` 側の `FrameworkConfiguration`（`domain/entities/framework.entity.ts`）と構造が異なります（例: `performance.commandTimeout` 有無、`encryption.keyLength`）。将来的な統合時に齟齬を招くため、どちらかに寄せるか、変換レイヤーを明示してください。
+
+---
+
+`79-85`: **DynamicModule の型を使い、独自 `ModuleProvider` を避ける**
+
+NestJS の規約的には `DynamicModule` を返すのが自然です。`ModuleProvider` は最小限の互換しか担保しないため、型を寄せておくと将来のリファクタで安全です。
+
+```diff
+-import { Module, Provider } from '@nestjs/common';
++import { Module, Provider, DynamicModule } from '@nestjs/common';
+@@
+-  static forRoot(options: SuperCursorModuleOptions = {}): { module: typeof SuperCursorModule; providers: Provider[] } {
++  static forRoot(options: SuperCursorModuleOptions = {}): DynamicModule {
+@@
+-  static forRootAsync(options: {
+-    useFactory: (...args: unknown[]) => Promise<SuperCursorModuleOptions> | SuperCursorModuleOptions;
+-    inject?: unknown[];
+-  }): { module: typeof SuperCursorModule; providers: ModuleProvider[] } {
++  static forRootAsync(options: {
++    useFactory: (...args: unknown[]) => Promise<SuperCursorModuleOptions> | SuperCursorModuleOptions;
++    inject?: unknown[];
++  }): DynamicModule {
+```
+
+
+Also applies to: 239-243
+
+---
+
+`132-134`: **`as any` の回避（型不一致の根治）**
+
+`CommandModule.forRoot({...}) as any` は型安全性を損ねます。`CommandModule` 側の `forRoot` の戻り型を `DynamicModule` に揃えるか、本モジュール側で `as unknown as DynamicModule` 程度に留めておくと静的解析上の影響を限定できます。
+
+```diff
+-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+-    }) as any,
++    }) as unknown as DynamicModule,
+```
+
+---
+
+`161-196`: **FRAMEWORK_CONFIG の `allowedCommands` の空白/空要素を正規化**
+
+`.split(',')` のみだと空文字や前後空白が混入します。`trim()` と `filter(Boolean)` を推奨します。
+
+```diff
+-          allowedCommands: (process.env.ALLOWED_COMMANDS ?? 'analyze,help,version').split(','),
++          allowedCommands: (process.env.ALLOWED_COMMANDS ?? 'analyze,help,version')
++            .split(',')
++            .map(c => c.trim())
++            .filter(Boolean),
+```
+
+---
+
+`174-177`: **環境変数の解釈基準の一貫化**
+
+同一カテゴリで `!== 'false'` と `=== 'true'` が混在しています。仕様上の意図があればOKですが、プロジェクト全体で統一しましょう（例: 明示的に `true` のみ有効、とする等）。
+
+
+
+Also applies to: 191-194
+
+</blockquote></details>
+<details>
+<summary>shin-supercursor-framework/src/domain/entities/framework.entity.ts (1)</summary><blockquote>
+
+`747-768`: **EventEmitter を継承したなら、実際の `emit` も活用を（任意）**
+
+現在は内部履歴に積むのみです。後段で購読可能にするなら `this.emit(event.type, event)` を併用すると拡張しやすいです。
+
+</blockquote></details>
+<details>
+<summary>shin-supercursor-framework/src/domain/types/index.ts (1)</summary><blockquote>
+
+`84-85`: **再エクスポート方針の明記は良い。コメント重複は最小化を（任意）**
+
+再エクスポートの注意書きは有用です。コメントの重複箇所は簡潔化すると可読性がさらに上がります。
+
+
+
+Also applies to: 118-119, 152-154, 174-176
+
+</blockquote></details>
+<details>
+<summary>shin-supercursor-framework/src/infrastructure/modules/integration.module.ts (9)</summary><blockquote>
+
+`12-23`: **IntegrationServices の戻り値型をユニオンにして「状態」の意味を明確化**
+
+`healthCheck()` の `status` が `string` だと利用側での取り扱いが曖昧です。`'ok' | 'degraded' | 'error'` 等のユニオン型にすると型安全性と可読性が上がります（本PRの「explicit-function-return-type/strict」方針とも整合）。
+
+
+適用例（インターフェースのみの変更）:
+
+```diff
+-  healthCheck(): Promise<{ status: string; services: Record<string, boolean> }>;
++  healthCheck(): Promise<{ status: 'ok' | 'degraded' | 'error'; services: Record<string, boolean> }>;
+```
+
+補足: 必要ならファイル先頭付近に `type HealthStatus = 'ok' | 'degraded' | 'error';` を追加して参照しても良いです。
+
+---
+
+`64-70`: **環境変数の数値パースで NaN フォールバックがない**
+
+`parseInt(process.env.CURSOR_TIMEOUT ?? '30000', 10)` 等は、環境変数が不正（例: `abc`）だと `NaN` がそのまま注入されます。フォールバックを入れて安全に解釈してください。
+
+
+例（読みやすいヘルパー導入を推奨）:
+
+```diff
+-        timeout: opts.cursorApi?.timeout ?? parseInt(process.env.CURSOR_TIMEOUT ?? '30000', 10),
+-        retryAttempts: opts.cursorApi?.retryAttempts ?? parseInt(process.env.CURSOR_RETRY_ATTEMPTS ?? '3', 10),
++        timeout: Number.isFinite(Number(opts.cursorApi?.timeout))
++          ? Number(opts.cursorApi!.timeout)
++          : (Number.isFinite(Number(process.env.CURSOR_TIMEOUT)) ? Number(process.env.CURSOR_TIMEOUT) : 30_000),
++        retryAttempts: Number.isFinite(Number(opts.cursorApi?.retryAttempts))
++          ? Number(opts.cursorApi!.retryAttempts)
++          : (Number.isFinite(Number(process.env.CURSOR_RETRY_ATTEMPTS)) ? Number(process.env.CURSOR_RETRY_ATTEMPTS) : 3),
+```
+
+もしくはファイル内に `safeNumber(input: unknown, fallback: number): number` の小ヘルパーを追加して簡潔化すると良いです。
+
+---
+
+`75-82`: **FileSystem 側のデフォルト値にもバリデーションを**
+
+`maxFileSize` や `maxWatchers` は数値であることを保証したいです。上記コメントと同様に NaN フォールバックを入れておくと堅牢になります。
+
+---
+
+`112-125`: **validateEnvironment が Cursor のみを検証しており、FS 側の前提確認が不足**
+
+本モジュールはファイル操作も責務に含むため、最低限のファイルシステム可用性（例: `projectPath` の読み取り/最低限の書込み可能性）を確認し、`issues` に反映すると運用で有益です。
+
+
+必要なら、`fileSystem.healthCheck?()`（存在する場合）や `stat(process.cwd())`/一時ファイル書込みでの軽量チェック例を提示します。
+
+---
+
+`127-136`: **createAndOpenFile の UX 向上（未指定 content 時のファイル存在扱い）**
+
+`content` 未指定時に新規ファイルを開こうとして存在しない可能性があります。`writeFile` のオプションで空ファイル作成（または `ensureFile`）を行うか、存在チェック後に作成する処理を入れると堅牢です。
+
+---
+
+`160-169`: **DynamicModule を明示して Nest の慣例に合わせる（exports も可）**
+
+`forRoot` の戻り型が独自型になっていますが、Nest では `DynamicModule` を返すのが通例です。型定義を `DynamicModule` に変更し、必要に応じて `exports` を明示することを推奨します。
+
+
+```diff
+-  static forRoot(options: IntegrationModuleOptions = {}): { module: typeof IntegrationModule; providers: Array<{ provide: string; useValue: IntegrationModuleOptions }> } {
++  static forRoot(options: IntegrationModuleOptions = {}): import('@nestjs/common').DynamicModule {
+     return {
+       module: IntegrationModule,
+       providers: [
+         {
+           provide: 'INTEGRATION_MODULE_OPTIONS',
+           useValue: options
+         }
+-      ]
++      ],
++      exports: [CursorApiAdapter, FileSystemAdapter, 'INTEGRATION_SERVICES']
+     };
+   }
+```
+
+---
+
+`175-189`: **forRootAsync も DynamicModule/Provider[] に統一**
+
+`forRootAsync` も `DynamicModule` を返すようにし、`providers` 型は `Provider[]` に寄せると一貫性が高まります。
+
+
+```diff
+-  }): { module: typeof IntegrationModule; providers: Array<{ provide: string; useFactory: (...args: unknown[]) => Promise<IntegrationModuleOptions> | IntegrationModuleOptions; inject: unknown[] }> } {
++  }): import('@nestjs/common').DynamicModule {
+     return {
+       module: IntegrationModule,
+       providers: [
+         {
+           provide: 'INTEGRATION_MODULE_OPTIONS',
+           useFactory: options.useFactory,
+           inject: options.inject ?? []
+         }
+-      ]
++      ],
++      exports: [CursorApiAdapter, FileSystemAdapter, 'INTEGRATION_SERVICES']
+     };
+   }
+```
+
+---
+
+`59-61`: **文字列トークンよりもシンボルトークン推奨**
+
+`'INTEGRATION_MODULE_OPTIONS'` や `'INTEGRATION_SERVICES'` は文字列トークンだと衝突リスクがあります。`Symbol()` もしくは `const` エクスポート（`InjectionToken`）に変更すると安全です。
+
+
+必要ならトークン定義と適用差分をまとめて用意します。
+
+
+Also applies to: 88-95
+
+---
+
+`138-143`: **型キャスト `any` を削除し、`DirectoryListing` からドメインの `Directory[]` へ明示的に変換してください**
+
+`FileSystemAdapter#listDirectory` は `Promise<DirectoryListing>` を返します。現在、`getProjectStructure` ではその戻り値を一時的に `any` キャストしていますが、以下のように `listing.entries: DirectoryEntry[]` をドメイン型の `Directory[]` にマッピングして型安全性を担保してください。
+
+```ts
+import { Directory } from '../../domain/types/context.js';
+
+async getProjectStructure(projectPath: string): Promise<Directory[]> {
+  const listing = await fileSystem.listDirectory(projectPath, { recursive: true });
+  return listing.entries.map((entry) => ({
+    name: entry.name,
+    path: entry.path,
+    type: entry.type,
+    size: entry.size,
+    lastModified: entry.lastModified,
+    permissions: entry.permissions,
+    // 必要に応じてドメインの構造に合わせた追加フィールド（children など）を設定
+  }));
+}
+```
+
+- `DirectoryListing` と `DirectoryEntry` の定義:  
+  `shin-supercursor-framework/src/infrastructure/adapters/file-system.adapter.ts`  
+- ドメインの `Directory` 型定義:  
+  `shin-supercursor-framework/src/domain/types/context.ts`  
+
+この変更により `any` を排除し、型安全な実装が可能になります。
+
+</blockquote></details>
+<details>
+<summary>shin-supercursor-framework/src/infrastructure/persistence/persona.repository.impl.ts (8)</summary><blockquote>
+
+`6-9`: **ESLint の no-unsafe/no-explicit-any 無効化は最小限に**
+
+現状ファイル全体で無効化していますが、型付けの改善で局所無効化に絞れます。`JSON` 相当の型（例: `type Json = null | boolean | number | string | Json[] | { [k: string]: Json }`）を導入し、`unknown[]/any` を段階的に置き換えることを検討してください。
+
+
+必要なら `Json` ユーティリティ型と変換関数（バリデーション込み）をご提案します。
+
+---
+
+`196-197`: **エラーメッセージ構築の三項演算子が重複し、意図せず冗長になっている**
+
+`error instanceof Error ? error instanceof Error ? ...` となっておりバグ混入の温床です。シンプルに修正してください。
+
+
+```diff
+-      throw new PersonaRepositoryError(`Failed to find persona: ${error instanceof Error ? error instanceof Error ? error.message : String(error) : String(error)}`, 'findById', id);
++      throw new PersonaRepositoryError(`Failed to find persona: ${error instanceof Error ? error.message : String(error)}`, 'findById', id);
+```
+
+```diff
+-      throw new PersonaRepositoryError(`Failed to find personas: ${error instanceof Error ? error instanceof Error ? error.message : String(error) : String(error)}`, 'findByIds');
++      throw new PersonaRepositoryError(`Failed to find personas: ${error instanceof Error ? error.message : String(error)}`, 'findByIds');
+```
+
+
+Also applies to: 209-210
+
+---
+
+`225-229`: **デフォルト take=50 の根拠をコメント化/設定化**
+
+`findByFilter` の `take: 50` は良いデフォルトですが、設定値として外出しできると運用で調整しやすいです（例: 環境変数/定数の `DEFAULT_TAKE`）。また、必要に応じて `skip` も受けられるとページングが容易です。
+
+---
+
+`600-602`: **findSimilar はスタブのまま—インターフェイスは満たすが利用側の期待を明記**
+
+現在は空配列を返すスタブです。利用側の期待に応じて `TODO` を追記するか、`NotImplemented` 相当の例外にするかを検討ください。少なくとも JSDoc で仕様を明記することを推奨します。
+
+
+要件が固まっていれば下敷きとなるスコアリング実装をご提案します。
+
+---
+
+`671-674`: **any/配列スプレッドの多用は型安全性を損なう—JSON 型/スキーマ導入を検討**
+
+`expertise/capabilities/activationTriggers` の変換に `as any` と配列コピーが使われています。ドメイン側の型（`ReadonlyArray<...>` など）に合わせ、`readonly` 化や shallow copy の要否を見直しつつ、可能なら `zod` 等で入出力検証を入れると「no-unsafe」無効化を段階的に外せます。
+
+
+
+Also applies to: 689-696
+
+---
+
+`710-710`: **userSatisfaction は number で統一して返す**
+
+上の Column transformer を導入しても、ここでの最終返却は `undefined`/`number` に正規化しておくと安心です。
+
+
+```diff
+-      userSatisfaction: entity.userSatisfaction ?? undefined
++      userSatisfaction: entity.userSatisfaction == null ? undefined : entity.userSatisfaction
+```
+
+---
+
+`716-720`: **buildOrderOptions の String 比較は避け、列挙型の比較に統一**
+
+`String(sortBy)` での比較は型の恩恵を失います。列挙型のまま `switch` で分岐し、戻り型も `FindManyOptions<PersonaEntity>['order']` に寄せると安全です。
+
+
+```diff
+-  private buildOrderOptions(sortBy?: import('../../domain/types/personas.js').PersonaSortField, sortOrder?: import('../../domain/types/personas.js').SortOrder): Record<string, 'ASC' | 'DESC'> {
++  private buildOrderOptions(
++    sortBy?: import('../../domain/types/personas.js').PersonaSortField,
++    sortOrder?: import('../../domain/types/personas.js').SortOrder
++  ): import('typeorm').FindManyOptions<PersonaEntity>['order'] {
+     const order: Record<string, 'ASC' | 'DESC'> = {};
+-    
+-    if (String(sortBy) === String(PersonaSortField.NAME)) {
+-      order.name = String(sortOrder) === String(SortOrder.DESC) ? 'DESC' : 'ASC';
+-    } else if (String(sortBy) === String(PersonaSortField.CREATED_AT)) {
+-      order.createdAt = String(sortOrder) === String(SortOrder.DESC) ? 'DESC' : 'ASC';
+-    } else {
++    switch (sortBy) {
++      case PersonaSortField.NAME:
++        order.name = sortOrder === SortOrder.DESC ? 'DESC' : 'ASC';
++        break;
++      case PersonaSortField.CREATED_AT:
++        order.createdAt = sortOrder === SortOrder.DESC ? 'DESC' : 'ASC';
++        break;
++      default:
+         order.createdAt = 'DESC';
+     }
+     
+     return order;
+   }
+```
+
+---
+
+`389-389`: **例外発生時の例外型統一は良いが、ログ内容の情報密度を最小限で固定**
+
+現状の `error instanceof Error ? error.message : String(error)` で十分です。繰り返しのパターン化を避けるため、小ヘルパー `toMessage(error): string` をローカル定義して使い回すと読みやすくなります。
+
+
+
+Also applies to: 417-418, 425-425, 505-505, 519-519
+
+</blockquote></details>
+
+</blockquote></details>
+
+<details>
+<summary>📜 Review details</summary>
+
+**Configuration used**: CodeRabbit UI
+
+**Review profile**: CHILL
+
+**Plan**: Pro
+
+**Knowledge Base: Disabled due to Reviews > Disable Knowledge Base setting**
+
+<details>
+<summary>📥 Commits</summary>
+
+Reviewing files that changed from the base of the PR and between c165e312abcaecb2bb46b209fd598e44ec64be6f and 6b767d56cbfdffa7472be31277e828bc6be56133.
+
+</details>
+
+<details>
+<summary>📒 Files selected for processing (22)</summary>
+
+* `shin-supercursor-framework/src/application/commands/execute-supercursor.command.ts` (1 hunks)
+* `shin-supercursor-framework/src/application/handlers/analyze-command.handler.ts` (4 hunks)
+* `shin-supercursor-framework/src/application/services/persona-management.service.ts` (2 hunks)
+* `shin-supercursor-framework/src/domain/entities/framework.entity.ts` (14 hunks)
+* `shin-supercursor-framework/src/domain/repositories/persona.repository.ts` (1 hunks)
+* `shin-supercursor-framework/src/domain/services/command-routing.service.ts` (6 hunks)
+* `shin-supercursor-framework/src/domain/services/persona-selection.service.ts` (6 hunks)
+* `shin-supercursor-framework/src/domain/types/base.ts` (1 hunks)
+* `shin-supercursor-framework/src/domain/types/commands.ts` (2 hunks)
+* `shin-supercursor-framework/src/domain/types/index.ts` (8 hunks)
+* `shin-supercursor-framework/src/domain/types/personas.ts` (2 hunks)
+* `shin-supercursor-framework/src/infrastructure/adapters/cursor-api.adapter.ts` (6 hunks)
+* `shin-supercursor-framework/src/infrastructure/adapters/file-system.adapter.ts` (4 hunks)
+* `shin-supercursor-framework/src/infrastructure/command-execution-engine.impl.ts` (4 hunks)
+* `shin-supercursor-framework/src/infrastructure/modules/command.module.ts` (6 hunks)
+* `shin-supercursor-framework/src/infrastructure/modules/integration.module.ts` (6 hunks)
+* `shin-supercursor-framework/src/infrastructure/modules/persona.module.ts` (1 hunks)
+* `shin-supercursor-framework/src/infrastructure/persistence/persona.repository.impl.ts` (22 hunks)
+* `shin-supercursor-framework/src/infrastructure/persona-manager.impl.ts` (13 hunks)
+* `shin-supercursor-framework/src/infrastructure/persona-repository.inmemory.ts` (5 hunks)
+* `shin-supercursor-framework/src/main.ts` (5 hunks)
+* `shin-supercursor-framework/src/supercursor.module.ts` (6 hunks)
+
+</details>
+
+</details>
+
+<details>
+<summary>🔇 Additional comments (36)</summary><blockquote>
+
+<details>
+<summary>shin-supercursor-framework/src/domain/repositories/persona.repository.ts (1)</summary><blockquote>
+
+`8-10`: **実装クラスのシグネチャ追従を確認済み**  
+`UserId` の import 追加は妥当であり、`PersonaRepositoryImpl`（persistence 実装）および InMemory 実装いずれの `getUserHistory`/`getRecommendedPersonas` メソッドも、ドメインの抽象定義と型・シグネチャが一致していることをスクリプトで確認しました。追加の修正は不要です。  
+
+- shin-supercursor-framework/src/infrastructure/persistence/persona.repository.impl.ts  
+  - async getUserHistory(userId: UserId): Promise<…>  
+  - async getRecommendedPersonas(_userId: UserId, _limit: number = 5): Promise<…>  
+- shin-supercursor-framework/src/infrastructure/persona-repository.inmemory.ts  
+  - getUserHistory(userId: UserId): Promise<…>  
+  - async getRecommendedPersonas(_userId: UserId, limit = 5): Promise<…>
+
+</blockquote></details>
+<details>
+<summary>shin-supercursor-framework/src/domain/types/personas.ts (2)</summary><blockquote>
+
+`16-16`: **ResourceUsage のインポートを追加。**
+
+PersonaActivationResult の resources フィールドで使用される ResourceUsage 型を base.js から適切にインポートしています。型の整合性を確保する良い変更です。
+
+---
+
+`542-543`: **ESLint セキュリティルールの抑制を追加。**
+
+動的オブジェクトプロパティアクセスに対する security/detect-object-injection ルールを適切に抑制しています。この関数は定数の enum 値のマッピングなので、セキュリティ上の問題はありません。
+
+</blockquote></details>
+<details>
+<summary>shin-supercursor-framework/src/infrastructure/command-execution-engine.impl.ts (3)</summary><blockquote>
+
+`119-119`: **エラーハンドリングの改善。**
+
+`error instanceof Error` チェックを追加することで、Error オブジェクト以外の値が throw された場合も安全に処理できるようになりました。堅牢なエラーハンドリングの実装です。
+
+---
+
+`153-155`: **Promise の明示的な破棄。**
+
+`void` キーワードを使用して Promise の戻り値を明示的に破棄しています。ESLint ルールに準拠した適切な実装です。
+
+---
+
+`12-12`: **インポートの不一致はありません**
+
+ActiveExecution は `shin-supercursor-framework/src/domain/types/commands.ts`（行 300–306）で正しく定義されており、`ExecutionProgress` はそのプロパティとして含まれています。インフラ層の `command-execution-engine.impl.ts` では `ActiveExecution` のみをインポートし、直接 `ExecutionProgress` を参照する必要はないため、インポートと使用箇所に齟齬は生じていません。オリジナルのレビューコメントは該当箇所を誤認したものであり、修正の必要はありません。 
+
+> Likely an incorrect or invalid review comment.
+
+</blockquote></details>
+<details>
+<summary>shin-supercursor-framework/src/infrastructure/persona-repository.inmemory.ts (2)</summary><blockquote>
+
+`184-186`: **セキュリティルールの適切な抑制。**
+
+PersonaType enum の動的アクセスに対する security/detect-object-injection ルールを適切に抑制しています。enum 値の安全なマッピング処理です。
+
+---
+
+`238-252`: **nullish coalescing 演算子の使用を改善。**
+
+論理 OR (`||`) から nullish coalescing (`??`) への変更は適切です。これにより、0 や空文字列などの falsy 値が適切に処理されるようになりました。
+
+</blockquote></details>
+<details>
+<summary>shin-supercursor-framework/src/main.ts (5)</summary><blockquote>
+
+`54-54`: **nullish coalescing 演算子の適切な使用。**
+
+論理 OR (`||`) から nullish coalescing (`??`) への変更により、空文字列が設定された場合も適切に処理されるようになりました。CORS 設定の改善です。
+
+---
+
+`91-91`: **環境変数のデフォルト値設定の改善。**
+
+nullish coalescing 演算子の使用により、環境変数が未設定の場合のデフォルト値設定がより適切になりました。
+
+
+
+Also applies to: 104-105
+
+---
+
+`111-111`: **ポート設定の改善。**
+
+nullish coalescing を使用することで、PORT=0 が明示的に設定された場合も適切に処理されるようになりました。
+
+---
+
+`127-130`: **グレースフルシャットダウンの実装改善。**
+
+非同期コールバックから同期コールバックに変更し、`void` キーワードで Promise を適切に処理しています。シャットダウン処理の堅牢性が向上しました。
+
+
+
+Also applies to: 132-135
+
+---
+
+`144-144`: **未使用パラメータの適切なマーキング。**
+
+Promise パラメータに `_` プレフィックスを追加することで、意図的に使用しないことを明示しています。ESLint ルールに準拠した改善です。
+
+</blockquote></details>
+<details>
+<summary>shin-supercursor-framework/src/domain/services/persona-selection.service.ts (3)</summary><blockquote>
+
+`11-13`: **型の厳格化（VerbosityLevel の導入）は妥当です**
+
+`VerbosityLevel` を正式な型としてインポートし、以降の計算で活用する方針は PR 目的（TypeScript strict / security ルール適用）に合致しています。
+
+---
+
+`129-131`: **フォールバックの undefined 明示化で API 一貫性が向上**
+
+`fallback: !selectedPersona ? (finalPersona ?? undefined) : undefined` により、存在しない場合は `undefined` を返す挙動が明確になっています。呼び出し側での分岐が簡潔になります。
+
+---
+
+`580-582`: **`Array.prototype.at` の採用は可読性・安全性の両面で良い選択**
+
+境界外アクセス時に `undefined` を返すことが明確になり、直後のガードとも整合しています。パフォーマンス面でもこのスコープでは問題になりません。
+
+</blockquote></details>
+<details>
+<summary>shin-supercursor-framework/src/infrastructure/adapters/cursor-api.adapter.ts (4)</summary><blockquote>
+
+`13-15`: **集中管理されたエラー分類の導入（ErrorSeverity）に賛成**
+
+`ErrorSeverity` をここで使うことで、アダプター横断のエラー処理・ロギングが統一されます。
+
+---
+
+`58-59`: **`CursorApiError` の重大度 HIGH 指定は妥当**
+
+API 失敗はユーザ操作継続に影響が大きいため、デフォルト HIGH は適切です。
+
+---
+
+`80-84`: **`CursorNotFoundError` の CRITICAL 指定は適切**
+
+実行ファイル未発見は構成問題の可能性が高く、ユーザ復旧も難しいため CRITICAL は妥当です。
+
+---
+
+`70-78`: **CursorApiError の instanceof チェック影響なし**
+
+`CursorTimeoutError` を `FrameworkError` に変更したことで、呼び出し側で `error instanceof CursorApiError` にマッチしなくなる懸念がありましたが、リポジトリ全体を検索したところ、`instanceof CursorApiError` を使用している箇所は存在しませんでした。したがって、タイムアウト例外が取りこぼされるリスクはありません。
+
+– 検索コマンド  
+```bash
+rg -n -C2 -g '!**/node_modules/**' -e 'instanceof\s+CursorApiError'
+```
+
+結果: マッチなし
+
+
+
+> Likely an incorrect or invalid review comment.
+
+</blockquote></details>
+<details>
+<summary>shin-supercursor-framework/src/infrastructure/modules/command.module.ts (1)</summary><blockquote>
+
+`74-77`: **`void` で戻り値を明示的に捨てる実装は良い**
+
+副作用関数の戻り値未使用を lint で明確化できています。
+
+</blockquote></details>
+<details>
+<summary>shin-supercursor-framework/src/infrastructure/adapters/file-system.adapter.ts (4)</summary><blockquote>
+
+`14-16`: **ErrorSeverity の導入はエラー横断の運用に有用**
+
+ログ/監視のしきい値設計が容易になります。
+
+---
+
+`87-114`: **エラー階層の整理（FrameworkError 継承＋重大度設定）は妥当**
+
+`FileSystemError` 系の recoverable/major severity の切り分けが明確で、ハンドリング方針を取りやすくなっています。
+
+---
+
+`481-482`: **watcher の error ハンドラでの `void` + `catch` は良い安全弁**
+
+未処理例外でプロセスが落ちないようにしつつ、クリーンアップ失敗も握りつぶす判断は監視機構として現実的です。
+
+---
+
+`541-557`: **パス検証の強化（論理パス/実パスの両面チェック）は良い設計**
+
+`realpathSync` ベースの包含チェックを併用することで、シンボリックリンク経由の脱出を抑止できています。ユースケースに応じて許可/拒否リストのテストケース追加もご検討ください。
+
+</blockquote></details>
+<details>
+<summary>shin-supercursor-framework/src/domain/services/command-routing.service.ts (2)</summary><blockquote>
+
+`21-24`: **型の厳格化とエラー区分の導入は妥当です**
+
+`ParameterType/FrameworkError/OutputFormat` を統一的に `../types/index.js` から参照する方針はよいです。型の再編とエラーの区別が明確になりました。
+
+---
+
+`639-645`: **優先度の列挙型移行は適切です**
+
+`CommandPriority` 列挙への移行で可読性・型安全性が向上しています。
+
+</blockquote></details>
+<details>
+<summary>shin-supercursor-framework/src/infrastructure/persona-manager.impl.ts (3)</summary><blockquote>
+
+`71-75`: **同期化した信頼度計算の適用は妥当です**
+
+`calculatePersonaConfidence` を同期化し、`analyzeContext`/`findSuitablePersonas` 双方から await なしで利用している流れは一貫しています。
+
+---
+
+`136-140`: **プロジェクトタイプ/トリガーの堅牢化は良いです**
+
+- `hasOwnProperty.call` でのマップ参照
+- `String(trigger.type) === 'project_type'` の比較
+- 信頼度のクリップ
+
+いずれも堅牢化に寄与しています。
+
+
+
+Also applies to: 153-161, 169-171
+
+---
+
+`247-256`: **失敗レスポンスの `warnings`/`reasoning` の整形は適切です**
+
+ユーザー向け/ログ向けのメッセージが安全に生成されています。
+
+</blockquote></details>
+<details>
+<summary>shin-supercursor-framework/src/domain/entities/framework.entity.ts (3)</summary><blockquote>
+
+`9-10`: **EventEmitter 継承と型列挙の導入は妥当**
+
+イベント発火の契機を持てるようになり、`CommandPriority/SessionStatus/OutputFormat` の導入で型安全性が向上しています。
+
+
+
+Also applies to: 17-24
+
+---
+
+`372-385`: **エラーハンドリングの出力整形は適切。`OutputFormat.TEXT` への移行もOK**
+
+出力形式の列挙化により一貫性が増しています。イベントには `commandName` も載せており追跡性良好です。
+
+
+
+Also applies to: 388-394
+
+---
+
+`593-601`: **デフォルト設定/優先度列挙/ID生成の一貫化は良い**
+
+- 既定 `logLevel` を `LogLevel.INFO` に変更
+- `CommandPriority.NORMAL` 明記
+- `randomUUID` ベースのIDユーティリティ
+
+いずれも明確化に寄与しています。
+
+
+
+Also applies to: 666-675, 713-737
+
+</blockquote></details>
+<details>
+<summary>shin-supercursor-framework/src/domain/types/index.ts (2)</summary><blockquote>
+
+`37-45`: **ペルソナ型の参照元を `personas.js` へ統合したのは妥当**
+
+責務分離が明確になり、循環参照の芽も減ります。
+
+---
+
+`215-231`: **`ParameterType/LogLevel/OutputFormat` の出所統一はOK**
+
+`base.js` 一元化で利用側の import 先が明確になりました。
+
+</blockquote></details>
+<details>
+<summary>shin-supercursor-framework/src/infrastructure/persistence/persona.repository.impl.ts (1)</summary><blockquote>
+
+`48-94`: **Entity の非 null アサーション（!）は TypeORM では妥当**
+
+TypeORM の遅延代入モデルにおける `!` 付与は一般的で、strict モード適合というPR方針にも沿っています。現状の付与は妥当です。
+
+</blockquote></details>
+
+</blockquote></details>
+
+<!-- This is an auto-generated comment by CodeRabbit for review status -->

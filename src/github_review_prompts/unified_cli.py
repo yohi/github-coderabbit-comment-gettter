@@ -379,18 +379,61 @@ def get_pr_issue_comments(
     return comments
 
 
-def get_all_pr_comments(
+def get_all_pr_comments_graphql(
     owner: str, repo: str, pr_number: int, token: str
 ) -> Tuple[List[Dict], Dict[str, int]]:
-    """プルリクエストの全コメント（レビューコメント + Issue コメント）を取得
+    """GraphQL APIを使用してプルリクエストの全コメント（Outside diff range comments含む）を取得"""
+    try:
+        from .github_client import GitHubClient
+        from .models import GitHubPRInfo
 
-    Returns:
-        Tuple[List[Dict], Dict[str, int]]: (全コメントリスト, 統計情報)
-    """
-    # レビューコメント取得
+        # GitHubClientを初期化
+        client = GitHubClient(token=token)
+        pr_info = GitHubPRInfo(
+            owner=owner,
+            repo=repo,
+            pull_number=pr_number,
+            url=f"https://github.com/{owner}/{repo}/pull/{pr_number}"
+        )
+
+        # GraphQL APIでレビューとOutside diff commentsを取得
+        all_reviews, outside_diff_comments = client.get_pr_reviews_with_outside_diff_graphql(pr_info)
+
+        # REST APIでレビューコメントも取得（互換性のため）
+        review_comments = get_pr_review_comments(owner, repo, pr_number, token)
+
+        # 全コメントを結合
+        all_comments = review_comments + all_reviews + outside_diff_comments
+
+        # 統計情報
+        stats = {
+            "review_comments": len(review_comments),
+            "graphql_reviews": len(all_reviews),
+            "outside_diff_comments": len(outside_diff_comments),
+            "total_comments": len(all_comments),
+        }
+
+        print(f"✅ GraphQL API取得完了: レビューコメント {stats['review_comments']} 件, "
+              f"GraphQLレビュー {stats['graphql_reviews']} 件, "
+              f"Outside diff {stats['outside_diff_comments']} 件, "
+              f"合計 {stats['total_comments']} 件")
+
+        return all_comments, stats
+
+    except Exception as e:
+        print(f"⚠️ GraphQL API取得失敗、REST APIにフォールバック: {str(e)}")
+        # フォールバック: 既存のREST API使用
+        return get_all_pr_comments_rest(owner, repo, pr_number, token)
+
+
+def get_all_pr_comments_rest(
+    owner: str, repo: str, pr_number: int, token: str
+) -> Tuple[List[Dict], Dict[str, int]]:
+    """REST APIを使用してプルリクエストの全コメントを取得（フォールバック用）"""
+    # レビューコメント（diff range内）を取得
     review_comments = get_pr_review_comments(owner, repo, pr_number, token)
 
-    # Issue コメント取得
+    # Issue コメント（Outside diff range含む）を取得
     issue_comments = get_pr_issue_comments(owner, repo, pr_number, token)
 
     # 統計情報
@@ -404,6 +447,18 @@ def get_all_pr_comments(
     all_comments = review_comments + issue_comments
 
     return all_comments, stats
+
+
+def get_all_pr_comments(
+    owner: str, repo: str, pr_number: int, token: str
+) -> Tuple[List[Dict], Dict[str, int]]:
+    """プルリクエストの全コメント（GraphQL API優先、Outside diff range comments対応）
+
+    Returns:
+        Tuple[List[Dict], Dict[str, int]]: (全コメントリスト, 統計情報)
+    """
+    # GraphQL APIを優先使用（Outside diff range comments対応）
+    return get_all_pr_comments_graphql(owner, repo, pr_number, token)
 
 
 def get_graphql_resolved_comments(

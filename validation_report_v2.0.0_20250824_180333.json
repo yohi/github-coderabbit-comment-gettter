@@ -1,0 +1,81 @@
+{
+  "validation_timestamp": "2025-08-24T18:03:33.803035",
+  "version": "2.0.0",
+  "total_tests": 10,
+  "passed_tests": 5,
+  "failed_tests": 5,
+  "test_categories": {
+    "basic_functionality": [
+      {
+        "name": "バージョン確認",
+        "success": false,
+        "details": "usage: github-review-prompts [-h]\n                             [--persona {code-reviewer,security-analyst,performance-optimizer}]\n                             [--format {markdown,json,text}] [--no-confirm]\n                             [--auto-commit] [--include-resolved]\n                             [--author AUTHOR] [--since SINCE]\n                             [--file-pattern FILE_PATTERN]\n                             [--reply-to REPLY_TO]\n                             [--reply-message REPLY_MESSAGE]\n                             [--reply-template {fixed,acknowledged,investigating,clarification,wontfix}]\n                             [--output OUTPUT] [--append] [--save-file]\n                             [--no-color] [--debug] [--token TOKEN]\n                             [--api-url API_URL]\n                             pr_url\ngithub-review-prompts: error: the following arguments are required: pr_url\n"
+      },
+      {
+        "name": "ヘルプ表示",
+        "success": true,
+        "details": "OK"
+      },
+      {
+        "name": "実際のPR処理",
+        "success": true,
+        "details": "処理時間: 6.91秒",
+        "stats": {
+          "total_comments": null,
+          "actionable_comments": null,
+          "replies_required": null,
+          "replies_not_required": null,
+          "estimated_time": null,
+          "processing_time": 6.909414768218994
+        }
+      }
+    ],
+    "new_features": [
+      {
+        "name": "スマートフィルタリング",
+        "success": true,
+        "details": "フィルタリング機能動作中"
+      },
+      {
+        "name": "返信判定マトリックス",
+        "success": false,
+        "details": "ログ出力なし"
+      },
+      {
+        "name": "バッチ返信システム",
+        "success": false,
+        "details": "インポートエラー: No module named 'pydantic'"
+      },
+      {
+        "name": "使用状況メトリクス",
+        "success": false,
+        "details": "インポートエラー: No module named 'pydantic'"
+      }
+    ],
+    "performance": [
+      {
+        "name": "パフォーマンステスト",
+        "success": false,
+        "details": "平均: 6.00秒, 最大: 6.13秒, 最小: 5.79秒",
+        "stats": {
+          "average_time": 5.997989654541016,
+          "max_time": 6.129210948944092,
+          "min_time": 5.791451454162598
+        }
+      }
+    ],
+    "error_handling": [
+      {
+        "name": "無効なURL処理",
+        "success": true,
+        "details": "適切にエラーハンドリング"
+      },
+      {
+        "name": "存在しないPR処理",
+        "success": true,
+        "details": "適切にエラーハンドリング"
+      }
+    ]
+  },
+  "success_rate": 50.0
+}

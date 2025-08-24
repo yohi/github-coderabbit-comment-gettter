@@ -189,16 +189,16 @@ class SmartCommentFilter:
                 self.logger.debug(f"解決済みマーカー検出: {marker}")
                 return False, FilterReason.RESOLVED_DISCUSSION, CommentType.RESOLVED
 
-        # 4. 開発者コメントの詳細分析
-        if author != "coderabbitai[bot]":
-            # 開発者コメントを詳細分析（重要な技術的指摘を見逃さない）
-            self.logger.debug(f"開発者コメント分析: {author}")
-            return self._analyze_developer_comment(comment_body)
-
-        # 5. CodeRabbitコメントの厳格判定
-        if author == "coderabbitai[bot]":
-            # CodeRabbitコメントでも、技術的指摘でないものは除外
+        # 4. CodeRabbitコメントの判定（botありとbotなし両方を対象）
+        if author in ["coderabbitai[bot]", "coderabbitai"]:
+            # CodeRabbitコメント（outside diff commentsは"coderabbitai"で来る）
+            self.logger.debug(f"CodeRabbitコメント分析: {author}")
             return self._analyze_coderabbit_comment(comment_body)
+
+        # 5. 開発者コメントの詳細分析
+        # CodeRabbit以外の作者のコメントを分析
+        self.logger.debug(f"開発者コメント分析: {author}")
+        return self._analyze_developer_comment(comment_body)
 
         # 6. 短いコメントの判定
         clean_body = re.sub(r"<[^>]+>", "", comment_body)  # HTMLタグ除去
@@ -238,44 +238,25 @@ class SmartCommentFilter:
             ):
                 return False, FilterReason.AUTO_GENERATED, CommentType.AUTO_GENERATED
 
-            if any(
-                keyword in comment_body.lower()
-                for keyword in [
-                    "修正",
-                    "変更",
-                    "エラー",
-                    "問題",
-                    "脆弱性",
-                    "セキュリティ",
-                    "fix",
-                    "change",
-                    "error",
-                    "issue",
-                    "vulnerability",
-                    "security",
-                    "```diff",
-                    "```suggestion",
-                ]
-            ):
-                # 具体的な修正指示があるかさらにチェック
-                if any(
-                    concrete_fix in comment_body.lower()
-                    for concrete_fix in [
-                        "variable",
-                        "変数",
-                        "未定義",
-                        "undefined",
-                        "参照エラー",
-                        "reference error",
-                        "validation",
-                        "バリデーション",
-                        "runtime",
-                        "ランタイム",
-                        "環境変数",
-                        "environment",
-                    ]
-                ):
-                    return True, FilterReason.TECHNICAL_ISSUE, CommentType.ACTIONABLE
+            # 技術的指摘マーカーがある場合はactionable
+            return True, FilterReason.TECHNICAL_ISSUE, CommentType.ACTIONABLE
+
+        # コードブロックや修正提案があるコメントをactionableとする
+        code_indicators = [
+            "```diff", "```suggestion", "```typescript", "```javascript", "```python",
+            "```json", "```yaml", "```yml", "```bash", "```sh"
+        ]
+        
+        if any(indicator in comment_body for indicator in code_indicators):
+            self.logger.debug(f"コード関連マーカーを検出")
+            return True, FilterReason.TECHNICAL_ISSUE, CommentType.ACTIONABLE
+        
+        # コメントの長さでフィルタリング（非常に実質的なコメントのみ）
+        clean_body = re.sub(r"<[^>]+>", "", comment_body)  # HTMLタグ除去
+        clean_body = clean_body.strip()
+        if len(clean_body) > 200:  # 200文字以上の実質的なコメント
+            self.logger.debug(f"実質的な長いコメントをactionableと判定: {len(clean_body)}文字")
+            return True, FilterReason.TECHNICAL_ISSUE, CommentType.ACTIONABLE
 
         # 以下は全て除外
         exclusion_indicators = [
@@ -298,9 +279,9 @@ class SmartCommentFilter:
         if any(indicator in comment_body for indicator in exclusion_indicators):
             return False, FilterReason.AUTO_GENERATED, CommentType.AUTO_GENERATED
 
-        # デフォルトはCodeRabbitコメントでも除外（厳格化）
-        # 技術的指摘タイプでも具体的な修正指示がない場合は除外
-        self.logger.debug(f"CodeRabbitコメント除外: 技術的修正指示なし")
+        # デフォルト: 技術的指摘マーカーがないCodeRabbitコメントは除外
+        # Outside diff commentsでも明確な技術的指摘がないものは情報提供レベル
+        self.logger.debug(f"CodeRabbitコメント除外: 明確な技術的指摘マーカーなし")
         return False, FilterReason.INFORMATIONAL_ONLY, CommentType.INFORMATIONAL
 
     def _analyze_developer_comment(

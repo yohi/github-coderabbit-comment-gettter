@@ -241,43 +241,71 @@ def extract_outside_diff_comments(comment_body: str) -> list:
 
     extracted_comments = []
 
-    # Outside diff range commentsセクションを探す
-    outside_diff_pattern = r"<summary>⚠️ Outside diff range comments \(\d+\)</summary><blockquote>(.*?)</blockquote></details>"
-    outside_match = re.search(
-        outside_diff_pattern, comment_body, re.DOTALL | re.IGNORECASE
-    )
-
-    if not outside_match:
+    # 1. Outside diff range commentsセクションの正確な範囲を特定
+    outside_start_marker = "> <summary>⚠️ Outside diff range comments"
+    outside_start = comment_body.find(outside_start_marker)
+    if outside_start == -1:
         return []
+    
+    # 期待件数を抽出
+    count_match = re.search(r"Outside diff range comments \((\d+)\)", comment_body[outside_start:outside_start+100])
+    if not count_match:
+        return []
+    
+    expected_count = int(count_match.group(1))
+    print(f"📊 デバッグ: Outside diff commentsセクション発見 - 期待件数: {expected_count}")
 
-    outside_content = outside_match.group(1)
+    # 2. セクションの終了位置を特定（次の主要セクションまで）
+    section_after_start = comment_body[outside_start:]
+    
+    # 次のセクションを探す
+    next_section_markers = [
+        "<summary>🧹 Nitpick comments",
+        "<summary>🔇 Additional comments"
+    ]
+    
+    section_end = len(section_after_start)
+    for marker in next_section_markers:
+        marker_pos = section_after_start.find(marker)
+        if marker_pos != -1:
+            section_end = min(section_end, marker_pos)
+    
+    # Outside diff range commentsセクションのコンテンツのみを抽出
+    outside_content = section_after_start[:section_end]
+    print(f"📊 デバッグ: 抽出コンテンツ長: {len(outside_content)}文字")
 
-    # 各個別コメントを抽出
-    individual_comment_pattern = r"<details>\s*<summary>(.*?)</summary><blockquote>\s*(.*?)\s*</blockquote></details>"
-
-    for match in re.finditer(individual_comment_pattern, outside_content, re.DOTALL):
-        file_info = match.group(1).strip()
-        comment_content = match.group(2).strip()
-
-        # ファイル名と行番号を抽出（L接頭辞・レンジ対応）
-        file_match = re.match(r"([^(]+)\s*\(\s*L?\d+(?:-L?\d+)?\s*\)", file_info)
-        if file_match:
-            file_path = file_match.group(1).strip()
-
-            # 行番号とタイトルを抽出（L接頭辞・レンジ対応）
-            line_match = re.search(
-                r"`(L?\d+(?:-L?\d+)?)`:\s*\*\*(.*?)\*\*", comment_content
-            )
-            line_info = line_match.group(1) if line_match else "unknown"
-            title = line_match.group(2) if line_match else "修正が必要"
-        else:
-            # フォールバック処理
-            file_path = file_info.strip()
-            line_info = "unknown"
-            title = "修正が必要"
-
+    # 3. 各ファイルブロックを抽出（Markdownクォート構造に対応）
+    file_pattern = r">\s*<details>\s*\n>\s*<summary>([^<\n]+?)\s*\((\d+)\)</summary><blockquote>(.*?)\n>\s*</blockquote></details>"
+    
+    for file_match in re.finditer(file_pattern, outside_content, re.DOTALL):
+        file_path = file_match.group(1).strip()
+        file_comment_count = int(file_match.group(2))
+        file_content = file_match.group(3).strip()
+        
+        print(f"📋 ファイル発見: {file_path} (期待コメント数: {file_comment_count})")
+        
+        # 各ファイル内の個別コメントを抽出（Markdownクォート考慮）
+        # パターン: > `行番号`: **タイトル**
+        comment_pattern = r">\s*`([^`]+)`:\s*\*\*(.*?)\*\*"
+        
+        file_comments_found = 0
+        for comment_match in re.finditer(comment_pattern, file_content, re.DOTALL):
+            line_info = comment_match.group(1)
+            title = comment_match.group(2)
+            
+            # タイトル後のコンテンツを取得
+            title_end = comment_match.end()
+            next_comment_start = len(file_content)
+            
+            # 次のコメントの開始位置を探す
+            next_matches = list(re.finditer(comment_pattern, file_content[title_end:], re.DOTALL))
+            if next_matches:
+                next_comment_start = title_end + next_matches[0].start()
+            
+            content_after_title = file_content[title_end:next_comment_start].strip()
+            
             # コメント本文をクリーンアップ
-            clean_content = _clean_extracted_comment(comment_content)
+            clean_content = _clean_extracted_comment(content_after_title)
 
             extracted_comments.append(
                 {
@@ -289,7 +317,11 @@ def extract_outside_diff_comments(comment_body: str) -> list:
                     "category": _determine_comment_category(clean_content, file_path),
                 }
             )
+            file_comments_found += 1
+            
+        print(f"📊 ファイル内抽出完了: {file_path} - 期待{file_comment_count}件, 実際{file_comments_found}件")
 
+    print(f"📊 デバッグ: 抽出完了 - 期待件数: {expected_count}, 実際の抽出件数: {len(extracted_comments)}")  # デバッグ用
     return extracted_comments
 
 

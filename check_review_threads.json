@@ -1,0 +1,8 @@
+{
+  "query": "query GetReviewThreads($owner: String!, $repo: String!, $number: Int!) { repository(owner: $owner, name: $repo) { pullRequest(number: $number) { reviewThreads(first: 50) { nodes { id isResolved comments(first: 10) { nodes { id author { login } body line path diffHunk outdated } } } } } } }",
+  "variables": {
+    "owner": "yohi",
+    "repo": "CursorCLI-Extensions",
+    "number": 12
+  }
+}

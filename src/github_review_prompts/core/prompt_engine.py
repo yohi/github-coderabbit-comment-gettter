@@ -30,6 +30,7 @@ else:
     from ..utils.duplicate_manager import DuplicateCommentManager
     from ..utils.reply_decision_matrix import ReplyDecisionMatrix
     from ..utils.resolution_master import ResolutionMasterController
+    from ..utils.smart_comment_filter import SmartCommentFilter
     from ..utils.parsers import extract_ai_agent_prompt
 
 logger = logging.getLogger(__name__)
@@ -51,6 +52,7 @@ class UnifiedPromptEngine:
             self.platform_detector = PlatformLimitationDetector()
             self.duplicate_manager = DuplicateCommentManager()
             self.reply_decision_matrix = ReplyDecisionMatrix()
+            self.smart_comment_filter = SmartCommentFilter()
 
             # 解決状態追跡システム（最新機能）
             self.resolution_master = ResolutionMasterController(
@@ -162,14 +164,35 @@ class UnifiedPromptEngine:
                             if has_concrete_action:
                                 reply_required_comments.append(comment)
 
-                # Outside diff commentsはすべて返信必要として追加
-                reply_required_comments.extend(outside_diff_comments)
+                # Outside diff commentsもスマートフィルターを通す
+                outside_filter = SmartCommentFilter()
+                for comment in outside_diff_comments:
+                    should_task, reason, comment_type = outside_filter.should_create_task(comment)
+                    if should_task:
+                        if comment not in actionable_comments:
+                            actionable_comments.append(comment)
+                    else:
+                        # スマートフィルターで除外されたOutside diffコメントでも
+                        # 具体的な技術的修正提案がある場合は返信必要
+                        has_technical_indicator = any(
+                            indicator in comment.get('body', '') 
+                            for indicator in ['_⚠️ Potential issue_', '_🛠️ Refactor suggestion_', '_🔒 Security issue_']
+                        )
+                        has_concrete_action = any(
+                            keyword in comment.get('body', '').lower()
+                            for keyword in ['修正', '変更', 'fix', 'change', 'update', 'variable', '変数']
+                        )
+                        if has_technical_indicator and has_concrete_action:
+                            reply_required_comments.append(comment)
 
-                # 結合: タスク化必要 + 返信のみ必要なコメント
-                # タスク化不要だが返信必要なコメントを追加
+                # 結合: タスク化必要 + 返信のみ必要なコメント（スマートフィルター適用後）
                 for comment in reply_required_comments:
                     if comment not in actionable_comments:
-                        actionable_comments.append(comment)
+                        # 返信必要コメントもスマートフィルターを通す
+                        outside_filter = SmartCommentFilter()
+                        should_task, reason, comment_type = outside_filter.should_create_task(comment)
+                        if should_task or comment_type.value == 'actionable':
+                            actionable_comments.append(comment)
 
                 # フィルタリング結果をログ出力
                 self.logger.info(

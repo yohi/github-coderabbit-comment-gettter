@@ -1,0 +1,8 @@
+{
+  "query": "query GetPRReviewComments($owner: String!, $repo: String!, $number: Int!) { repository(owner: $owner, name: $repo) { pullRequest(number: $number) { title number reviews(first: 20) { nodes { id author { login } body submittedAt state } } } } }",
+  "variables": {
+    "owner": "yohi",
+    "repo": "CursorCLI-Extensions",
+    "number": 12
+  }
+}

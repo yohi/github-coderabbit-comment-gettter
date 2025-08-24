@@ -96,45 +96,52 @@ class ReplyDecisionMatrix:
             },
         }
 
-        # 返信テンプレート
+        # 返信テンプレート（改良版：より具体的で技術的根拠を重視）
         self.reply_templates = {
-            "technical_rejection": """@coderabbitai この指摘は{technical_reason}により対応不要です。
+            "technical_rejection": """@coderabbitai この指摘は以下の技術的理由により対応不要と判断します：
 
-理由: {detailed_explanation}
-根拠: {reference_or_documentation}
+**理由**: {technical_reason}
+**詳細**: {detailed_explanation}
+**技術的根拠**: {reference_or_documentation}
+**代替案**: {alternative_approach}
 
-問題ないと判断できれば、このコメントスレッドを解決済みにマークし、返信末尾に以下を追加してください：
+より適切なアプローチがあれば提案をお願いします。問題ないと判断できれば、このコメントスレッドを解決済みにマークしてください。
 
 [CR_RESOLUTION_CONFIRMED:TECHNICAL_ISSUE_RESOLVED]
-✅ エンジニアによる技術的検証完了 - CodeRabbitによる解決済みマーク実行可能
+✅ エンジニアによる技術的検証完了
 [/CR_RESOLUTION_CONFIRMED]""",
-            "future_planning": """@coderabbitai 技術的に妥当ですが現在の{current_phase}では対象外です。
+            "future_planning": """@coderabbitai 妥当な指摘ですが現在の{current_phase}フェーズでは対応範囲外です。
 
-現在フェーズ: {current_phase}
-対応予定: {future_phase}
+**現在フェーズ**: {current_phase}
+**対応予定フェーズ**: {future_phase}
+**影響度**: {impact_level}
+**実装工数**: {effort_estimation}
 
-記憶依頼: {future_phase}開始時に以下を思い出してください
-- 課題: {issue_summary}
-- 対象: {target_file_and_line}
-- 解決案: {implementation_approach}
-- 優先度: {priority_level}
-- 思い出し条件: {trigger_condition}
+**記憶依頼**: {future_phase}開始時に以下を思い出してください
+- **課題**: {issue_summary}
+- **対象**: {target_file_and_line}
+- **解決方針**: {implementation_approach}
+- **優先度**: {priority_level}
+- **前提条件**: {prerequisites}
+- **思い出し条件**: {trigger_condition}
 
-将来対応と判断して問題なければ、このコメントスレッドを解決済みにマークし、返信末尾に以下を追加してください：
+将来対応として記録して問題なければ、このコメントスレッドを解決済みにマークしてください。
 
-[CR_RESOLUTION_CONFIRMED:TECHNICAL_ISSUE_RESOLVED]
-✅ エンジニアによる技術的検証完了 - CodeRabbitによる解決済みマーク実行可能
+[CR_RESOLUTION_CONFIRMED:FUTURE_PHASE_PLANNED]
+✅ 将来フェーズ対応として記録完了
 [/CR_RESOLUTION_CONFIRMED]""",
-            "technical_correction": """@coderabbitai この指摘は{specific_reason}により間違いと判断します。
+            "technical_correction": """@coderabbitai この指摘は{specific_reason}により技術的に不正確と判断します。
 
-正しい技術情報: {correct_technical_info}
-根拠: {technical_evidence}
-参考: {documentation_link}
+**指摘内容の問題点**: {issue_with_suggestion}
+**正しい技術情報**: {correct_technical_info}
+**技術的根拠**: {technical_evidence}
+**公式ドキュメント**: {documentation_link}
+**実証方法**: {verification_method}
 
-指摘が間違いと確認できれば、このコメントスレッドを解決済みにマークし、返信末尾に以下を追加してください：
+技術的な誤りを確認して学習していただけましたら、このコメントスレッドを解決済みにマークしてください。
 
-[CR_RESOLUTION_CONFIRMED:TECHNICAL_ISSUE_RESOLVED]
-✅ エンジニアによる技術的検証完了 - CodeRabbitによる解決済みマーク実行可能
+[CR_RESOLUTION_CONFIRMED:TECHNICAL_CORRECTION_ACCEPTED]
+✅ 技術的訂正が受け入れられました
 [/CR_RESOLUTION_CONFIRMED]""",
             "clarification_request": """@coderabbitai {clarification_topic}について詳細説明をお願いします。
 
@@ -266,26 +273,8 @@ class ReplyDecisionMatrix:
         ]
 
         if any(pattern in comment_body for pattern in technical_issue_patterns):
-            # セキュリティ関連は緊急実施
-            security_keywords = [
-                "セキュリティ",
-                "security",
-                "脆弱性",
-                "vulnerability",
-                "トークン",
-                "token",
-            ]
-            if any(keyword in comment_body.lower() for keyword in security_keywords):
-                return ActionType.IMPLEMENT
-
-            # その他の技術的指摘は内容次第
-            if any(
-                keyword in comment_body.lower()
-                for keyword in ["エラー", "error", "バグ", "bug", "問題", "issue"]
-            ):
-                return ActionType.IMPLEMENT
-            else:
-                return ActionType.FUTURE  # 改善提案は将来対応
+            # 自動判定ロジックの強化
+            return self._classify_technical_issue_priority(comment_body)
 
         # 明らかな間違い指摘
         incorrect_patterns = [
@@ -301,12 +290,73 @@ class ReplyDecisionMatrix:
         ):
             return ActionType.INCORRECT
 
-        # 具体的な修正提案がある場合
-        if "```diff" in comment_body or "```suggestion" in comment_body:
-            return ActionType.IMPLEMENT
+        # 明らかなコード修正提案の検出
+        if any(marker in comment_body for marker in ["```diff", "```suggestion", "+\t", "-\t"]):
+            return self._analyze_code_change_impact(comment_body)
 
         # デフォルト: 対応不要（フィルタリングで残ったものも基本的に対応不要）
         return ActionType.REJECT
+
+    def _classify_technical_issue_priority(self, comment_body: str) -> ActionType:
+        """技術的指摘の優先度を自動判定（新機能）"""
+        comment_lower = comment_body.lower()
+        
+        # 🔴 Critical - 緊急実施
+        critical_keywords = [
+            # セキュリティ関連
+            "security/detect", "prototype pollution", "command injection", 
+            "token", "credential", "secret", "ghp_", "github_pat",
+            "authorization", "bearer", "セキュリティ", "脆弱性",
+            # システム破綻
+            "null reference", "type error", "undefined", "infinite loop", 
+            "deadlock", "エラー", "バグ", "破綻",
+            # データ整合性
+            "constraint violation", "transaction", "data integrity"
+        ]
+        
+        if any(keyword in comment_lower for keyword in critical_keywords):
+            return ActionType.IMPLEMENT
+            
+        # 🟡 Important - 将来対応
+        important_keywords = [
+            "performance", "memory leak", "n+1 query", "blocking operation",
+            "refactor", "maintainability", "best practice", 
+            "パフォーマンス", "改善", "リファクタリング"
+        ]
+        
+        if any(keyword in comment_lower for keyword in important_keywords):
+            return ActionType.FUTURE
+            
+        # 🟢 Low - 基本的に対応不要
+        style_keywords = [
+            "formatting", "naming", "import order", "comment",
+            "style", "whitespace", "スタイル", "フォーマット"
+        ]
+        
+        if any(keyword in comment_lower for keyword in style_keywords):
+            return ActionType.REJECT
+            
+        # デフォルト: 要確認
+        return ActionType.CLARIFY
+        
+    def _analyze_code_change_impact(self, comment_body: str) -> ActionType:
+        """コード変更の影響度を分析（新機能）"""
+        # 変更範囲の分析
+        if "```diff" in comment_body:
+            lines_changed = comment_body.count("\n+") + comment_body.count("\n-")
+            
+            # 大規模変更は将来対応
+            if lines_changed > 10:
+                return ActionType.FUTURE
+                
+            # 小規模変更は即対応
+            return ActionType.IMPLEMENT
+            
+        # suggestionブロックの場合
+        if "```suggestion" in comment_body:
+            return ActionType.IMPLEMENT
+            
+        return ActionType.CLARIFY
 
     def generate_reply_message(
         self, decision: ReplyDecision, context: Dict[str, Any] = None
@@ -347,11 +397,16 @@ class ReplyDecisionMatrix:
                     reference_or_documentation=context.get(
                         "reference", "公式ドキュメント参照"
                     ),
+                    alternative_approach=context.get(
+                        "alternative_approach", "代替手法なし"
+                    ),
                 )
             elif decision.template_type == "future_planning":
                 return template.format(
                     current_phase=context.get("current_phase", "現在のフェーズ"),
                     future_phase=context.get("future_phase", "将来のフェーズ"),
+                    impact_level=context.get("impact_level", "中程度"),
+                    effort_estimation=context.get("effort_estimation", "2-4時間"),
                     issue_summary=context.get("issue_summary", "コメント要約"),
                     target_file_and_line=context.get(
                         "target_location", "ファイル:行数"
@@ -360,6 +415,7 @@ class ReplyDecisionMatrix:
                         "implementation_approach", "実装方針"
                     ),
                     priority_level=context.get("priority_level", "中"),
+                    prerequisites=context.get("prerequisites", "特になし"),
                     trigger_condition=context.get(
                         "trigger_condition", "フェーズ開始時"
                     ),
@@ -367,11 +423,13 @@ class ReplyDecisionMatrix:
             elif decision.template_type == "technical_correction":
                 return template.format(
                     specific_reason=context.get("specific_reason", "技術的理由"),
+                    issue_with_suggestion=context.get("issue_with_suggestion", "指摘内容の問題"),
                     correct_technical_info=context.get(
                         "correct_info", "正しい技術情報"
                     ),
                     technical_evidence=context.get("evidence", "技術的根拠"),
                     documentation_link=context.get("doc_link", "関連ドキュメント"),
+                    verification_method=context.get("verification_method", "実証方法"),
                 )
             elif decision.template_type == "clarification_request":
                 return template.format(
@@ -462,7 +520,7 @@ class ReplyDecisionMatrix:
         return results
 
     def get_reply_checklist(self, analysis_results: Dict[str, Any]) -> str:
-        """返信チェックリストを生成"""
+        """返信チェックリストを生成（最適化版）"""
 
         reply_required_items = [
             decision
@@ -470,98 +528,52 @@ class ReplyDecisionMatrix:
             if decision["decision"].reply_required == ReplyRequirement.REQUIRED
         ]
 
+        # 超簡潔版チェックリスト
         checklist = f"""
-## 🔄 返信漏れ防止チェックリスト
+## 📊 返信サマリー
+- **返信必要**: {analysis_results['reply_required_count']}件 / 総{analysis_results['total_comments']}件
+- **推定時間**: {analysis_results['estimated_total_time']}分
+- **並列実行**: 約{max(1, analysis_results['estimated_total_time'] // 5)}分で完了可能
 
-### 📊 返信要件サマリー
-- **総コメント数**: {analysis_results['total_comments']}件
-- **返信必要**: {analysis_results['reply_required_count']}件
-- **返信不要**: {analysis_results['reply_not_required_count']}件
-- **推定作業時間**: {analysis_results['estimated_total_time']}分
+## ⚡ 高速返信コマンド
+```bash
+# 並列実行で{analysis_results['reply_required_count']}件を高速処理
+{{"""
 
-### ✅ 返信必須項目 ({len(reply_required_items)}件)
-
-"""
-
-        for i, item in enumerate(reply_required_items, 1):
+        # 実際のcurlコマンドを簡潔に生成
+        for i, item in enumerate(reply_required_items[:5], 1):  # 最大5件まで表示
             decision = item["decision"]
-            checklist += f"""#### {i}. コメント#{item['comment_id']} - {decision.action.value}
-- [ ] **返信実行**: curl コマンドで返信送信
-- **テンプレート**: {decision.template_type}
-- **推定時間**: {decision.estimated_time}分
-- **優先度**: {decision.priority}
-
-"""
-
-        # 並列返信の効率的な実行指示を追加
-        if len(reply_required_items) > 1:
+            comment_id = item["comment_id"]
+            
+            # 簡潔な返信メッセージ
+            if decision.template_type == "technical_rejection":
+                body = "@coderabbitai 技術的制約により対応不要。解決済みマーク依頼。"
+            elif decision.template_type == "future_planning":
+                body = "@coderabbitai 将来対応予定。記憶依頼。解決済みマーク依頼。"
+            elif decision.template_type == "clarification_request":
+                body = "@coderabbitai 詳細説明を依頼。"
+            else:
+                body = "@coderabbitai 対応不要と判断。"
+                
             checklist += f"""
-### ⚡ 効率的な並列返信実行（推奨）
-
-**{len(reply_required_items)}件の返信を並列で高速処理**:
-
-#### 方法1: バックグラウンド並列実行
-```bash
-# 全ての返信を並列で実行（推奨）
-{{
   curl -X POST -H "Authorization: Bearer $GITHUB_TOKEN" -H "Content-Type: application/json" \\
-    -d '{{"body": "返信内容1", "in_reply_to": コメントID1}}' \\
-    "https://api.github.com/repos/OWNER/REPO/pulls/PR_NUMBER/comments" &
+    -d '{{"body": "{body}", "in_reply_to": {comment_id}}}' \\
+    "https://api.github.com/repos/OWNER/REPO/pulls/PR_NUMBER/comments" &"""
 
-  curl -X POST -H "Authorization: Bearer $GITHUB_TOKEN" -H "Content-Type: application/json" \\
-    -d '{{"body": "返信内容2", "in_reply_to": コメントID2}}' \\
-    "https://api.github.com/repos/OWNER/REPO/pulls/PR_NUMBER/comments" &
+        if len(reply_required_items) > 5:
+            checklist += f"\n  # ... 残り{len(reply_required_items) - 5}件も同様に追加"
 
-  # 全ての並列処理の完了を待機
+        checklist += """
   wait
-}}
+}
 ```
 
-#### 方法2: xargs並列実行
-```bash
-# コマンドリストファイルを作成
-cat > reply_commands.txt << 'EOF'
-{self._generate_parallel_curl_commands(reply_required_items) if hasattr(self, '_generate_parallel_curl_commands') else '# コマンドリストをここに記載'}
-EOF
+## 🎯 成功確認
+- [ ] 全curlコマンドが成功ステータスを返した
+- [ ] GitHub PRページで返信が表示されている
+- [ ] CodeRabbitが解決済みマークを実行した
 
-# 並列実行（最大5並列）
-cat reply_commands.txt | grep -v '^#' | xargs -I {{}} -P {min(len(reply_required_items), 5)} bash -c "{{}}"
-```
-
-#### 方法3: 実行時間測定付き並列処理
-```bash
-# 実行時間を測定しながら並列実行
-time {{
-  # 各返信を並列で実行
-{self._generate_parallel_background_commands(reply_required_items) if hasattr(self, '_generate_parallel_background_commands') else '  # 並列コマンドをここに記載'}
-
-  # 全ての並列処理の完了を待機
-  wait
-  echo "✅ {len(reply_required_items)}件の返信を並列処理で完了"
-}}
-```
-
-**🎯 効果**:
-- 実行時間: 最大{len(reply_required_items)}倍高速化（理論値）
-- 同時実行数: 最大5件（GitHub API制限考慮）
-- 処理効率: 大幅向上
-- 推定短縮時間: {max(1, len(reply_required_items) // 5)}分の{len(reply_required_items)}分 → 約{max(1, len(reply_required_items) // 5)}分
-
-"""
-
-        checklist += f"""
-### 🚨 最終確認質問
-作業完了前に以下を自問してください：
-
-- [ ] **「❌対応不要」と判定したコメントに返信しましたか？**
-- [ ] **「⏳将来対応」と判定したコメントに返信しましたか？**
-- [ ] **「⚠️指摘間違い」と判定したコメントに返信しましたか？**
-- [ ] **「🤔要確認」と判定したコメントに返信しましたか？**
-
-### 📈 返信効率統計
-- **返信率**: {analysis_results['reply_efficiency']['reply_rate']:.1f}%
-- **返信不要率**: {analysis_results['reply_efficiency']['no_reply_rate']:.1f}%
-- **平均時間/コメント**: {analysis_results['reply_efficiency']['avg_time_per_comment']:.1f}分
+**注意**: OWNER/REPO/PR_NUMBERを実際の値に置換してください。
 """
 
         return checklist.strip()

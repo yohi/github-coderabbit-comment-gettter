@@ -1,0 +1,51 @@
+LINE: > <summary>⚠️ Outside diff range comments (10)</summary><blockquote>
+LINE: > 
+LINE: > <details>
+LINE: > <summary>shin-supercursor-framework/src/application/handlers/analyze-command.handler.ts (1)</summary><blockquote>
+LINE: > 
+LINE: > `271-296`: **メソッド戻り値を直接返却＋型安全なOutputFormatマッピングを導入**
+LINE: > 
+LINE: > 以下の修正を必須でお願いします。
+LINE: > 
+LINE: > - `Promise.resolve(…)` は冗長なため削除し、直接オブジェクトを返却  
+LINE: > - `options.outputFormat as OutputFormat` のunsafe castを廃止し、`OutputFormat` enum（TEXT, JSON）との安全なマッピング関数 `mapOutputFormat` を利用
+LINE: > 
+LINE: > 対象ファイル: `shin-supercursor-framework/src/application/handlers/analyze-command.handler.ts`  
+LINE: > 該当行: 271–296
+LINE: > 
+LINE: > ```diff
+LINE: > -      return Promise.resolve({
+LINE: > +      return {
+LINE: >          commandId: command.id,
+LINE: >          success: true,
+LINE: >          output: {
+LINE: >            data: output,
+LINE: >            summary: `分析完了: ${analysisResult.fileCount}ファイル、${analysisResult.lineCount}行を分析`,
+LINE: >            details: analysisResult
+LINE: >          },
+LINE: > -        format: options.outputFormat as import('../../domain/types/index.js').OutputFormat,
+LINE: > +        format: this.mapOutputFormat(options.outputFormat),
+LINE: >          metadata: {
+LINE: >            executionTime,
+LINE: >            cacheHit: false, // TODO: キャッシング実装時に更新
+LINE: >            resourcesUsed: {
+LINE: >              memory: process.memoryUsage().heapUsed,
+LINE: >              cpu: 0, // TODO: CPU使用率測定実装
+LINE: >              diskIO: analysisResult.fileCount * 1024, // 概算
+LINE: >              networkIO: 0
+LINE: >            }
+LINE: >          },
+LINE: >          performance: {
+LINE: >            startTime: startTime as import('../../domain/types/base.js').Timestamp,
+LINE: >            endTime: Date.now() as import('../../domain/types/base.js').Timestamp,
+LINE: >            duration: executionTime
+LINE: >          }
+LINE: > -      });
+LINE: > +      };
+LINE: > ```
+LINE: > 
+LINE: > クラス内に以下ユーティリティメソッドを追加してください。  
+LINE: > ※`shin-supercursor-framework/src/domain/types/base.ts` で `OutputFormat` は enum（TEXT, JSON）のみ定義されていますことを確認済みです。
+LINE: > 
+LINE: > ```ts
+LINE: > import { OutputFormat } from '../../domain/types/index.js';
