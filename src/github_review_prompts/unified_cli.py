@@ -901,7 +901,9 @@ def run_lightweight_mode(args) -> int:
     # 簡潔なバッチ返信方法を生成
     output.append("### ⚡ 効率的な一括対応方法")
     output.append("")
-    output.append("**推奨ツール**: `github-review-prompts comment-reply-cli batch-reply`")
+    output.append(
+        "**推奨ツール**: `github-review-prompts comment-reply-cli batch-reply`"
+    )
     output.append("```bash")
     output.append(f"# バッチファイル作成後、一括実行")
     output.append(f"uvx --from /path/to/tool -n grp comment-reply-cli batch-reply \\\\")
@@ -911,16 +913,26 @@ def run_lightweight_mode(args) -> int:
     output.append("**代替方法（個別curl）**:")
     output.append("```bash")
     output.append(f"# 基本テンプレート (COMMENT_IDを各TODOから取得)")
-    output.append(f'curl -X POST "https://api.github.com/repos/{owner}/{repo}/pulls/{pr_number}/comments" \\\\')
+    output.append(
+        f'curl -X POST "https://api.github.com/repos/{owner}/{repo}/pulls/{pr_number}/comments" \\\\'
+    )
     output.append('  -H "Authorization: token ${GITHUB_TOKEN}" \\\\')
     output.append('  -H "Accept: application/vnd.github.v3+json" \\\\')
-    output.append('  -d \'{"body": "@coderabbitai [対応内容]", "in_reply_to": [COMMENT_ID]}\'')
+    output.append(
+        '  -d \'{"body": "@coderabbitai [対応内容]", "in_reply_to": [COMMENT_ID]}\''
+    )
     output.append("```")
     output.append("")
     output.append("**📋 返信テンプレート**:")
-    output.append("- ❌ **対応不要**: `@coderabbitai 対応不要: [理由]。解決済みマークしてください。`")
-    output.append("- ⏳ **将来対応**: `@coderabbitai 将来対応予定: [Phase名]で実装。TODOコメント追加済み。`")
-    output.append("- ✅ **実施完了**: `@coderabbitai 修正完了: [変更内容]。確認してください。`")
+    output.append(
+        "- ❌ **対応不要**: `@coderabbitai 対応不要: [理由]。解決済みマークしてください。`"
+    )
+    output.append(
+        "- ⏳ **将来対応**: `@coderabbitai 将来対応予定: [Phase名]で実装。TODOコメント追加済み。`"
+    )
+    output.append(
+        "- ✅ **実施完了**: `@coderabbitai 修正完了: [変更内容]。確認してください。`"
+    )
     output.append("")
 
     output.append("## レビューコメント一覧")
@@ -944,14 +956,18 @@ def run_lightweight_mode(args) -> int:
             output.append("")
 
             # フィルタリング除外の詳細
-            if filter_results['filtered_out']:
-                output.append(f"🤖 除外されたコメント ({len(filter_results['filtered_out'])}件):")
-                for excluded in filter_results['filtered_out'][:5]:  # 最初の5件のみ表示
-                    reason = excluded.get('reason', 'その他')
-                    preview = excluded.get('body_preview', '')[:50]
+            if filter_results["filtered_out"]:
+                output.append(
+                    f"🤖 除外されたコメント ({len(filter_results['filtered_out'])}件):"
+                )
+                for excluded in filter_results["filtered_out"][:5]:  # 最初の5件のみ表示
+                    reason = excluded.get("reason", "その他")
+                    preview = excluded.get("body_preview", "")[:50]
                     output.append(f"  - {reason}: {preview}...")
-                if len(filter_results['filtered_out']) > 5:
-                    output.append(f"  - (他{len(filter_results['filtered_out']) - 5}件)")
+                if len(filter_results["filtered_out"]) > 5:
+                    output.append(
+                        f"  - (他{len(filter_results['filtered_out']) - 5}件)"
+                    )
                 output.append("")
 
         except Exception as e:
@@ -964,7 +980,9 @@ def run_lightweight_mode(args) -> int:
         output.append("詳細:")
         output.append(f"- 解決済みコメント: {len(resolved_ids)} 件（除外済み）")
         output.append(f"- 総コメント数: {len(comments)} 件")
-        output.append(f"- フィルタ除外: {len(coderabbit_comments) - len(actionable_comments)} 件")
+        output.append(
+            f"- フィルタ除外: {len(coderabbit_comments) - len(actionable_comments)} 件"
+        )
         output.append("")
         output.append("💡 フィルタ除外されたコメントは主に以下の種類です:")
         output.append("  - 自動生成・情報提供コメント")
@@ -992,7 +1010,9 @@ def run_lightweight_mode(args) -> int:
                 output.append("**問題内容** (省略版):")
                 output.append(body_preview)
                 output.append("")
-                output.append("**完全版確認**: 元のPRページでコメント詳細を確認してください")
+                output.append(
+                    "**完全版確認**: 元のPRページでコメント詳細を確認してください"
+                )
             else:
                 output.append("")
                 output.append("**問題内容**:")
@@ -1020,8 +1040,10 @@ def run_lightweight_mode(args) -> int:
     print("=" * 80)
     print("✅ レビュープロンプトとTODOリストを生成しました")
     print(f"📋 処理対象コメント: {len(actionable_comments)} 件")
-    if 'filter_results' in locals():
-        print(f"🗂️ 除外コメント: {len(filter_results['filtered_out'])} 件 (自動生成・進捗報告等)")
+    if "filter_results" in locals():
+        print(
+            f"🗂️ 除外コメント: {len(filter_results['filtered_out'])} 件 (自動生成・進捗報告等)"
+        )
     print()
 
     # プロンプト用コピー範囲の明確な開始マーカー

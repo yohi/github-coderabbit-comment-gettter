@@ -210,7 +210,6 @@ class ReplyDecisionMatrix:
             r"Actions performed",
             r"Review triggered",
             r"Workflow.*completed",
-
             # 開発者の進捗報告
             r"## CodeRabbit.*完了報告",
             r"## .*レビューコメント.*対応完了報告",
@@ -227,18 +226,19 @@ class ReplyDecisionMatrix:
             r"✅.*完了した修正項目",
             r"✅.*追加修正完了項目",
             r"✅.*最終修正完了項目",
-
             # やり取り中間コメント
             r"^@coderabbitai review\s*$",
             r"@coderabbitai review$",
             r"^@coderabbitai\s*$",
-
             # HTML詳細セクション
             r"<details>.*</details>",
             r"^<details>",
         ]
 
-        if any(re.search(pattern, comment_body, re.IGNORECASE | re.MULTILINE) for pattern in auto_generated_patterns):
+        if any(
+            re.search(pattern, comment_body, re.IGNORECASE | re.MULTILINE)
+            for pattern in auto_generated_patterns
+        ):
             return ActionType.AUTO_GENERATED
 
         # 開発者の質問・確認コメント
@@ -250,7 +250,10 @@ class ReplyDecisionMatrix:
             r"いかがでしょう",
         ]
 
-        if any(re.search(pattern, comment_body, re.IGNORECASE) for pattern in developer_question_patterns):
+        if any(
+            re.search(pattern, comment_body, re.IGNORECASE)
+            for pattern in developer_question_patterns
+        ):
             return ActionType.CLARIFY
 
         # 明確な技術的指摘（CodeRabbitの指摘タイプ）
@@ -264,12 +267,22 @@ class ReplyDecisionMatrix:
 
         if any(pattern in comment_body for pattern in technical_issue_patterns):
             # セキュリティ関連は緊急実施
-            security_keywords = ["セキュリティ", "security", "脆弱性", "vulnerability", "トークン", "token"]
+            security_keywords = [
+                "セキュリティ",
+                "security",
+                "脆弱性",
+                "vulnerability",
+                "トークン",
+                "token",
+            ]
             if any(keyword in comment_body.lower() for keyword in security_keywords):
                 return ActionType.IMPLEMENT
 
             # その他の技術的指摘は内容次第
-            if any(keyword in comment_body.lower() for keyword in ["エラー", "error", "バグ", "bug", "問題", "issue"]):
+            if any(
+                keyword in comment_body.lower()
+                for keyword in ["エラー", "error", "バグ", "bug", "問題", "issue"]
+            ):
                 return ActionType.IMPLEMENT
             else:
                 return ActionType.FUTURE  # 改善提案は将来対応
@@ -282,7 +295,10 @@ class ReplyDecisionMatrix:
             r"invalid.*format",
         ]
 
-        if any(re.search(pattern, comment_body, re.IGNORECASE) for pattern in incorrect_patterns):
+        if any(
+            re.search(pattern, comment_body, re.IGNORECASE)
+            for pattern in incorrect_patterns
+        ):
             return ActionType.INCORRECT
 
         # 具体的な修正提案がある場合

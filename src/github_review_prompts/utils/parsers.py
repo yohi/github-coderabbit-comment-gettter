@@ -234,6 +234,237 @@ def categorize_prompt(prompt: str, file_path: str = "") -> str:
     return "general"
 
 
+def extract_outside_diff_comments(comment_body: str) -> list:
+    """Outside diff range commentsセクションから個別コメントを抽出"""
+    if not comment_body or not isinstance(comment_body, str):
+        return []
+
+    extracted_comments = []
+
+    # Outside diff range commentsセクションを探す
+    outside_diff_pattern = r"<summary>⚠️ Outside diff range comments \(\d+\)</summary><blockquote>(.*?)</blockquote></details>"
+    outside_match = re.search(
+        outside_diff_pattern, comment_body, re.DOTALL | re.IGNORECASE
+    )
+
+    if not outside_match:
+        return []
+
+    outside_content = outside_match.group(1)
+
+    # 各個別コメントを抽出
+    individual_comment_pattern = r"<details>\s*<summary>(.*?)</summary><blockquote>\s*(.*?)\s*</blockquote></details>"
+
+    for match in re.finditer(individual_comment_pattern, outside_content, re.DOTALL):
+        file_info = match.group(1).strip()
+        comment_content = match.group(2).strip()
+
+        # ファイル名と行番号を抽出
+        file_match = re.match(r"([^(]+)\s*\(\d+\)", file_info)
+        if file_match:
+            file_path = file_match.group(1).strip()
+
+            # 行番号とタイトルを抽出
+            line_match = re.search(r"`(\d+-\d+|\d+)`:\s*\*\*(.*?)\*\*", comment_content)
+            line_info = line_match.group(1) if line_match else "unknown"
+            title = line_match.group(2) if line_match else "修正が必要"
+
+            # コメント本文をクリーンアップ
+            clean_content = _clean_extracted_comment(comment_content)
+
+            extracted_comments.append(
+                {
+                    "file_path": file_path,
+                    "line": line_info,
+                    "title": title,
+                    "content": clean_content,
+                    "priority": _determine_comment_priority(clean_content),
+                    "category": _determine_comment_category(clean_content, file_path),
+                }
+            )
+
+    return extracted_comments
+
+
+def _clean_extracted_comment(text: str) -> str:
+    """Outside diff commentsから抽出されたコメントをクリーンアップ"""
+    if not text:
+        return ""
+
+    # 不要なマークダウン記法を除去
+    text = re.sub(
+        r"`(\d+-\d+|\d+)`:\s*\*\*(.*?)\*\*\s*", "", text
+    )  # 行番号とタイトルを除去
+    text = re.sub(r"```diff\n(.*?)\n```", r"\1", text, flags=re.DOTALL)  # diffブロック
+    text = re.sub(
+        r"```[a-zA-Z]*\n?(.*?)\n?```", r"\1", text, flags=re.DOTALL
+    )  # コードブロック
+    text = re.sub(r"\*\*(.*?)\*\*", r"\1", text)  # Bold
+    text = re.sub(r"\*(.*?)\*", r"\1", text)  # Italic
+    text = re.sub(r"`(.*?)`", r"\1", text)  # Inline code
+
+    # HTMLタグを除去
+    text = re.sub(r"<[^>]+>", "", text)
+
+    # 余分な空白を除去
+    text = re.sub(r"\s+", " ", text)
+    text = html.unescape(text)
+
+    return text.strip()
+
+
+def _determine_comment_priority(content: str) -> str:
+    """Outside diff commentの優先度を判定"""
+    if not content:
+        return "medium"
+
+    content_lower = content.lower()
+
+    # 緊急度の高いキーワード
+    critical_keywords = [
+        "セキュリティ",
+        "security",
+        "vulnerability",
+        "脆弱性",
+        "重要",
+        "critical",
+        "必須",
+        "required",
+        "must",
+        "リスク",
+        "risk",
+        "危険",
+        "danger",
+        "バグ",
+        "bug",
+        "エラー",
+        "error",
+        "問題",
+        "issue",
+    ]
+
+    # 中優先度キーワード
+    medium_keywords = [
+        "修正",
+        "fix",
+        "改善",
+        "improve",
+        "最適化",
+        "optimize",
+        "推奨",
+        "recommend",
+        "should",
+        "better",
+    ]
+
+    # 低優先度キーワード
+    low_keywords = [
+        "提案",
+        "suggestion",
+        "consider",
+        "検討",
+        "任意",
+        "optional",
+        "スタイル",
+        "style",
+        "format",
+        "フォーマット",
+        "軽微",
+        "minor",
+    ]
+
+    if any(keyword in content_lower for keyword in critical_keywords):
+        return "high"
+    elif any(keyword in content_lower for keyword in low_keywords):
+        return "low"
+    else:
+        return "medium"
+
+
+def _determine_comment_category(content: str, file_path: str) -> str:
+    """Outside diff commentのカテゴリを判定"""
+    if not content:
+        return "general"
+
+    content_lower = content.lower()
+    file_lower = file_path.lower()
+
+    # セキュリティ関連
+    if any(
+        keyword in content_lower
+        for keyword in [
+            "セキュリティ",
+            "security",
+            "vulnerability",
+            "脆弱性",
+            "injection",
+            "xss",
+            "csrf",
+            "認証",
+            "auth",
+            "token",
+            "password",
+            "encrypt",
+            "decrypt",
+            "sanitiz",
+        ]
+    ):
+        return "security"
+
+    # 型安全性・TypeScript関連
+    if any(
+        keyword in content_lower
+        for keyword in [
+            "型",
+            "type",
+            "typescript",
+            "interface",
+            "generics",
+            "cast",
+            "any",
+            "unknown",
+        ]
+    ):
+        return "type-safety"
+
+    # パフォーマンス関連
+    if any(
+        keyword in content_lower
+        for keyword in [
+            "パフォーマンス",
+            "performance",
+            "optimization",
+            "memory",
+            "cpu",
+            "bottleneck",
+            "効率",
+            "efficient",
+            "speed",
+            "slow",
+        ]
+    ):
+        return "performance"
+
+    # アーキテクチャ・設計関連
+    if any(
+        keyword in content_lower
+        for keyword in [
+            "アーキテクチャ",
+            "architecture",
+            "design",
+            "pattern",
+            "structure",
+            "モジュール",
+            "module",
+            "依存",
+            "dependency",
+        ]
+    ):
+        return "architecture"
+
+    return "general"
+
+
 def determine_priority(prompt: str, category: str) -> str:
     """プロンプト内容から優先度を推定"""
     if not prompt:
