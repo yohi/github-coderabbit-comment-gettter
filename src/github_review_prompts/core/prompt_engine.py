@@ -231,7 +231,7 @@ class UnifiedPromptEngine:
 
         # 改善されたシンプルプロンプト
         prompt_parts.append(
-            f"""# 🎯 CodeRabbitレビュー対応プロンプト
+            """# 🎯 CodeRabbitレビュー対応プロンプト
 
 ## 🔑 作業開始前の必須確認
 
@@ -239,17 +239,22 @@ class UnifiedPromptEngine:
 
 ### GITHUB_TOKEN環境変数の確認
 ```bash
-echo $GITHUB_TOKEN
+if [ -z "$GITHUB_TOKEN" ]; then
+  echo "❌ GITHUB_TOKEN is NOT set"
+  exit 1
+else
+  printf "✅ GITHUB_TOKEN is set (prefix: %s***)\n" "${GITHUB_TOKEN:0:6}"
+fi
 ```
-**期待する結果**: `ghp_` または `github_pat_` で始まるトークンが表示される
+**期待する結果**: 「✅ GITHUB_TOKEN is set (prefix: ghp_***)」のような安全な表示
 
 **❌ もしトークンが表示されない場合**:
 ```bash
 # トークンを設定してください
 export GITHUB_TOKEN="your_github_token_here"
 
-# 設定確認
-echo $GITHUB_TOKEN
+# 設定確認（安全な方法）
+printf "✅ GITHUB_TOKEN is set (prefix: %s***)\n" "${GITHUB_TOKEN:0:6}"
 ```
 
 **🚨 重要**: GITHUB_TOKENが設定されていない場合、コメント返信のcurlコマンドが動作しません。必ず設定を確認してから作業を開始してください。
@@ -264,7 +269,7 @@ echo $GITHUB_TOKEN
 
 1. **認証情報保護**: `$GITHUB_TOKEN` 環境変数のみ使用（ハードコード禁止）
 2. **変更範囲限定**: 関連ファイルのみ修正（`git add .` 禁止）
-3. **トークン検証**: 作業前に必ず `echo $GITHUB_TOKEN` で設定確認
+3. **トークン検証**: 作業前に必ず安全な方法でGITHUB_TOKEN設定確認
 
 ## 優先度判定（3段階）
 🔴 **緊急**: セキュリティ・機能破綻
@@ -293,7 +298,7 @@ echo $GITHUB_TOKEN
 **成功基準**: 🟢項目50%以上完了（努力目標）
 
 ## 作業フロー（改良版）
-0. **🔑 環境確認**: `echo $GITHUB_TOKEN` でトークン設定確認（必須）
+0. **🔑 環境確認**: 安全な方法でGITHUB_TOKEN設定確認（必須）
 1. **🔍 事前分析**: 全コメントを🔴🟡🟢で完全分類
 2. **⚡ Phase 1実行**: 🔴緊急項目のみ集中対応
 3. **🛡️ 中間検証**: Git中間コミット・休憩
@@ -422,9 +427,9 @@ echo $GITHUB_TOKEN
 ## 🔍 最終検証チェックリスト（強化版）
 
 ### ✅ 環境設定検証（最優先）
-- [ ] **GITHUB_TOKEN確認**: `echo $GITHUB_TOKEN` でトークン表示確認
+- [ ] **GITHUB_TOKEN確認**: 安全な方法でトークン設定確認
 - [ ] **トークン形式確認**: `ghp_` または `github_pat_` で始まることを確認
-- [ ] **権限確認**: `curl -H "Authorization: Bearer $GITHUB_TOKEN" https://api.github.com/user` で認証テスト
+- [ ] **権限確認**: セキュアな方法で認証テスト実行
 
 ### ✅ 修正作業検証
 - [ ] 構文チェック: `python -m py_compile <ファイル名>`
@@ -464,8 +469,8 @@ echo $GITHUB_TOKEN
 **⚠️ 重要**: 全てのレビューコメント対応完了後、以下を**必ず実行**してください。
 
 ### Phase 0: 環境設定最終確認（必須）
-- [ ] **GITHUB_TOKEN設定確認**: `echo $GITHUB_TOKEN` 実行
-- [ ] **トークン有効性確認**: `curl -H "Authorization: Bearer $GITHUB_TOKEN" https://api.github.com/user` 実行
+- [ ] **GITHUB_TOKEN設定確認**: 安全な方法で設定確認実行
+- [ ] **トークン有効性確認**: セキュアな方法で認証API確認実行
 - [ ] **API権限確認**: レスポンスで認証成功を確認
 
 ### Phase 1: 最終検証（必須）
@@ -2165,22 +2170,23 @@ is_resolved: {str(thread_info.get('is_resolved', False)).lower()}"""
 複数のcurlコマンドを並列で実行して処理時間を短縮：
 
 ```bash
-# 並列実行で高速化（推奨）
+# セキュアな並列実行で高速化（推奨）
+echo "Authorization: Bearer $GITHUB_TOKEN" > /tmp/github_headers
 {{
   curl -X POST \\
-    -H "Authorization: Bearer $GITHUB_TOKEN" \\
+    -H @/tmp/github_headers \\
     -H "Content-Type: application/json" \\
     -d '{{"body": "返信内容1", "in_reply_to": COMMENT_ID1}}' \\
     "https://api.github.com/repos/{owner}/{repo}/pulls/{pr_number}/comments" &
 
   curl -X POST \\
-    -H "Authorization: Bearer $GITHUB_TOKEN" \\
+    -H @/tmp/github_headers \\
     -H "Content-Type: application/json" \\
     -d '{{"body": "返信内容2", "in_reply_to": COMMENT_ID2}}' \\
     "https://api.github.com/repos/{owner}/{repo}/pulls/{pr_number}/comments" &
 
   curl -X POST \\
-    -H "Authorization: Bearer $GITHUB_TOKEN" \\
+    -H @/tmp/github_headers \\
     -H "Content-Type: application/json" \\
     -d '{{"body": "返信内容3", "in_reply_to": COMMENT_ID3}}' \\
     "https://api.github.com/repos/{owner}/{repo}/pulls/{pr_number}/comments" &
@@ -2188,27 +2194,38 @@ is_resolved: {str(thread_info.get('is_resolved', False)).lower()}"""
   # 全ての並列処理の完了を待機
   wait
 }}
+# セキュリティ: ヘッダファイルを削除
+rm /tmp/github_headers
 ```
 
 ### **方法2: xargs並列実行**
 ```bash
+# セキュアなヘッダファイルを作成
+echo "Authorization: Bearer $GITHUB_TOKEN" > /tmp/github_headers
+
 # コマンドリストファイルを作成
 cat > reply_commands.txt << 'EOF'
-curl -X POST -H "Authorization: Bearer $GITHUB_TOKEN" -H "Content-Type: application/json" -d '{{"body": "返信1", "in_reply_to": ID1}}' "https://api.github.com/repos/{owner}/{repo}/pulls/{pr_number}/comments"
-curl -X POST -H "Authorization: Bearer $GITHUB_TOKEN" -H "Content-Type: application/json" -d '{{"body": "返信2", "in_reply_to": ID2}}' "https://api.github.com/repos/{owner}/{repo}/pulls/{pr_number}/comments"
+curl -X POST -H @/tmp/github_headers -H "Content-Type: application/json" -d '{{"body": "返信1", "in_reply_to": ID1}}' "https://api.github.com/repos/{owner}/{repo}/pulls/{pr_number}/comments"
+curl -X POST -H @/tmp/github_headers -H "Content-Type: application/json" -d '{{"body": "返信2", "in_reply_to": ID2}}' "https://api.github.com/repos/{owner}/{repo}/pulls/{pr_number}/comments"
 EOF
 
 # 並列実行（最大5並列）
 cat reply_commands.txt | xargs -I {{}} -P 5 bash -c "{{}}"
+
+# セキュリティ: ヘッダファイルを削除
+rm /tmp/github_headers
 ```
 
 ### **方法3: 個別実行（シンプル）**
 ```bash
+# セキュアな個別実行
+echo "Authorization: Bearer $GITHUB_TOKEN" > /tmp/github_headers
 curl -X POST \\
-  -H "Authorization: Bearer $GITHUB_TOKEN" \\
+  -H @/tmp/github_headers \\
   -H "Content-Type: application/json" \\
   -d '{{"body": "返信内容", "in_reply_to": COMMENT_ID}}' \\
   https://api.github.com/repos/{owner}/{repo}/pulls/{pr_number}/comments
+rm /tmp/github_headers
 ```
 
 **🎯 推奨**: 方法1の並列実行で大幅な時間短縮を実現してください。
