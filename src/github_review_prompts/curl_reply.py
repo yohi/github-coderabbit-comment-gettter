@@ -90,9 +90,9 @@ class GitHubCurlReply:
                 raise CurlReplyError(f"Curl command failed: {result.stderr}")
 
             # レスポンスを分解
-            output_lines = result.stdout.strip().split("\\n")
+            output_lines = result.stdout.strip().split("\n")
             status_code = int(output_lines[-1])
-            response_body = "\\n".join(output_lines[:-1])
+            response_body = "\n".join(output_lines[:-1])
 
             # JSONレスポンスをパース
             try:

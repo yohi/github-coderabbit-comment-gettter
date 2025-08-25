@@ -834,7 +834,7 @@ class GitHubClient:
         self.logger.info(f"REST APIで全コメント取得開始: {pr_info.owner}/{pr_info.repo}#{pr_info.pull_number}")
 
         while True:
-            url = f"/repos/{pr_info.owner}/{pr_info.repo}/pulls/{pr_info.pull_number}/comments"
+            url = f"{self.base_url}/repos/{pr_info.owner}/{pr_info.repo}/pulls/{pr_info.pull_number}/comments"
             params = {"per_page": page_size, "page": page}
 
             try:
