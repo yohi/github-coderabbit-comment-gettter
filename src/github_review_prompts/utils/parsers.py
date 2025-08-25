@@ -15,6 +15,23 @@ def parse_pr_url(pr_url: str) -> Tuple[str, str, int]:
     url = pr_url.strip()
 
     try:
+        # スキームなしURLの場合、https://を補完
+        if not url.startswith(('http://', 'https://')):
+            if url.startswith('github.com'):
+                url = 'https://' + url
+            else:
+                # owner/repo#123 形式の短縮形をチェック
+                short_pattern = r"^([^/]+)/([^/]+)#(\d+)$"
+                short_match = re.match(short_pattern, url)
+                if short_match:
+                    owner, repo, pull_number_str = short_match.groups()
+                    pull_number = int(pull_number_str)
+                    if pull_number <= 0:
+                        raise ValueError("プルリクエスト番号は1以上である必要があります")
+                    return owner, repo, pull_number
+                else:
+                    raise ValueError(f"URLの形式が不正です: {url}")
+
         parsed = urlparse(url)
 
         # github.com以外は拒否
