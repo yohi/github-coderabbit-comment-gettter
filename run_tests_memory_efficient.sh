@@ -48,16 +48,20 @@ run_tests_chunked() {
         echo "🧹 メモリクリア..."
         python3 -c "
 import gc
-import psutil
+import subprocess
 import os
 
 # ガベージコレクションを強制実行
 for i in range(3):
     gc.collect()
 
-# 現在のメモリ使用量を表示
-process = psutil.Process(os.getpid())
-print(f'メモリ使用量: {process.memory_info().rss / 1024 / 1024:.1f} MB')
+# 基本的なメモリ使用量表示
+try:
+    result = subprocess.run(['free', '-h'], capture_output=True, text=True)
+    print('システムメモリ状況:')
+    print(result.stdout.split('\n')[1] if result.stdout else 'メモリ情報取得不可')
+except Exception:
+    print('メモリ情報取得不可')
 "
         sleep 2
     done

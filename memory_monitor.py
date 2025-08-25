@@ -3,14 +3,35 @@
 pytest実行時のメモリ使用量監視スクリプト
 """
 
-import psutil
 import time
 import sys
 import argparse
+import subprocess
+import os
 from datetime import datetime
+
+try:
+    import psutil
+    HAS_PSUTIL = True
+except ImportError:
+    HAS_PSUTIL = False
+    print("⚠️ psutil not available, using basic monitoring")
+
+def get_system_memory_basic():
+    """基本的なシステムメモリ情報を取得（psutil不要）"""
+    try:
+        result = subprocess.run(['free', '-h'], capture_output=True, text=True)
+        return result.stdout
+    except Exception:
+        return "メモリ情報取得不可"
 
 def monitor_pytest_memory(duration=300, interval=5):
     """pytestプロセスのメモリ使用量を監視"""
+    
+    if not HAS_PSUTIL:
+        print("📊 基本メモリ監視モード")
+        print(get_system_memory_basic())
+        return
     
     print(f"🔍 pytest プロセス監視開始 (期間: {duration}秒, 間隔: {interval}秒)")
     print("=" * 80)
@@ -69,6 +90,10 @@ def show_current_memory_status():
     
     print("📊 現在のシステムメモリ状況")
     print("=" * 50)
+    
+    if not HAS_PSUTIL:
+        print(get_system_memory_basic())
+        return
     
     # システム全体のメモリ
     memory = psutil.virtual_memory()
