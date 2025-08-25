@@ -141,6 +141,18 @@ class UnifiedCLI:
             help="返信テンプレートを使用",
         )
 
+        # 自動解決機能
+        parser.add_argument(
+            "--auto-resolve",
+            action="store_true",
+            help="未解決のCodeRabbitコメントに解決済みマーク設置を自動依頼",
+        )
+        parser.add_argument(
+            "--dry-run",
+            action="store_true",
+            help="実際の返信は行わず、対象コメントのみ表示",
+        )
+
         # 出力オプション
         parser.add_argument(
             "--output", "-o", help="出力ファイル (指定なしで標準出力のみ)"
@@ -197,6 +209,10 @@ class UnifiedCLI:
                     "GitHub トークンが設定されていません。--token オプションまたは GITHUB_TOKEN 環境変数を設定してください。"
                 )
                 return 1
+
+            # 自動解決機能
+            if parsed_args.auto_resolve:
+                return self._handle_auto_resolve(parsed_args, token)
 
             # 返信機能
             if parsed_args.reply_to:
@@ -579,6 +595,195 @@ class UnifiedCLI:
             )
 
         print(colorize("=" * 80, "1;37"))
+
+    def _handle_auto_resolve(self, args, token: str) -> int:
+        """自動解決機能の処理"""
+        try:
+            # カラー用の関数
+            def colorize(text: str, color_code: str) -> str:
+                if args.no_color:
+                    return text
+                return f"\033[{color_code}m{text}\033[0m"
+
+            print()
+            print(colorize("🤖 CodeRabbit自動解決依頼機能", "1;34"))
+            print(f"{colorize('📋 プルリクエスト:', '1;36')} {args.pr_url}")
+            print(colorize("=" * 80, "1;37"))
+
+            # GitHub クライアント
+            github_client = GitHubClient(token, args.api_url)
+
+            # PR URLをパース
+            pr_info = github_client.parse_pr_url(args.pr_url)
+
+            print(colorize("📍 PR基本情報を取得中...", "1;33"))
+            pr_basic_info = github_client.get_pr_basic_info(pr_info)
+
+            print(colorize("💬 レビューコメントを取得中...", "1;33"))
+            comments, comment_stats = github_client.get_all_pr_comments(pr_info)
+
+            print(colorize("🔍 解決済みコメントを検出中...", "1;33"))
+            resolved_ids, _ = github_client.get_comments_via_hybrid_approach(pr_info)
+
+            # 最後のコミット時刻を取得
+            print(colorize("⏰ 最後のコミット時刻を取得中...", "1;33"))
+            last_commit_time = self._get_last_commit_time(github_client, pr_info)
+            if last_commit_time:
+                print(colorize(f"📅 最後のコミット: {last_commit_time}", "1;32"))
+            else:
+                print(colorize("⚠️ 最後のコミット時刻を取得できませんでした", "1;31"))
+
+            # 対象コメントをフィルタリング
+            print(colorize("🎯 対象コメントをフィルタリング中...", "1;33"))
+            target_comments = self._filter_auto_resolve_comments(
+                comments, resolved_ids, last_commit_time
+            )
+
+            print(colorize(f"✅ 対象コメント: {len(target_comments)} 件", "1;32"))
+
+            if not target_comments:
+                print(colorize("📭 自動解決対象のコメントが見つかりませんでした。", "1;33"))
+                return 0
+
+            # dry-runモードの場合は表示のみ
+            if args.dry_run:
+                self._display_target_comments(target_comments, colorize)
+                return 0
+
+            # 解決依頼コメントを送信
+            print(colorize("📤 解決依頼コメントを送信中...", "1;33"))
+            success_count = self._send_auto_resolve_requests(
+                github_client, args.pr_url, target_comments, colorize
+            )
+
+            print()
+            print(colorize("=" * 80, "1;37"))
+            print(colorize("✅ 自動解決依頼処理完了", "1;32"))
+            print(f"{colorize('📊 処理結果:', '1;36')} {success_count}/{len(target_comments)} 件送信成功")
+            print(colorize("=" * 80, "1;37"))
+
+            return 0 if success_count > 0 else 1
+
+        except Exception as e:
+            logger.error(f"自動解決処理でエラー: {e}")
+            return 1
+
+    def _get_last_commit_time(self, github_client: GitHubClient, pr_info) -> Optional[str]:
+        """PRの最後のコミット時刻を取得"""
+        try:
+            # GitHub APIでPRのコミット一覧を取得
+            url = f"/repos/{pr_info.owner}/{pr_info.repo}/pulls/{pr_info.pull_number}/commits"
+            commits = github_client._make_request("GET", url)
+
+            if commits and len(commits) > 0:
+                # 最後のコミットの時刻を返す
+                last_commit = commits[-1]
+                return last_commit["commit"]["committer"]["date"]
+
+            return None
+        except Exception as e:
+            logger.warning(f"最後のコミット時刻取得に失敗: {e}")
+            return None
+
+    def _filter_auto_resolve_comments(
+        self, comments: List[Dict], resolved_ids: set, last_commit_time: Optional[str]
+    ) -> List[Dict]:
+        """自動解決対象のコメントをフィルタリング"""
+        target_comments = []
+
+        for comment in comments:
+            if self._should_auto_resolve_comment(comment, resolved_ids, last_commit_time):
+                target_comments.append(comment)
+
+        return target_comments
+
+    def _should_auto_resolve_comment(
+        self, comment: Dict, resolved_ids: set, last_commit_time: Optional[str]
+    ) -> bool:
+        """自動解決対象の判定"""
+        # 未解決
+        if comment.get("id") in resolved_ids:
+            return False
+
+        # 最後のコメント者がcoderabbitai
+        user_login = comment.get("user", {}).get("login", "")
+        if user_login not in ["coderabbitai[bot]", "coderabbitai"]:
+            return False
+
+        # インラインコメント（pathとlineが存在）
+        if not comment.get("path") or comment.get("line") is None:
+            return False
+
+        # 最終コメントが最後のコミット時刻より前
+        if last_commit_time:
+            comment_time = comment.get("created_at")
+            if comment_time and comment_time >= last_commit_time:
+                return False
+
+        return True
+
+    def _display_target_comments(self, target_comments: List[Dict], colorize) -> None:
+        """対象コメントを表示（dry-runモード）"""
+        print()
+        print(colorize("📋 自動解決対象コメント一覧", "1;36"))
+        print(colorize("=" * 60, "1;37"))
+
+        for i, comment in enumerate(target_comments, 1):
+            print(f"{colorize(f'🎯 コメント #{i}', '1;33')}")
+            print(f"   ID: {comment.get('id')}")
+            print(f"   ファイル: {comment.get('path')}")
+            print(f"   行: {comment.get('line')}")
+            print(f"   作成者: {comment.get('user', {}).get('login')}")
+            print(f"   作成日時: {comment.get('created_at')}")
+
+            # コメント内容の要約（最初の100文字）
+            body = comment.get("body", "")[:100]
+            if len(comment.get("body", "")) > 100:
+                body += "..."
+            print(f"   内容: {body}")
+            print()
+
+    def _send_auto_resolve_requests(
+        self, github_client: GitHubClient, pr_url: str, target_comments: List[Dict], colorize
+    ) -> int:
+        """解決依頼コメントを送信"""
+        success_count = 0
+
+        # 解決依頼メッセージテンプレート
+        resolve_message = """@coderabbitai この指摘について技術的検証を実施しました。
+
+HEADブランチを確認後、技術的に問題ないと判断できる場合は、**以下のテキストを一字一句正確にコピーペースト**してください：
+
+```
+[CR_RESOLUTION_CONFIRMED:TECHNICAL_ISSUE_RESOLVED]
+✅ エンジニアによる技術的検証完了 - CodeRabbitによる解決済みマーク実行可能
+[/CR_RESOLUTION_CONFIRMED]
+```
+
+⚠️ **重要**: 上記マーカーは自動処理用フォーマットのため、文言変更・追加・削除は禁止です。"""
+
+        for comment in target_comments:
+            try:
+                comment_id = comment.get("id")
+                print(f"{colorize(f'📤 コメントID {comment_id} に返信中...', '1;33')}")
+
+                # curl_reply.py の機能を使用
+                from .curl_reply import GitHubCurlReply
+                curl_reply = GitHubCurlReply(github_client.token, github_client.api_url)
+
+                result = curl_reply.reply_to_comment(pr_url, comment_id, resolve_message)
+
+                if result:
+                    print(f"{colorize(f'✅ コメントID {comment_id} への返信成功', '1;32')}")
+                    success_count += 1
+                else:
+                    print(f"{colorize(f'❌ コメントID {comment_id} への返信失敗', '1;31')}")
+
+            except Exception as e:
+                comment_id = comment.get("id", "不明")
+                print(f"{colorize(f'❌ コメントID {comment_id} でエラー: {e}', '1;31')}")
+
+        return success_count
 
 
 def main() -> int:

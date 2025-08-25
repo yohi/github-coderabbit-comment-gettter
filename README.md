@@ -26,6 +26,7 @@ GitHub プルリクエストのレビューコメントから AI エージェン
   - **Phase 3**: 🟢低優先対応（ドキュメント・スタイル改善）
 - **🛡️ リスク軽減システム**: バックアップ作成・段階的セーフポイント・エラー回復手順
 - **💬 コメント返信機能**: 各CodeRabbitコメントに`in_reply_to`で直接返信するcurlコマンド自動生成
+- **🔁 自動解決依頼機能**: 未解決のCodeRabbitコメントに解決済みマーク設置を自動依頼（NEW!）
 - **👤 複数ペルソナ対応**: セキュリティアナリスト、コードレビュアー、パフォーマンスオプティマイザー
 - **📂 ブランチ情報自動取得**: ソース・ターゲットブランチ情報とチェックアウト指示を自動生成
 - **🔍 包括的フィルタリング**: CodeRabbitコメント専用フィルタリングによる高精度な処理
@@ -154,12 +155,55 @@ uv run grp https://github.com/owner/repo/pull/123
 
 # フル機能版（高度な分析）
 uv run github-review-prompts https://github.com/owner/repo/pull/123
+
+# 🔁 自動解決依頼（NEW!）
+uv run grp --auto-resolve https://github.com/owner/repo/pull/123
 ```
 
 **UVX使用**: ビルド済みパッケージから実行
 ```bash
 uvx --from ./dist/github_review_prompts_ai_agent-1.4.1-py3-none-any.whl grp https://github.com/owner/repo/pull/123
 ```
+
+### 🔁 自動解決依頼機能（NEW!）
+
+**未解決のCodeRabbitコメントに解決済みマーク設置を自動依頼**
+
+```bash
+# 自動解決依頼の実行
+uv run grp --auto-resolve https://github.com/owner/repo/pull/123
+
+# 対象コメントの確認のみ（実際の返信は行わない）
+uv run grp --auto-resolve --dry-run https://github.com/owner/repo/pull/123
+```
+
+#### 📋 対象条件
+自動解決依頼の対象となるコメントの条件：
+
+1. **未解決状態**: GitHubで「Mark as resolved」されていない
+2. **CodeRabbit作成**: 最後のコメント者が`coderabbitai[bot]`または`coderabbitai`
+3. **インラインコメント**: ファイルの特定行に対するコメント
+4. **コミット前**: 最終コメントが最後のコミット時刻より前
+
+#### 💬 送信されるメッセージ
+```markdown
+@coderabbitai この指摘について技術的検証を実施しました。
+
+HEADブランチを確認後、技術的に問題ないと判断できる場合は、**以下のテキストを一字一句正確にコピーペースト**してください：
+
+```
+[CR_RESOLUTION_CONFIRMED:TECHNICAL_ISSUE_RESOLVED]
+✅ エンジニアによる技術的検証完了 - CodeRabbitによる解決済みマーク実行可能
+[/CR_RESOLUTION_CONFIRMED]
+```
+
+⚠️ **重要**: 上記マーカーは自動処理用フォーマットのため、文言変更・追加・削除は禁止です。
+```
+
+#### 🎯 使用場面
+- **コード修正後**: 指摘された問題を修正した後の解決依頼
+- **技術的検証完了後**: CodeRabbitの指摘を検証し、問題ないと判断した場合
+- **一括処理**: 複数の未解決コメントをまとめて処理したい場合
 
 ### 💪 効率化オプション
 
@@ -649,6 +693,14 @@ MIT License
 
 ## 📈 変更履歴
 <a id="changelog"></a>
+
+### v2.1.0 (2025-08-24) - 自動解決依頼機能追加
+- 🔁 **自動解決依頼機能**: 未解決のCodeRabbitコメントに解決済みマーク設置を自動依頼
+  - `--auto-resolve`オプション: 対象コメントの自動検出と返信
+  - `--dry-run`オプション: 対象コメント確認機能（実際の返信なし）
+  - 高精度条件判定: 未解決+coderabbitai+インライン+コミット時刻比較
+  - 最後のコミット時刻自動取得によるスマート判定
+  - CodeRabbit誤解防止システム統合による確実なマーカー認識
 
 ### v2.0.0 (2025-08-24) - メジャーアップデート: CodeRabbit Enhanced System
 - 🚀 **Production Ready**: プロダクション環境での本格運用に対応
