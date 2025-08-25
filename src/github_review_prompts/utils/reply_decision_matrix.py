@@ -125,7 +125,7 @@ class ReplyDecisionMatrix:
 - **前提条件**: {prerequisites}
 - **思い出し条件**: {trigger_condition}
 
-将来対応として記録して問題なければ、このコメントスレッドを解決済みにマークしてください。
+将来対応として記録して問題なければ、下記フォーマットの解決済みマークをコメントの末尾に付与してください：
 
 [CR_RESOLUTION_CONFIRMED:FUTURE_PHASE_PLANNED]
 ✅ 将来フェーズ対応として記録完了
@@ -138,7 +138,7 @@ class ReplyDecisionMatrix:
 **公式ドキュメント**: {documentation_link}
 **実証方法**: {verification_method}
 
-技術的な誤りを確認して学習していただけましたら、このコメントスレッドを解決済みにマークしてください。
+技術的な誤りを確認して学習していただけましたら、下記フォーマットの解決済みマークをコメントの末尾に付与してください：
 
 [CR_RESOLUTION_CONFIRMED:TECHNICAL_CORRECTION_ACCEPTED]
 ✅ 技術的訂正が受け入れられました
@@ -627,11 +627,11 @@ class ReplyDecisionMatrix:
             template_name = decision.template_type or "general"
 
             if template_name == "technical_rejection":
-                reply_body = "@coderabbitai この指摘は技術的制約により対応不要です。\\n\\n問題ないと判断できれば、このコメントスレッドを解決済みにマークし、返信末尾に以下を追加してください：\\n\\n[CR_RESOLUTION_CONFIRMED:TECHNICAL_ISSUE_RESOLVED]\\n✅ エンジニアによる技術的検証完了 - CodeRabbitによる解決済みマーク実行可能\\n[/CR_RESOLUTION_CONFIRMED]"
+                reply_body = "@coderabbitai この指摘は技術的制約により対応不要です。\\n\\n問題ないと判断できたら、下記フォーマットの解決済みマークをコメントの末尾に付与してください：\\n\\n[CR_RESOLUTION_CONFIRMED:TECHNICAL_ISSUE_RESOLVED]\\n✅ エンジニアによる技術的検証完了 - CodeRabbitによる解決済みマーク実行可能\\n[/CR_RESOLUTION_CONFIRMED]"
             elif template_name == "future_planning":
-                reply_body = "@coderabbitai 技術的に妥当ですが現在のフェーズでは対象外です。\\n\\n将来対応と判断して問題なければ、このコメントスレッドを解決済みにマークし、返信末尾に以下を追加してください：\\n\\n[CR_RESOLUTION_CONFIRMED:TECHNICAL_ISSUE_RESOLVED]\\n✅ エンジニアによる技術的検証完了 - CodeRabbitによる解決済みマーク実行可能\\n[/CR_RESOLUTION_CONFIRMED]"
+                reply_body = "@coderabbitai 技術的に妥当ですが現在のフェーズでは対象外です。\\n\\n将来対応と判断して問題なければ、下記フォーマットの解決済みマークをコメントの末尾に付与してください：\\n\\n[CR_RESOLUTION_CONFIRMED:TECHNICAL_ISSUE_RESOLVED]\\n✅ エンジニアによる技術的検証完了 - CodeRabbitによる解決済みマーク実行可能\\n[/CR_RESOLUTION_CONFIRMED]"
             elif template_name == "technical_correction":
-                reply_body = "@coderabbitai この指摘は技術的に間違いと判断します。\\n\\n指摘が間違いと確認できれば、このコメントスレッドを解決済みにマークし、返信末尾に以下を追加してください：\\n\\n[CR_RESOLUTION_CONFIRMED:TECHNICAL_ISSUE_RESOLVED]\\n✅ エンジニアによる技術的検証完了 - CodeRabbitによる解決済みマーク実行可能\\n[/CR_RESOLUTION_CONFIRMED]"
+                reply_body = "@coderabbitai この指摘は技術的に間違いと判断します。\\n\\n指摘が間違いと確認できれば、下記フォーマットの解決済みマークをコメントの末尾に付与してください：\\n\\n[CR_RESOLUTION_CONFIRMED:TECHNICAL_ISSUE_RESOLVED]\\n✅ エンジニアによる技術的検証完了 - CodeRabbitによる解決済みマーク実行可能\\n[/CR_RESOLUTION_CONFIRMED]"
             elif template_name == "clarification_request":
                 reply_body = "@coderabbitai 詳細説明をお願いします。より適切な対応を検討いたします。"
             else:
@@ -659,11 +659,11 @@ class ReplyDecisionMatrix:
             template_name = decision.template_type or "general"
 
             if template_name == "technical_rejection":
-                reply_body = "@coderabbitai この指摘は技術的制約により対応不要です。\\n\\n問題ないと判断できれば、このコメントスレッドを解決済みにマークし、返信末尾に以下を追加してください：\\n\\n[CR_RESOLUTION_CONFIRMED:TECHNICAL_ISSUE_RESOLVED]\\n✅ エンジニアによる技術的検証完了 - CodeRabbitによる解決済みマーク実行可能\\n[/CR_RESOLUTION_CONFIRMED]"
+                reply_body = "@coderabbitai この指摘は技術的制約により対応不要です。\\n\\n問題ないと判断できたら、下記フォーマットの解決済みマークをコメントの末尾に付与してください：\\n\\n[CR_RESOLUTION_CONFIRMED:TECHNICAL_ISSUE_RESOLVED]\\n✅ エンジニアによる技術的検証完了 - CodeRabbitによる解決済みマーク実行可能\\n[/CR_RESOLUTION_CONFIRMED]"
             elif template_name == "future_planning":
-                reply_body = "@coderabbitai 技術的に妥当ですが現在のフェーズでは対象外です。\\n\\n将来対応と判断して問題なければ、このコメントスレッドを解決済みにマークし、返信末尾に以下を追加してください：\\n\\n[CR_RESOLUTION_CONFIRMED:TECHNICAL_ISSUE_RESOLVED]\\n✅ エンジニアによる技術的検証完了 - CodeRabbitによる解決済みマーク実行可能\\n[/CR_RESOLUTION_CONFIRMED]"
+                reply_body = "@coderabbitai 技術的に妥当ですが現在のフェーズでは対象外です。\\n\\n将来対応と判断して問題なければ、下記フォーマットの解決済みマークをコメントの末尾に付与してください：\\n\\n[CR_RESOLUTION_CONFIRMED:TECHNICAL_ISSUE_RESOLVED]\\n✅ エンジニアによる技術的検証完了 - CodeRabbitによる解決済みマーク実行可能\\n[/CR_RESOLUTION_CONFIRMED]"
             elif template_name == "technical_correction":
-                reply_body = "@coderabbitai この指摘は技術的に間違いと判断します。\\n\\n指摘が間違いと確認できれば、このコメントスレッドを解決済みにマークし、返信末尾に以下を追加してください：\\n\\n[CR_RESOLUTION_CONFIRMED:TECHNICAL_ISSUE_RESOLVED]\\n✅ エンジニアによる技術的検証完了 - CodeRabbitによる解決済みマーク実行可能\\n[/CR_RESOLUTION_CONFIRMED]"
+                reply_body = "@coderabbitai この指摘は技術的に間違いと判断します。\\n\\n指摘が間違いと確認できれば、下記フォーマットの解決済みマークをコメントの末尾に付与してください：\\n\\n[CR_RESOLUTION_CONFIRMED:TECHNICAL_ISSUE_RESOLVED]\\n✅ エンジニアによる技術的検証完了 - CodeRabbitによる解決済みマーク実行可能\\n[/CR_RESOLUTION_CONFIRMED]"
             elif template_name == "clarification_request":
                 reply_body = "@coderabbitai 詳細説明をお願いします。より適切な対応を検討いたします。"
             else:

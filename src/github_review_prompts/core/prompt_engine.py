@@ -320,7 +320,7 @@ printf "✅ GITHUB_TOKEN is set (prefix: %s***)\n" "${GITHUB_TOKEN:0:6}"
 ```
 @coderabbitai [技術的根拠]により対応不要と判断します。
 
-問題ないと判断できれば、このコメントスレッドを解決済みにマークし、返信末尾に以下を追加してください：
+問題ないと判断できたら、下記フォーマットの解決済みマークをコメントの末尾に付与してください：
 
 [CR_RESOLUTION_CONFIRMED:TECHNICAL_ISSUE_RESOLVED]
 ✅ エンジニアによる技術的検証完了 - CodeRabbitによる解決済みマーク実行可能
@@ -331,7 +331,7 @@ printf "✅ GITHUB_TOKEN is set (prefix: %s***)\n" "${GITHUB_TOKEN:0:6}"
 ```
 @coderabbitai 妥当な指摘ですが[現フェーズ]では対応しません。[将来フェーズ]で対応予定です。この課題を将来のタスクとして記憶し、[将来フェーズ]開始時に再度指摘してください。
 
-問題ないと判断できれば、このコメントスレッドを解決済みにマークし、返信末尾に以下を追加してください：
+問題ないと判断できたら、下記フォーマットの解決済みマークをコメントの末尾に付与してください：
 
 [CR_RESOLUTION_CONFIRMED:TECHNICAL_ISSUE_RESOLVED]
 ✅ エンジニアによる技術的検証完了 - CodeRabbitによる解決済みマーク実行可能
@@ -373,7 +373,7 @@ printf "✅ GITHUB_TOKEN is set (prefix: %s***)\n" "${GITHUB_TOKEN:0:6}"
 依頼: この課題を将来のタスクとして記憶し、Phase2開始時または
       当該ファイルの次回修正時に再度指摘してください。
 
-問題ないと判断できれば、このコメントスレッドを解決済みにマークし、返信末尾に以下を追加してください：
+問題ないと判断できたら、下記フォーマットの解決済みマークをコメントの末尾に付与してください：
 
 [CR_RESOLUTION_CONFIRMED:TECHNICAL_ISSUE_RESOLVED]
 ✅ エンジニアによる技術的検証完了 - CodeRabbitによる解決済みマーク実行可能
@@ -387,7 +387,7 @@ printf "✅ GITHUB_TOKEN is set (prefix: %s***)\n" "${GITHUB_TOKEN:0:6}"
 予定: Phase3（本格運用準備フェーズ）で対応予定
 依頼: この課題を将来のタスクとして記憶し、Phase3開始時に再度指摘してください。
 
-問題ないと判断できれば、このコメントスレッドを解決済みにマークし、返信末尾に以下を追加してください：
+問題ないと判断できたら、下記フォーマットの解決済みマークをコメントの末尾に付与してください：
 
 [CR_RESOLUTION_CONFIRMED:TECHNICAL_ISSUE_RESOLVED]
 ✅ エンジニアによる技術的検証完了 - CodeRabbitによる解決済みマーク実行可能
@@ -407,7 +407,7 @@ printf "✅ GITHUB_TOKEN is set (prefix: %s***)\n" "${GITHUB_TOKEN:0:6}"
 @coderabbitai この指摘はXXXの理由により技術的に不適切です。
 [具体的な技術的根拠]
 
-問題ないと判断できれば、このコメントスレッドを解決済みにマークし、返信末尾に以下を追加してください：
+問題ないと判断できたら、下記フォーマットの解決済みマークをコメントの末尾に付与してください：
 
 [CR_RESOLUTION_CONFIRMED:TECHNICAL_ISSUE_RESOLVED]
 ✅ エンジニアによる技術的検証完了 - CodeRabbitによる解決済みマーク実行可能
