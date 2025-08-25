@@ -464,9 +464,9 @@ class GitHubClient:
                 self.get_pr_reviews_with_outside_diff_graphql(pr_info, page_size)
             )
 
-            # REST APIでレビューコメントも取得（未解決のみ）
+            # REST APIでレビューコメントも取得（全件取得、解決済み判定はハイブリッドアプローチに委ねる）
             review_comments = self.get_pr_review_comments(
-                pr_info, page_size, unresolved_only=True
+                pr_info, page_size, unresolved_only=False
             )
 
             # Issue コメント（Outside diff range含む）を取得
@@ -588,6 +588,23 @@ class GitHubClient:
         except Exception as e:
             raise APIError(f"コメント詳細取得エラー: {str(e)}") from e
 
+    def get_comments_via_hybrid_approach(
+        self, pr_info: GitHubPRInfo, page_size: int = 100
+    ) -> Tuple[Set[int], Dict[int, str]]:
+        """ハイブリッドアプローチ: GraphQL + REST API補完でコメント取得"""
+        self.logger.info(f"ハイブリッドアプローチでコメント取得開始: {pr_info.owner}/{pr_info.repo}#{pr_info.pull_number}")
+
+        # Step 1: GraphQL APIで解決済み判定付きコメント取得
+        graphql_resolved_ids, graphql_comment_bodies = self.get_resolved_comments_via_graphql(pr_info, page_size)
+
+        # Step 2: REST APIで全コメント取得（補完用）
+        rest_all_comments = self._get_all_comments_via_rest(pr_info, page_size)
+
+        # Step 3: 結果をマージ
+        return self._merge_graphql_and_rest_results(
+            graphql_resolved_ids, graphql_comment_bodies, rest_all_comments
+        )
+
     def get_resolved_comments_via_graphql(
         self, pr_info: GitHubPRInfo, page_size: int = 100
     ) -> Tuple[Set[int], Dict[int, str]]:
@@ -701,7 +718,10 @@ class GitHubClient:
                             "スレッド内に50を超えるコメントがあります。一部取得されていない可能性があります。"
                         )
 
-                    if thread["isResolved"]:
+                    # 強化された解決済み判定ロジック
+                    thread_is_truly_resolved = self._is_thread_truly_resolved(thread, comments_data)
+
+                    if thread_is_truly_resolved:
                         # CodeRabbitのコメントを含むスレッドかチェック
                         has_coderabbit = any(
                             "coderabbitai"
@@ -713,10 +733,16 @@ class GitHubClient:
                         if has_coderabbit:
                             coderabbit_resolved_count += 1
 
-                        # 解決済みスレッドの全コメントIDを記録
+                        # 真に解決済みのスレッドの全コメントIDを記録
                         for comment in comments_data["nodes"]:
                             if comment["databaseId"]:
                                 resolved_comment_ids.add(comment["databaseId"])
+                    else:
+                        # GitHub APIで解決済みとされているが実際は未解決のケース
+                        if thread["isResolved"]:
+                            self.logger.warning(
+                                f"スレッド {thread.get('id', 'unknown')} はGitHub APIで解決済みとされていますが、内容分析では未解決と判定されました"
+                            )
 
                     # 全コメントの本文を保存（解決済み・未解決を問わず）
                     for comment in comments_data["nodes"]:
@@ -742,6 +768,146 @@ class GitHubClient:
         )
 
         return resolved_comment_ids, comment_bodies
+
+    def _is_thread_truly_resolved(self, thread: Dict[str, Any], comments_data: Dict[str, Any]) -> bool:
+        """スレッドが真に解決済みかを判定（リプライがないインラインコメントは未解決とする効率的アプローチ）
+
+        プロンプトコンテキストサイズを最適化するため、リプライの有無で解決状態を判定する。
+        リプライがないコメントは開発者の対応待ちと見なし、未解決として扱う。
+
+        Args:
+            thread: GraphQL API のスレッドデータ
+            comments_data: スレッド内のコメントデータ
+
+        Returns:
+            真に解決済みかどうか
+        """
+        comments = comments_data.get("nodes", [])
+
+        # コメントが存在しない場合は未解決として扱う
+        if not comments:
+            return False
+
+        # 1つのコメントのみ（リプライなし）の場合は未解決
+        if len(comments) == 1:
+            self.logger.debug("リプライなしのインラインコメント: 未解決として扱う")
+            return False
+
+        # 複数コメント（リプライあり）の場合、明示的な解決確認をチェック
+        for comment in comments:
+            comment_body = comment.get("body", "")
+
+            # CodeRabbit解決確認マーカー
+            if re.search(r"\[CR_RESOLUTION_CONFIRMED.*?\[/CR_RESOLUTION_CONFIRMED\]",
+                        comment_body, re.IGNORECASE | re.DOTALL):
+                self.logger.debug("CodeRabbit解決確認マーカー検出: 解決済み")
+                return True
+
+            # 開発者による明示的な解決コメント
+            resolved_keywords = [
+                "Fixed", "Resolved", "Done", "Completed", "Applied",
+                "修正済み", "対応済み", "完了", "適用済み", "解決済み"
+            ]
+
+            if any(keyword in comment_body for keyword in resolved_keywords):
+                # ただし、質問や議論の継続を示すパターンは除外
+                discussion_patterns = [
+                    "?", "？", "How", "Why", "どう", "なぜ", "どのよう",
+                    "Should we", "するべき", "検討", "議論"
+                ]
+
+                if not any(pattern in comment_body for pattern in discussion_patterns):
+                    self.logger.debug("開発者による解決コメント検出: 解決済み")
+                    return True
+
+        # リプライはあるが明示的な解決表明がない場合は未解決
+        self.logger.debug("リプライあり、明示的解決なし: 未解決として扱う")
+        return False
+
+    def _get_all_comments_via_rest(
+        self, pr_info: GitHubPRInfo, page_size: int = 100
+    ) -> Dict[int, Dict[str, Any]]:
+        """REST APIで全コメント取得（GraphQLで欠落したコメントの補完用）"""
+        all_comments = {}
+        page = 1
+
+        self.logger.info(f"REST APIで全コメント取得開始: {pr_info.owner}/{pr_info.repo}#{pr_info.pull_number}")
+
+        while True:
+            url = f"/repos/{pr_info.owner}/{pr_info.repo}/pulls/{pr_info.pull_number}/comments"
+            params = {"per_page": page_size, "page": page}
+
+            try:
+                response = self._make_request("GET", url, params=params)
+                comments = response.json()
+
+                if not comments:
+                    break
+
+                # コメント情報を辞書に格納
+                for comment in comments:
+                    comment_id = comment.get("id")
+                    if comment_id:
+                        all_comments[comment_id] = {
+                            "id": comment_id,
+                            "path": comment.get("path"),
+                            "line": comment.get("line"),
+                            "body": comment.get("body", ""),
+                            "created_at": comment.get("created_at"),
+                            "user": comment.get("user", {}).get("login"),
+                            "source": "rest_api"
+                        }
+
+                self.logger.debug(f"REST API ページ {page}: {len(comments)}件のコメント取得")
+                page += 1
+
+                # ページサイズより少ない場合は最後のページ
+                if len(comments) < page_size:
+                    break
+
+            except Exception as e:
+                self.logger.error(f"REST APIコメント取得エラー (ページ {page}): {str(e)}")
+                break
+
+        self.logger.info(f"REST API取得完了: {len(all_comments)}件のコメント")
+        return all_comments
+
+    def _merge_graphql_and_rest_results(
+        self,
+        graphql_resolved_ids: Set[int],
+        graphql_comment_bodies: Dict[int, str],
+        rest_all_comments: Dict[int, Dict[str, Any]]
+    ) -> Tuple[Set[int], Dict[int, str]]:
+        """GraphQLとREST APIの結果をマージして完全性を確保"""
+        merged_resolved_ids = set(graphql_resolved_ids)
+        merged_comment_bodies = dict(graphql_comment_bodies)
+
+        # GraphQLで欠落したコメントをREST APIから補完
+        graphql_comment_ids = set(graphql_comment_bodies.keys())
+        rest_comment_ids = set(rest_all_comments.keys())
+
+        missing_in_graphql = rest_comment_ids - graphql_comment_ids
+
+        if missing_in_graphql:
+            self.logger.warning(f"GraphQLで欠落したコメント: {len(missing_in_graphql)}件")
+            self.logger.debug(f"欠落コメントID: {sorted(missing_in_graphql)}")
+
+            # 欠落コメントを補完（解決状況は保守的に未解決として扱う）
+            for comment_id in missing_in_graphql:
+                rest_comment = rest_all_comments[comment_id]
+                merged_comment_bodies[comment_id] = rest_comment["body"]
+
+                # 保守的アプローチ: 欠落コメントは未解決として扱う
+                # （GraphQLで解決状況が不明なため）
+                self.logger.debug(f"REST補完コメント {comment_id}: 未解決として扱う")
+
+        self.logger.info(
+            f"ハイブリッド結果: GraphQL={len(graphql_comment_ids)}件, "
+            f"REST補完={len(missing_in_graphql)}件, "
+            f"解決済み={len(merged_resolved_ids)}件"
+        )
+
+        return merged_resolved_ids, merged_comment_bodies
 
     def get_pr_reviews_with_outside_diff_graphql(
         self, pr_info: GitHubPRInfo, page_size: int = 100
@@ -866,10 +1032,10 @@ class GitHubClient:
                                 review_body
                             )
                         except ImportError as e:
-                            logger.error(f"Outside diff parser import failed: {e}")
+                            self.logger.error(f"Outside diff parser import failed: {e}")
                             extracted_outside = []
                         except Exception as e:
-                            logger.error(f"Outside diff extraction failed: {e}")
+                            self.logger.error(f"Outside diff extraction failed: {e}")
                             extracted_outside = []
 
                         if extracted_outside:

@@ -615,7 +615,7 @@ class ReplyDecisionMatrix:
 
         return checklist.strip()
 
-    def _generate_parallel_curl_commands(self, reply_required_items: List[Dict]) -> str:
+    def _generate_parallel_curl_commands(self, reply_required_items: List[Dict], owner: str = None, repo: str = None, pr_number: int = None) -> str:
         """並列curl実行用のコマンドリストを生成"""
         commands = []
 
@@ -637,8 +637,11 @@ class ReplyDecisionMatrix:
             else:
                 reply_body = f"@coderabbitai コメント#{comment_id}への返信"
 
-            # curlコマンドを生成
-            curl_cmd = f'echo "Authorization: Bearer $GITHUB_TOKEN" > /tmp/github_headers && curl -X POST -H @/tmp/github_headers -H "Content-Type: application/json" -d \'{{"body": "@coderabbitai {reply_body}"}}\' "https://api.github.com/repos/OWNER/REPO/pulls/PR_NUMBER/comments/{comment_id}/replies" && rm /tmp/github_headers'
+            # curlコマンドを生成（プレースホルダーを実際の値に置換）
+            if owner and repo and pr_number:
+                curl_cmd = f'echo "Authorization: Bearer $GITHUB_TOKEN" > /tmp/github_headers && curl -X POST -H @/tmp/github_headers -H "Content-Type: application/json" -d \'{{"body": "@coderabbitai {reply_body}"}}\' "https://api.github.com/repos/{owner}/{repo}/pulls/{pr_number}/comments/{comment_id}/replies" && rm /tmp/github_headers'
+            else:
+                curl_cmd = f'echo "Authorization: Bearer $GITHUB_TOKEN" > /tmp/github_headers && curl -X POST -H @/tmp/github_headers -H "Content-Type: application/json" -d \'{{"body": "@coderabbitai {reply_body}"}}\' "https://api.github.com/repos/OWNER/REPO/pulls/PR_NUMBER/comments/{comment_id}/replies" && rm /tmp/github_headers'
             commands.append(f"# 返信 #{i} (コメント#{comment_id})")
             commands.append(curl_cmd)
             commands.append("")
@@ -646,7 +649,7 @@ class ReplyDecisionMatrix:
         return "\\n".join(commands)
 
     def _generate_parallel_background_commands(
-        self, reply_required_items: List[Dict]
+        self, reply_required_items: List[Dict], owner: str = None, repo: str = None, pr_number: int = None
     ) -> str:
         """並列バックグラウンド実行用のコマンドを生成"""
         commands = []
@@ -669,8 +672,11 @@ class ReplyDecisionMatrix:
             else:
                 reply_body = f"@coderabbitai コメント#{comment_id}への返信"
 
-            # バックグラウンド実行用のcurlコマンドを生成
-            curl_cmd = f'  echo "Authorization: Bearer $GITHUB_TOKEN" > /tmp/github_headers_{comment_id} && curl -X POST -H @/tmp/github_headers_{comment_id} -H "Content-Type: application/json" -d \'{{"body": "@coderabbitai {reply_body}"}}\' "https://api.github.com/repos/OWNER/REPO/pulls/PR_NUMBER/comments/{comment_id}/replies" && rm /tmp/github_headers_{comment_id} &'
+            # バックグラウンド実行用のcurlコマンドを生成（プレースホルダーを実際の値に置換）
+            if owner and repo and pr_number:
+                curl_cmd = f'  echo "Authorization: Bearer $GITHUB_TOKEN" > /tmp/github_headers_{comment_id} && curl -X POST -H @/tmp/github_headers_{comment_id} -H "Content-Type: application/json" -d \'{{"body": "@coderabbitai {reply_body}"}}\' "https://api.github.com/repos/{owner}/{repo}/pulls/{pr_number}/comments/{comment_id}/replies" && rm /tmp/github_headers_{comment_id} &'
+            else:
+                curl_cmd = f'  echo "Authorization: Bearer $GITHUB_TOKEN" > /tmp/github_headers_{comment_id} && curl -X POST -H @/tmp/github_headers_{comment_id} -H "Content-Type: application/json" -d \'{{"body": "@coderabbitai {reply_body}"}}\' "https://api.github.com/repos/OWNER/REPO/pulls/PR_NUMBER/comments/{comment_id}/replies" && rm /tmp/github_headers_{comment_id} &'
             commands.append(f"  # 返信 #{i} (コメント#{comment_id}) - {template_name}")
             commands.append(curl_cmd)
 

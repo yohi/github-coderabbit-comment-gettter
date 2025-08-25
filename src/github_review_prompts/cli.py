@@ -378,10 +378,10 @@ class CLIInterface:
             self.logger.info("全コメント取得開始...")
             all_comments, comment_stats = github_client.get_all_pr_comments(pr_info)
 
-            # GraphQL APIで解決済みコメント検出
-            self.logger.info("解決済みコメント検出開始...")
+            # ハイブリッドアプローチで解決済みコメント検出
+            self.logger.info("ハイブリッドアプローチでコメント検出開始...")
             resolved_ids, graphql_bodies = (
-                github_client.get_resolved_comments_via_graphql(pr_info)
+                github_client.get_comments_via_hybrid_approach(pr_info)
             )
 
             # コメント処理

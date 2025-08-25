@@ -53,7 +53,11 @@ class AIPromptGenerator:
         footer = self._generate_footer()
 
         # curlコマンドセクションを生成（簡潔版）
-        curl_commands_section = self._generate_simple_curl_section()
+        # PR情報からowner, repo, pr_numberを抽出
+        owner = pr_info.get("owner") if pr_info else None
+        repo = pr_info.get("repo") if pr_info else None
+        pr_number = pr_info.get("number") if pr_info else None
+        curl_commands_section = self._generate_simple_curl_section(owner, repo, pr_number)
 
         # 全体を組み合わせ
         output_parts = [
@@ -334,16 +338,23 @@ curl -X POST \\
   https://api.github.com/repos/{pr_owner}/{pr_repo}/pulls/{pr_number}/comments/{comment_id}/replies
 ```"""
 
-    def _generate_simple_curl_section(self) -> str:
+    def _generate_simple_curl_section(self, owner: str = None, repo: str = None, pr_number: int = None) -> str:
         """簡潔なcurlコマンドセクションを生成"""
-        return """## 📤 返信方法
+        if owner and repo and pr_number:
+            url_template = f"https://api.github.com/repos/{owner}/{repo}/pulls/{pr_number}/comments/COMMENT_ID/replies"
+            replacement_note = "**注意**: COMMENT_IDを実際のコメントIDに置換してください"
+        else:
+            url_template = "https://api.github.com/repos/OWNER/REPO/pulls/PR_NUMBER/comments/COMMENT_ID/replies"
+            replacement_note = "**注意**: OWNER/REPO/PR_NUMBER/COMMENT_IDを実際の値に置換してください"
+
+        return f"""## 📤 返信方法
 
 ### 基本テンプレート
 ```bash
 echo "Authorization: Bearer $GITHUB_TOKEN" > /tmp/github_headers
 curl -X POST -H @/tmp/github_headers -H "Content-Type: application/json" \\
-  -d '{"body": "@coderabbitai 返信メッセージ"}' \\
-  "https://api.github.com/repos/OWNER/REPO/pulls/PR_NUMBER/comments/COMMENT_ID/replies"
+  -d '{{"body": "@coderabbitai 返信メッセージ"}}' \\
+  "{url_template}"
 rm /tmp/github_headers
 ```
 
@@ -352,7 +363,7 @@ rm /tmp/github_headers
 - **⏳ 将来対応**: `@coderabbitai 将来対応予定。記憶依頼。解決済みマーク依頼。`
 - **🤔 要確認**: `@coderabbitai 詳細説明を依頼。`
 
-**注意**: OWNER/REPO/PR_NUMBER/COMMENT_IDを実際の値に置換"""
+{replacement_note}"""
 
     def _generate_footer(self) -> str:
         """フッター部分を生成（簡潔版）"""

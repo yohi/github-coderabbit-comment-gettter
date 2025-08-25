@@ -248,9 +248,9 @@ class UnifiedCLI:
             comments, comment_stats = github_client.get_all_pr_comments(pr_info)
             print(colorize(f"📊 取得したコメント数: {len(comments)} 件", "1;32"))
 
-            # 解決済みコメント検出
-            print(colorize("🔍 解決済みコメント検出中...", "1;33"))
-            resolved_ids, _ = github_client.get_resolved_comments_via_graphql(pr_info)
+            # ハイブリッドアプローチでコメント検出
+            print(colorize("🔍 ハイブリッドアプローチでコメント検出中...", "1;33"))
+            resolved_ids, _ = github_client.get_comments_via_hybrid_approach(pr_info)
             print(colorize(f"✅ 解決済みコメント: {len(resolved_ids)} 件", "1;32"))
 
             # 解決済みコメントの除外（--include-resolvedオプションがない場合）
