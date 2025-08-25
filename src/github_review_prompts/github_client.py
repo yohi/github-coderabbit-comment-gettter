@@ -1372,3 +1372,112 @@ class GitHubClient:
             self.logger.info(f"一括返信完了: 全 {len(results)} 件成功")
 
         return results
+
+    def resolve_review_thread(self, comment_id: int, pr_info: GitHubPRInfo) -> bool:
+        """レビュースレッドを解決済みにする
+
+        Args:
+            comment_id: コメントID
+            pr_info: プルリクエスト情報
+
+        Returns:
+            解決処理の成功フラグ
+        """
+        try:
+            # まず、コメントIDからスレッドIDを取得
+            thread_id = self._get_thread_id_for_comment(comment_id, pr_info)
+            if not thread_id:
+                self.logger.warning(f"コメント {comment_id} のスレッドIDが取得できませんでした")
+                return False
+
+            # GraphQL mutation for resolving a review thread
+            mutation = """
+            mutation($threadId: ID!) {
+              resolveReviewThread(input: {threadId: $threadId}) {
+                thread {
+                  id
+                  isResolved
+                }
+              }
+            }
+            """
+
+            variables = {"threadId": thread_id}
+
+            response = self._make_graphql_request(mutation, variables)
+            data = response.json()
+
+            if "errors" in data:
+                self.logger.error(f"GraphQL mutation エラー: {data['errors']}")
+                return False
+
+            result = data.get("data", {}).get("resolveReviewThread", {})
+            thread = result.get("thread", {})
+
+            if thread.get("isResolved"):
+                self.logger.info(f"✅ スレッド解決成功: コメントID {comment_id}")
+                return True
+            else:
+                self.logger.warning(f"❌ スレッド解決失敗: コメントID {comment_id}")
+                return False
+
+        except Exception as e:
+            self.logger.error(f"スレッド解決処理エラー (コメントID: {comment_id}): {str(e)}")
+            return False
+
+    def _get_thread_id_for_comment(self, comment_id: int, pr_info: GitHubPRInfo) -> Optional[str]:
+        """コメントIDに対応するスレッドIDを取得
+
+        Args:
+            comment_id: コメントID
+            pr_info: プルリクエスト情報
+
+        Returns:
+            スレッドID（見つからない場合はNone）
+        """
+        try:
+            query = """
+            query($owner: String!, $repo: String!, $number: Int!) {
+              repository(owner: $owner, name: $repo) {
+                pullRequest(number: $number) {
+                  reviewThreads(first: 100) {
+                    nodes {
+                      id
+                      comments(first: 50) {
+                        nodes {
+                          databaseId
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+            """
+
+            variables = {
+                "owner": pr_info.owner,
+                "repo": pr_info.repo,
+                "number": pr_info.pull_number,
+            }
+
+            response = self._make_graphql_request(query, variables)
+            data = response.json()
+
+            if "errors" in data:
+                self.logger.error(f"スレッドID取得エラー: {data['errors']}")
+                return None
+
+            threads = data["data"]["repository"]["pullRequest"]["reviewThreads"]["nodes"]
+
+            for thread in threads:
+                for comment in thread["comments"]["nodes"]:
+                    if comment["databaseId"] == comment_id:
+                        return thread["id"]
+
+            self.logger.warning(f"コメントID {comment_id} に対応するスレッドが見つかりません")
+            return None
+
+        except Exception as e:
+            self.logger.error(f"スレッドID取得エラー: {str(e)}")
+            return None
