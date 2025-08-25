@@ -1,6 +1,14 @@
 # 🤖 GitHub Comment Reply Tool
 
-GitHub Pull Requestのレビューコメント（CodeRabbitなど）に対して**特定コメントに直接返信する**curlコマンドや直接APIで返信を行う高機能ツールです。`in_reply_to`パラメータによりGitHub上でスレッド形式で表示されます。
+GitHub Pull Requestのレビューコメント（CodeRabbitなど）に対して**PR Review Comment Reply API**を使用して特定コメントに直接返信するツールです。正しいGitHub API仕様に従い、スレッド形式で表示されます。
+
+## 🔴 重要: 正しいAPI使用について
+
+**必須**: PR Review Commentに返信する場合は以下のAPIを使用してください：
+- **✅ 正しい**: `POST /repos/{owner}/{repo}/pulls/{pull_number}/comments/{comment_id}/replies`
+- **❌ 間違い**: `POST /repos/{owner}/{repo}/issues/{issue_number}/comments`（Issue Comment API）
+
+**公式API仕様**: https://docs.github.com/ja/rest/pulls/comments#create-a-reply-for-a-review-comment
 
 ## 📋 目次
 
@@ -215,13 +223,16 @@ uv run grp-reply generate-curl https://github.com/owner/repo/pull/123 \
 
 出力例：
 ```bash
+# ✅ PR Review Comment Reply API（正しい方法）
 curl -X POST \
-  https://api.github.com/repos/owner/repo/pulls/123/comments \
+  https://api.github.com/repos/owner/repo/pulls/123/comments/456789/replies \
   -H "Authorization: token ghp_xxxxxxxxxxxx" \
   -H "Accept: application/vnd.github.v3+json" \
   -H "Content-Type: application/json" \
-  -d '{"body":"Fixed!","in_reply_to":456789,"path":"src/file.py","line":42,"side":"RIGHT"}'
+  -d '{"body":"Fixed!"}'
 ```
+
+**🔴 重要**: PR Review Commentに返信する場合は必ず `/pulls/{pull_number}/comments/{comment_id}/replies` エンドポイントを使用してください。
 
 ### 新規コメント作成用curlコマンド
 

@@ -2164,15 +2164,26 @@ is_resolved: {str(thread_info.get('is_resolved', False)).lower()}"""
         pr_number = pr_info.get("number", "PR_NUMBER")
 
         return f"""
-## ⚡ 高速返信コマンド
+## ⚡ PR Review Comment Reply API使用（重要）
 
-### **効率的な並列実行（推奨）**
-複数のcurlコマンドを並列で実行して処理時間を短縮：
+### **🔴 重要: 正しいGitHub API使用必須**
+**公式API仕様**: https://docs.github.com/ja/rest/pulls/comments#create-a-reply-for-a-review-comment
 
+### **✅ 正しいAPIエンドポイント**
 ```bash
-# 並列実行で高速処理 - PR番号: {pr_number}
+# ✅ PR Review Commentに対する返信（必須使用）
+POST /repos/{{owner}}/{{repo}}/pulls/{{pull_number}}/comments/{{comment_id}}/replies
+
+# ❌ 間違い: Issue Comment API（使用禁止）
+POST /repos/{{owner}}/{{repo}}/issues/{{issue_number}}/comments
+```
+
+### **⚡ 高速並列返信コマンド（修正版）**
+```bash
+# PR Review Comment Reply API使用（正しい方法） - PR番号: {pr_number}
 echo "Authorization: Bearer $GITHUB_TOKEN" > /tmp/github_headers
 {{
+  # PR Review Comment Reply API使用（正しいエンドポイント）
   curl -X POST -H @/tmp/github_headers -H "Content-Type: application/json" \\
     -d '{{"body": "@coderabbitai 技術的制約により対応不要。解決済みマーク依頼。"}}' \\
     "https://api.github.com/repos/{owner}/{repo}/pulls/{pr_number}/comments/COMMENT_ID1/replies" &
@@ -2199,14 +2210,41 @@ echo "Authorization: Bearer $GITHUB_TOKEN" > /tmp/github_headers
 rm /tmp/github_headers
 ```
 
-**⚠️ 使用方法:**
-1. `COMMENT_ID1`, `COMMENT_ID2`, ... を実際のコメントID（数値のみ）に置換
-2. 返信内容を状況に応じて調整
-3. 最大5件まで並列実行（API制限考慮）
+### **🚨 重要: Comment ID形式の明確化**
+```bash
+# ✅ 使用可能なComment ID（数値形式のみ）
+COMMENT_ID1=1234567890  # PR review commentの数値ID
 
-**🚨 重要: コメントIDは数値形式のみ有効**
-- ✅ 正しい例: `1234567890`
-- ❌ 間違い例: `PRRC_kwDOO1Nb7c67uPE5_outside_3`
+# ❌ 使用不可（GraphQL ID形式）
+PRR_kwDOO1Nb7c67uPE5_outside_3  # これは使用できません
+
+# 📊 正しいComment ID取得方法
+curl -H "Authorization: Bearer $GITHUB_TOKEN" \\
+  "https://api.github.com/repos/{owner}/{repo}/pulls/{pr_number}/comments" \\
+  | jq '.[] | {{id: .id, body: (.body | split("\\n")[0])}}'
+```
+
+### **✅ エラーハンドリング付き実行例**
+```bash
+# 成功確認付きの安全な実行
+response=$(curl -s -X POST -H @/tmp/github_headers -H "Content-Type: application/json" \\
+  -d '{{"body": "@coderabbitai 返信内容"}}' \\
+  "https://api.github.com/repos/{owner}/{repo}/pulls/{pr_number}/comments/COMMENT_ID/replies")
+
+# API成功確認
+if echo "$response" | grep -q '"id":'; then
+  echo "✅ PR Review Comment返信成功"
+  echo "$response" | jq '.id'
+else
+  echo "❌ PR Review Comment返信失敗: $response"
+fi
+```
+
+**⚠️ 使用方法:**
+1. `COMMENT_ID1`, `COMMENT_ID2`, ... を実際の数値コメントIDに置換
+2. 返信内容を状況に応じて調整  
+3. 最大5件まで並列実行（API制限考慮）
+4. 必ずPR Review Comment Reply APIを使用
 - GraphQL IDは使用不可、数値IDのみ使用してください
 
 ### **方法2: 個別実行（シンプル）**

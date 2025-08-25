@@ -31,17 +31,16 @@ reply_single_comment() {
 
     echo "📤 #$comment_id: 返信送信中..."
 
-    # JSON ペイロードを jq で安全に作成
+    # JSON ペイロードを jq で安全に作成（PR Review Comment Reply API用）
     local json_payload
-    json_payload=$(jq -n --arg body "$reply_text" --argjson in_reply_to "$comment_id" \
-        '{body: $body, in_reply_to: $in_reply_to}')
+    json_payload=$(jq -n --arg body "$reply_text" '{body: $body}')
 
     if curl -s -X POST \
         -H "Authorization: Bearer $GITHUB_TOKEN" \
         -H "Accept: application/vnd.github.v3+json" \
         -H "Content-Type: application/json" \
         --data-binary "$json_payload" \
-        "https://api.github.com/repos/$REPO_OWNER/$REPO_NAME/pulls/$PR_NUMBER/comments" > /dev/null; then
+        "https://api.github.com/repos/$REPO_OWNER/$REPO_NAME/pulls/$PR_NUMBER/comments/$comment_id/replies" > /dev/null; then
         echo "✅ #$comment_id: 返信完了"
     else
         echo "❌ #$comment_id: 返信失敗"
