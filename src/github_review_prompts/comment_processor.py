@@ -28,17 +28,19 @@ from .comment_thread_processor import CommentThreadProcessor
 class CommentProcessor:
     """コメント処理・フィルタリングクラス"""
 
-    # CodeRabbit解決済みマーカーのパターン（柔軟な検出）
+    # CodeRabbit解決済みマーカーのパターン（新フォーマット対応）
     CR_RESOLUTION_MARKER_PATTERN = re.compile(
-        r"\[CR_RESOLUTION_CONFIRMED[^\]]*\].*?✅.*?エンジニアによる技術的検証完了.*?\[/CR_RESOLUTION_CONFIRMED\]",
+        r"\[CR_RESOLUTION_CONFIRMED[^\]]*\].*?✅.*?エンジニアによる技術的検証完了.*?CodeRabbitによる解決済みマーク実行可能.*?\[/CR_RESOLUTION_CONFIRMED\]",
         re.DOTALL | re.IGNORECASE,
     )
-    
-    # シンプルなマーカーパターン（フォールバック用）
+
+    # シンプルなマーカーパターン（フォールバック用・新フォーマット対応）
     SIMPLE_RESOLUTION_PATTERNS = [
-        re.compile(r"\[CR_RESOLUTION_CONFIRMED.*?\[/CR_RESOLUTION_CONFIRMED\]", re.DOTALL | re.IGNORECASE),
-        re.compile(r"✅.*?エンジニアによる技術的検証完了", re.IGNORECASE),
+        re.compile(r"\[CR_RESOLUTION_CONFIRMED[^:]*:[^]]*\].*?\[/CR_RESOLUTION_CONFIRMED\]", re.DOTALL | re.IGNORECASE),
+        re.compile(r"✅.*?エンジニアによる技術的検証完了.*?CodeRabbitによる解決済みマーク実行可能", re.IGNORECASE),
         re.compile(r"CodeRabbitによる解決済みマーク実行可能", re.IGNORECASE),
+        re.compile(r"\[CR_RESOLUTION_CONFIRMED:TECHNICAL_ISSUE_RESOLVED\]", re.IGNORECASE),
+        re.compile(r"\[CR_RESOLUTION_CONFIRMED:FUTURE_PHASE_PLANNED\]", re.IGNORECASE),
     ]
 
     # 追加の解決済み判定パターン
@@ -81,7 +83,7 @@ class CommentProcessor:
         for comment_id, body in comment_bodies.items():
             # メインパターンでチェック
             is_marked = self.CR_RESOLUTION_MARKER_PATTERN.search(body)
-            
+
             # メインパターンで検出できない場合はシンプルパターンでチェック
             if not is_marked:
                 for pattern in self.SIMPLE_RESOLUTION_PATTERNS:
@@ -91,7 +93,7 @@ class CommentProcessor:
                             f"シンプルパターンでマーカー検出: コメントID {comment_id}"
                         )
                         break
-            
+
             # 追加パターンでチェック
             if not is_marked:
                 for pattern in self.ADDITIONAL_RESOLUTION_PATTERNS:
@@ -101,7 +103,7 @@ class CommentProcessor:
                             f"追加パターンでマーカー検出: コメントID {comment_id}"
                         )
                         break
-            
+
             if is_marked:
                 marked_comment_ids.add(comment_id)
                 self.logger.info(
@@ -134,7 +136,7 @@ class CommentProcessor:
         if not marked_comment_ids:
             self.logger.debug("自動解決対象のマーカーがありません")
             return
-        
+
         if not pr_info:
             self.logger.warning("自動解決: PR情報がありません")
             return
@@ -271,7 +273,7 @@ class CommentProcessor:
         cursor = None
         max_pages = 10  # 無限ループ防止
         page_count = 0
-        
+
         while page_count < max_pages:
             query = """
             query($owner: String!, $repo: String!, $number: Int!, $after: String) {
@@ -328,10 +330,10 @@ class CommentProcessor:
                     .get("pullRequest", {})
                     .get("reviewThreads", {})
                 )
-                
+
                 threads = review_threads_data.get("nodes", [])
                 page_info = review_threads_data.get("pageInfo", {})
-                
+
                 self.logger.debug(
                     f"GraphQLページ {page_count + 1}: {len(threads)}スレッドを検索中"
                 )
@@ -346,7 +348,7 @@ class CommentProcessor:
                                 f"スレッドID検出成功: コメント{comment_id} -> {thread_id}"
                             )
                             return thread_id
-                
+
                 # 次のページを検索
                 if page_info.get("hasNextPage"):
                     cursor = page_info.get("endCursor")
@@ -359,7 +361,7 @@ class CommentProcessor:
             except Exception as e:
                 self.logger.error(f"スレッドID取得エラー (page {page_count + 1}): {str(e)}")
                 return None
-        
+
         self.logger.warning(
             f"スレッドIDが見つかりませんでした: コメントID {comment_id} (検索ページ数: {page_count})"
         )
@@ -411,7 +413,7 @@ class CommentProcessor:
                 f"解決マーカー検出開始: GraphQLコメント数={len(graphql_bodies)}"
             )
             marked_comment_ids = self.detect_resolution_markers(graphql_bodies)
-            
+
             if marked_comment_ids:
                 if pr_info:
                     self.logger.info(

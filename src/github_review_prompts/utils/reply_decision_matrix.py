@@ -96,21 +96,26 @@ class ReplyDecisionMatrix:
             },
         }
 
-        # 返信テンプレート（改良版：より具体的で技術的根拠を重視）
+        # 返信テンプレート（改良版：CodeRabbit誤解防止強化）
         self.reply_templates = {
-            "technical_rejection": """@coderabbitai この指摘は以下の技術的理由により対応不要と判断します：
+            "technical_rejection": """@coderabbitai この指摘について技術的検証を実施しましたが、以下の理由により対応不要と判断します：
 
-**理由**: {technical_reason}
-**詳細**: {detailed_explanation}
-**技術的根拠**: {reference_or_documentation}
+**技術的根拠**: {technical_reason}
+**詳細説明**: {detailed_explanation}
+**参照資料**: {reference_or_documentation}
 **代替案**: {alternative_approach}
 
-より適切なアプローチがあれば提案をお願いします。問題ないと判断できれば、このコメントスレッドを解決済みにマークしてください。
+**解決済みマーク設置依頼**:
+HEADブランチを確認後、技術的に問題ないと判断できる場合は、**以下のテキストを一字一句正確にコピーペースト**してください：
 
+```
 [CR_RESOLUTION_CONFIRMED:TECHNICAL_ISSUE_RESOLVED]
-✅ エンジニアによる技術的検証完了
-[/CR_RESOLUTION_CONFIRMED]""",
-            "future_planning": """@coderabbitai 妥当な指摘ですが現在の{current_phase}フェーズでは対応範囲外です。
+✅ エンジニアによる技術的検証完了 - CodeRabbitによる解決済みマーク実行可能
+[/CR_RESOLUTION_CONFIRMED]
+```
+
+⚠️ **重要**: 上記マーカーは自動処理用フォーマットのため、文言変更・追加・削除は禁止です。""",
+            "future_planning": """@coderabbitai 技術的に妥当な指摘ですが、現在の{current_phase}フェーズでは対応範囲外です。
 
 **現在フェーズ**: {current_phase}
 **対応予定フェーズ**: {future_phase}
@@ -125,12 +130,17 @@ class ReplyDecisionMatrix:
 - **前提条件**: {prerequisites}
 - **思い出し条件**: {trigger_condition}
 
-将来対応として記録して問題なければ、下記フォーマットの解決済みマークをコメントの末尾に付与してください：
+**解決済みマーク設置依頼**:
+将来対応として記録完了後、**以下のテキストを一字一句正確にコピーペースト**してください：
 
+```
 [CR_RESOLUTION_CONFIRMED:FUTURE_PHASE_PLANNED]
-✅ 将来フェーズ対応として記録完了
-[/CR_RESOLUTION_CONFIRMED]""",
-            "technical_correction": """@coderabbitai この指摘は{specific_reason}により技術的に不正確と判断します。
+✅ 将来フェーズ対応として記録完了 - CodeRabbitによる解決済みマーク実行可能
+[/CR_RESOLUTION_CONFIRMED]
+```
+
+⚠️ **重要**: 上記マーカーは自動処理用フォーマットのため、文言変更・追加・削除は禁止です。""",
+            "technical_correction": """@coderabbitai この指摘について詳細検証を行いましたが、{specific_reason}により技術的に間違いと判断します：
 
 **指摘内容の問題点**: {issue_with_suggestion}
 **正しい技術情報**: {correct_technical_info}
@@ -138,11 +148,16 @@ class ReplyDecisionMatrix:
 **公式ドキュメント**: {documentation_link}
 **実証方法**: {verification_method}
 
-技術的な誤りを確認して学習していただけましたら、下記フォーマットの解決済みマークをコメントの末尾に付与してください：
+**解決済みマーク設置依頼**:
+指摘が技術的に間違いであることを確認後、**以下のテキストを一字一句正確にコピーペースト**してください：
 
-[CR_RESOLUTION_CONFIRMED:TECHNICAL_CORRECTION_ACCEPTED]
-✅ 技術的訂正が受け入れられました
-[/CR_RESOLUTION_CONFIRMED]""",
+```
+[CR_RESOLUTION_CONFIRMED:TECHNICAL_ISSUE_RESOLVED]
+✅ エンジニアによる技術的検証完了 - CodeRabbitによる解決済みマーク実行可能
+[/CR_RESOLUTION_CONFIRMED]
+```
+
+⚠️ **重要**: 上記マーカーは自動処理用フォーマットのため、文言変更・追加・削除は禁止です。""",
             "clarification_request": """@coderabbitai {clarification_topic}について詳細説明をお願いします。
 
 具体的な確認事項:
@@ -616,22 +631,22 @@ class ReplyDecisionMatrix:
         return checklist.strip()
 
     def _generate_parallel_curl_commands(self, reply_required_items: List[Dict], owner: str = None, repo: str = None, pr_number: int = None) -> str:
-        """並列curl実行用のコマンドリストを生成"""
+        """並列curl実行用のコマンドリストを生成（改善版）"""
         commands = []
 
         for i, item in enumerate(reply_required_items, 1):
             decision = item["decision"]
             comment_id = item["comment_id"]
 
-            # テンプレートに基づく返信内容を生成
+            # テンプレートに基づく返信内容を生成（改善版）
             template_name = decision.template_type or "general"
 
             if template_name == "technical_rejection":
-                reply_body = "@coderabbitai この指摘は技術的制約により対応不要です。\\n\\n問題ないと判断できたら、下記フォーマットの解決済みマークをコメントの末尾に付与してください：\\n\\n[CR_RESOLUTION_CONFIRMED:TECHNICAL_ISSUE_RESOLVED]\\n✅ エンジニアによる技術的検証完了 - CodeRabbitによる解決済みマーク実行可能\\n[/CR_RESOLUTION_CONFIRMED]"
+                reply_body = "@coderabbitai この指摘について技術的検証を実施しましたが、技術的制約により対応不要と判断します。\\n\\nHEADブランチを確認後、技術的に問題ないと判断できる場合は、**以下のテキストを一字一句正確にコピーペースト**してください：\\n\\n```\\n[CR_RESOLUTION_CONFIRMED:TECHNICAL_ISSUE_RESOLVED]\\n✅ エンジニアによる技術的検証完了 - CodeRabbitによる解決済みマーク実行可能\\n[/CR_RESOLUTION_CONFIRMED]\\n```\\n\\n⚠️ **重要**: 上記マーカーは自動処理用フォーマットのため、文言変更・追加・削除は禁止です。"
             elif template_name == "future_planning":
-                reply_body = "@coderabbitai 技術的に妥当ですが現在のフェーズでは対象外です。\\n\\n将来対応と判断して問題なければ、下記フォーマットの解決済みマークをコメントの末尾に付与してください：\\n\\n[CR_RESOLUTION_CONFIRMED:TECHNICAL_ISSUE_RESOLVED]\\n✅ エンジニアによる技術的検証完了 - CodeRabbitによる解決済みマーク実行可能\\n[/CR_RESOLUTION_CONFIRMED]"
+                reply_body = "@coderabbitai 技術的に妥当な指摘ですが、現在のフェーズでは対応範囲外です。\\n\\n将来対応として記録完了後、**以下のテキストを一字一句正確にコピーペースト**してください：\\n\\n```\\n[CR_RESOLUTION_CONFIRMED:FUTURE_PHASE_PLANNED]\\n✅ 将来フェーズ対応として記録完了 - CodeRabbitによる解決済みマーク実行可能\\n[/CR_RESOLUTION_CONFIRMED]\\n```\\n\\n⚠️ **重要**: 上記マーカーは自動処理用フォーマットのため、文言変更・追加・削除は禁止です。"
             elif template_name == "technical_correction":
-                reply_body = "@coderabbitai この指摘は技術的に間違いと判断します。\\n\\n指摘が間違いと確認できれば、下記フォーマットの解決済みマークをコメントの末尾に付与してください：\\n\\n[CR_RESOLUTION_CONFIRMED:TECHNICAL_ISSUE_RESOLVED]\\n✅ エンジニアによる技術的検証完了 - CodeRabbitによる解決済みマーク実行可能\\n[/CR_RESOLUTION_CONFIRMED]"
+                reply_body = "@coderabbitai この指摘について詳細検証を行いましたが、技術的に間違いと判断します。\\n\\n指摘が技術的に間違いであることを確認後、**以下のテキストを一字一句正確にコピーペースト**してください：\\n\\n```\\n[CR_RESOLUTION_CONFIRMED:TECHNICAL_ISSUE_RESOLVED]\\n✅ エンジニアによる技術的検証完了 - CodeRabbitによる解決済みマーク実行可能\\n[/CR_RESOLUTION_CONFIRMED]\\n```\\n\\n⚠️ **重要**: 上記マーカーは自動処理用フォーマットのため、文言変更・追加・削除は禁止です。"
             elif template_name == "clarification_request":
                 reply_body = "@coderabbitai 詳細説明をお願いします。より適切な対応を検討いたします。"
             else:
@@ -651,22 +666,22 @@ class ReplyDecisionMatrix:
     def _generate_parallel_background_commands(
         self, reply_required_items: List[Dict], owner: str = None, repo: str = None, pr_number: int = None
     ) -> str:
-        """並列バックグラウンド実行用のコマンドを生成"""
+        """並列バックグラウンド実行用のコマンドを生成（改善版）"""
         commands = []
 
         for i, item in enumerate(reply_required_items, 1):
             decision = item["decision"]
             comment_id = item["comment_id"]
 
-            # テンプレートに基づく返信内容を生成
+            # テンプレートに基づく返信内容を生成（改善版）
             template_name = decision.template_type or "general"
 
             if template_name == "technical_rejection":
-                reply_body = "@coderabbitai この指摘は技術的制約により対応不要です。\\n\\n問題ないと判断できたら、下記フォーマットの解決済みマークをコメントの末尾に付与してください：\\n\\n[CR_RESOLUTION_CONFIRMED:TECHNICAL_ISSUE_RESOLVED]\\n✅ エンジニアによる技術的検証完了 - CodeRabbitによる解決済みマーク実行可能\\n[/CR_RESOLUTION_CONFIRMED]"
+                reply_body = "@coderabbitai この指摘について技術的検証を実施しましたが、技術的制約により対応不要と判断します。\\n\\nHEADブランチを確認後、技術的に問題ないと判断できる場合は、**以下のテキストを一字一句正確にコピーペースト**してください：\\n\\n```\\n[CR_RESOLUTION_CONFIRMED:TECHNICAL_ISSUE_RESOLVED]\\n✅ エンジニアによる技術的検証完了 - CodeRabbitによる解決済みマーク実行可能\\n[/CR_RESOLUTION_CONFIRMED]\\n```\\n\\n⚠️ **重要**: 上記マーカーは自動処理用フォーマットのため、文言変更・追加・削除は禁止です。"
             elif template_name == "future_planning":
-                reply_body = "@coderabbitai 技術的に妥当ですが現在のフェーズでは対象外です。\\n\\n将来対応と判断して問題なければ、下記フォーマットの解決済みマークをコメントの末尾に付与してください：\\n\\n[CR_RESOLUTION_CONFIRMED:TECHNICAL_ISSUE_RESOLVED]\\n✅ エンジニアによる技術的検証完了 - CodeRabbitによる解決済みマーク実行可能\\n[/CR_RESOLUTION_CONFIRMED]"
+                reply_body = "@coderabbitai 技術的に妥当な指摘ですが、現在のフェーズでは対応範囲外です。\\n\\n将来対応として記録完了後、**以下のテキストを一字一句正確にコピーペースト**してください：\\n\\n```\\n[CR_RESOLUTION_CONFIRMED:FUTURE_PHASE_PLANNED]\\n✅ 将来フェーズ対応として記録完了 - CodeRabbitによる解決済みマーク実行可能\\n[/CR_RESOLUTION_CONFIRMED]\\n```\\n\\n⚠️ **重要**: 上記マーカーは自動処理用フォーマットのため、文言変更・追加・削除は禁止です。"
             elif template_name == "technical_correction":
-                reply_body = "@coderabbitai この指摘は技術的に間違いと判断します。\\n\\n指摘が間違いと確認できれば、下記フォーマットの解決済みマークをコメントの末尾に付与してください：\\n\\n[CR_RESOLUTION_CONFIRMED:TECHNICAL_ISSUE_RESOLVED]\\n✅ エンジニアによる技術的検証完了 - CodeRabbitによる解決済みマーク実行可能\\n[/CR_RESOLUTION_CONFIRMED]"
+                reply_body = "@coderabbitai この指摘について詳細検証を行いましたが、技術的に間違いと判断します。\\n\\n指摘が技術的に間違いであることを確認後、**以下のテキストを一字一句正確にコピーペースト**してください：\\n\\n```\\n[CR_RESOLUTION_CONFIRMED:TECHNICAL_ISSUE_RESOLVED]\\n✅ エンジニアによる技術的検証完了 - CodeRabbitによる解決済みマーク実行可能\\n[/CR_RESOLUTION_CONFIRMED]\\n```\\n\\n⚠️ **重要**: 上記マーカーは自動処理用フォーマットのため、文言変更・追加・削除は禁止です。"
             elif template_name == "clarification_request":
                 reply_body = "@coderabbitai 詳細説明をお願いします。より適切な対応を検討いたします。"
             else:
