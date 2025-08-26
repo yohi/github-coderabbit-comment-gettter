@@ -450,6 +450,8 @@ class TestCommentProcessor:
 class TestCodeRabbitFilteringPerformance:
     """CodeRabbitフィルタリングのパフォーマンステスト"""
 
+    @pytest.mark.slow
+    @pytest.mark.memory_intensive
     def test_large_scale_comment_filtering_performance(self):
         """大量コメントフィルタリングのパフォーマンステスト"""
         import time
@@ -493,6 +495,7 @@ class TestCodeRabbitFilteringPerformance:
         assert len(coderabbit_comments) == 500, f"CodeRabbitコメント数が期待値と異なります: {len(coderabbit_comments)}"
         assert elapsed_time < 0.1, f"1000件のフィルタリングに{elapsed_time:.3f}秒かかりました（0.1秒以内であるべき）"
 
+    @pytest.mark.slow
     def test_comment_classification_performance(self):
         """コメント分類のパフォーマンステスト"""
         import time

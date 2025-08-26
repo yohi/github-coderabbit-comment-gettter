@@ -302,15 +302,6 @@ def mock_network_responses():
     return _create_response
 
 
-@pytest.fixture
-def performance_test_data():
-    """パフォーマンステスト用データ - メモリ効率化版"""
-    return {
-        "small_dataset": list(range(5)),      # 10 → 5に削減
-        "medium_dataset": list(range(25)),    # 100 → 25に削減
-        "large_dataset": list(range(100)),    # 1000 → 100に削減
-        "urls": [f"https://github.com/owner{i}/repo{i}/pull/{i+1}" for i in range(50)]  # 1000 → 50に削減
-    }
 
 
 @pytest.fixture

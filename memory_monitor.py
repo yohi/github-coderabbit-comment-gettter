@@ -17,6 +17,10 @@ except ImportError:
     HAS_PSUTIL = False
     print("⚠️ psutil not available, using basic monitoring")
 
+# メモリ使用量の閾値定数 (MB)
+MEMORY_DANGER_MB = 10240   # 10 GiB / 10240 MB
+MEMORY_WARNING_MB = 5120   # 5 GiB / 5120 MB
+
 def get_system_memory_basic():
     """基本的なシステムメモリ情報を取得（psutil不要）"""
     try:
@@ -61,9 +65,9 @@ def monitor_pytest_memory(duration=300, interval=5):
                           f"最大: {max_memory:>8.1f} MB")
                     
                     # 危険レベルのチェック
-                    if memory_mb > 10000:  # 10GB超過
+                    if memory_mb > MEMORY_DANGER_MB:  # 10 GiB / 10240 MB超過
                         print(f"🚨 警告: メモリ使用量が危険レベル ({memory_mb:.1f} MB)")
-                    elif memory_mb > 5000:  # 5GB超過
+                    elif memory_mb > MEMORY_WARNING_MB:  # 5 GiB / 5120 MB超過
                         print(f"⚠️  注意: メモリ使用量が高い ({memory_mb:.1f} MB)")
                         
             except (psutil.NoSuchProcess, psutil.AccessDenied):
@@ -78,9 +82,9 @@ def monitor_pytest_memory(duration=300, interval=5):
     print(f"✅ 監視完了")
     print(f"📊 最大メモリ使用量: {max_memory:.1f} MB")
     
-    if max_memory > 10000:
+    if max_memory > MEMORY_DANGER_MB:
         print("🚨 メモリ使用量が非常に高い状態でした。最適化が必要です。")
-    elif max_memory > 5000:
+    elif max_memory > MEMORY_WARNING_MB:
         print("⚠️  メモリ使用量が高めでした。監視を継続してください。")
     else:
         print("✅ メモリ使用量は正常範囲内でした。")
@@ -125,9 +129,9 @@ def show_current_memory_status():
         print(f"\n🧪 実行中のpytestプロセス:")
         for pid, memory_mb in pytest_processes:
             print(f"   PID {pid}: {memory_mb:.1f} MB")
-            if memory_mb > 10000:
+            if memory_mb > MEMORY_DANGER_MB:
                 print(f"      🚨 危険: 非常に高いメモリ使用量")
-            elif memory_mb > 5000:
+            elif memory_mb > MEMORY_WARNING_MB:
                 print(f"      ⚠️  警告: 高いメモリ使用量")
     else:
         print(f"\n✅ 現在pytestプロセスは実行されていません")

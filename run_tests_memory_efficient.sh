@@ -3,6 +3,9 @@
 
 set -e
 
+# テスト失敗フラグ
+PYTEST_FAILED=false
+
 echo "🚀 メモリ効率的なテスト実行を開始..."
 
 # 環境変数設定
@@ -33,6 +36,18 @@ run_tests_chunked() {
         echo "🧪 実行中: $test_file"
 
         # メモリ制限付きで実行
+        # systemd-runの実行可能性チェック
+        if ! systemd-run --user --scope \
+            -p MemoryMax=2G \
+            -p MemorySwapMax=1G \
+            true > /dev/null 2>&1; then
+            systemd_exit_code=$?
+            echo "❌ systemd-run の初期化に失敗しました (exit code: $systemd_exit_code)"
+            echo "   systemd-runが利用できない可能性があります"
+            exit $systemd_exit_code
+        fi
+
+        # systemd-run + pytest の実行
         systemd-run --user --scope \
             -p MemoryMax=2G \
             -p MemorySwapMax=1G \
@@ -42,7 +57,15 @@ run_tests_chunked() {
                 -v \
                 --maxfail=3 \
                 --disable-warnings \
-                -x || echo "⚠️  $test_file でエラーが発生しました"
+                -x
+        pytest_exit_code=$?
+
+        # 結果に応じた処理
+        if [ $pytest_exit_code -ne 0 ]; then
+            echo "⚠️  $test_file でpytestがエラーを返しました (exit code: $pytest_exit_code)"
+            # pytest失敗時は継続するが、最終的にnon-zeroで終了するためにフラグを設定
+            PYTEST_FAILED=true
+        fi
 
         # プロセス間でメモリをクリア
         echo "🧹 メモリクリア..."
@@ -79,6 +102,18 @@ run_heavy_tests_separately() {
         echo "🔥 実行中（メモリ制限付き）: $test_file"
 
         # より厳しいメモリ制限
+        # systemd-runの実行可能性チェック
+        if ! systemd-run --user --scope \
+            -p MemoryMax=1G \
+            -p MemorySwapMax=500M \
+            true > /dev/null 2>&1; then
+            systemd_exit_code=$?
+            echo "❌ systemd-run の初期化に失敗しました (exit code: $systemd_exit_code)"
+            echo "   systemd-runが利用できない可能性があります"
+            exit $systemd_exit_code
+        fi
+
+        # systemd-run + pytest の実行
         systemd-run --user --scope \
             -p MemoryMax=1G \
             -p MemorySwapMax=500M \
@@ -87,7 +122,14 @@ run_heavy_tests_separately() {
                 --tb=line \
                 --maxfail=1 \
                 -x \
-                -m "not memory_intensive" || echo "⚠️  $test_file でエラー（大量データテストをスキップ）"
+                -m "not memory_intensive"
+        pytest_exit_code=$?
+
+        # 結果に応じた処理
+        if [ $pytest_exit_code -ne 0 ]; then
+            echo "⚠️  $test_file でpytestがエラーを返しました (exit code: $pytest_exit_code) - 大量データテストをスキップ"
+            PYTEST_FAILED=true
+        fi
     done
 }
 
@@ -120,9 +162,21 @@ main() {
                 exit 1
             fi
             echo "🎯 単一テスト実行: $2"
+            
+            # systemd-run + pytest の実行とSTATUS変数での捕捉
             systemd-run --user --scope \
                 -p MemoryMax=1G \
-                python -m pytest "src/github_review_prompts/tests/$2" --tb=short -v
+                python -m pytest "src/github_review_prompts/tests/$2" --tb=short -v || STATUS=$?
+            STATUS=${STATUS:-$?}
+            
+            # 結果に応じた処理
+            if [ $STATUS -ne 0 ]; then
+                echo "❌ テスト '$2' が失敗しました (exit code: $STATUS)"
+                echo "   systemd-run または pytest でエラーが発生しました"
+                exit $STATUS
+            fi
+            
+            echo "✅ テスト '$2' が正常に完了しました"
             ;;
         --monitor|monitor)
             echo "📊 現在のシステムメモリ使用量:"
@@ -144,3 +198,11 @@ main() {
 
 # スクリプト実行
 main "$@"
+
+# テスト失敗の場合は非ゼロで終了
+if [ "$PYTEST_FAILED" = true ]; then
+    echo "❌ 一つ以上のテストで失敗が発生しました"
+    exit 1
+fi
+
+echo "✅ すべてのテストが正常に完了しました"

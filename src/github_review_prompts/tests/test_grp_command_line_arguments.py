@@ -6,7 +6,7 @@ grp_uvx.py（軽量版）とmain.py（フル機能版）の両方をテスト
 import pytest
 import sys
 import os
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import patch, MagicMock
 from io import StringIO
 import argparse
 from pathlib import Path

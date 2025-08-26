@@ -40,6 +40,24 @@ class FilterReason(Enum):
 class SmartCommentFilter:
     """コメントのタスク化適性を判定するフィルター"""
 
+
+    # クラスレベル定数: アクション必要な技術的指摘
+    ACTIONABLE_INDICATORS = [
+        "_⚠️ Potential issue_",
+        "_🛠️ Refactor suggestion_",
+        "_🔒 Security issue_",
+        "_⚡ Performance issue_",
+        "_📝 Committable suggestion_",
+        "_💡 Nitpick comments_",
+    ]
+
+    # クラスレベル定数: 情報提供のみ（アクション不要）
+    INFORMATIONAL_INDICATORS = [
+        "_💡 Verification agent_",
+        "_📊 Analysis chain_",
+        "_🔍 Verification agent_",
+    ]
+
     def __init__(self):
         self.logger = logging.getLogger(__name__)
 
@@ -172,22 +190,10 @@ class SmartCommentFilter:
 
         # 0. 最初に技術的指摘マーカーをチェック（除外パターンより優先）
         # アクション必要な技術的指摘
-        actionable_indicators = [
-            "_⚠️ Potential issue_",
-            "_🛠️ Refactor suggestion_",
-            "_🔒 Security issue_",
-            "_⚡ Performance issue_",
-            "_📝 Committable suggestion_",
-            "_💡 Nitpick comments_",
-        ]
 
-        # 情報提供のみ（アクション不要）
-        informational_indicators = [
-            "_💡 Verification agent_",
-            "_📊 Analysis chain_",
-            "_🔍 Verification agent_",
-        ]
-
+        # クラス定数を使用
+        actionable_indicators = self.ACTIONABLE_INDICATORS
+        informational_indicators = self.INFORMATIONAL_INDICATORS
         has_actionable_indicator = any(
             indicator in comment_body for indicator in actionable_indicators
         )
@@ -258,21 +264,10 @@ class SmartCommentFilter:
         """CodeRabbitコメントの詳細分析（厳格版）"""
 
         # アクション必要な技術的指摘
-        actionable_indicators = [
-            "_⚠️ Potential issue_",
-            "_🛠️ Refactor suggestion_",
-            "_🔒 Security issue_",
-            "_⚡ Performance issue_",
-            "_📝 Committable suggestion_",
-            "_💡 Nitpick comments_",
-        ]
 
-        # 情報提供のみ（アクション不要）
-        informational_indicators = [
-            "_💡 Verification agent_",
-            "_📊 Analysis chain_",
-            "_🔍 Verification agent_",
-        ]
+        # クラス定数を使用
+        actionable_indicators = self.ACTIONABLE_INDICATORS
+        informational_indicators = self.INFORMATIONAL_INDICATORS
 
         # アクション必要なマーカーをチェック
         if any(indicator in comment_body for indicator in actionable_indicators):

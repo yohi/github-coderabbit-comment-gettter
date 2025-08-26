@@ -278,11 +278,56 @@ python memory_monitor.py --monitor --duration 300 > test_memory_log.txt 2>&1 &
 # メモリ最適化
 export PYTHONDONTWRITEBYTECODE=1  # .pycファイル生成無効化
 export PYTHONHASHSEED=1           # ハッシュシード固定
-export MALLOC_ARENA_MAX=2         # mallocアリーナ制限
-
 # pytest設定
-export PYTEST_MAXFAIL=3           # 最大失敗数
-export PYTEST_TIMEOUT=60          # タイムアウト（秒）
+export PYTEST_ADDOPTS="--maxfail=3"  # 最大失敗数（PYTEST_ADDOPTSを使用）
+# PYTEST_TIMEOUT は pytest-timeout プラグインが必要：pip install pytest-timeout
+
+**注意事項:**
+- `PYTEST_ADDOPTS` は pytest の公式環境変数です
+- `PYTEST_MAXFAIL` や `PYTEST_TIMEOUT` は存在しません
+- タイムアウト機能には `pytest-timeout` プラグインが必要です
+# export PYTEST_ADDOPTS="--maxfail=3 --timeout=60"  # タイムアウト付き
+```
+
+
+### pytest.ini 設定ファイル例
+
+環境変数の代わりに、`pytest.ini` ファイルで設定することも可能です：
+
+```ini
+[tool:pytest]
+# 基本設定
+maxfail = 3
+addopts = 
+    --tb=short
+    --strict-markers
+    --disable-warnings
+    -v
+
+# タイムアウト設定（pytest-timeout プラグインが必要）
+# インストール: pip install pytest-timeout
+timeout = 30
+timeout_method = thread
+
+# テストディレクトリ
+testpaths = src/github_review_prompts/tests
+
+# マーカー定義
+markers =
+    slow: marks tests as slow (deselect with "-m "not slow"")
+    integration: marks tests as integration tests
+    unit: marks tests as unit tests
+    memory_intensive: marks tests that use large datasets
+```
+
+**pytest-timeout プラグインのインストール:**
+
+```bash
+# pip でインストール
+pip install pytest-timeout
+
+# uv でインストール
+uv add pytest-timeout --dev
 ```
 
 ### カスタムテスト実行

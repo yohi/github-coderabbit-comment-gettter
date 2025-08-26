@@ -6,7 +6,6 @@ grp_uvx.pyのparse_pr_url()関数とgithub_client.pyの解析機能をテスト
 import pytest
 import sys
 from pathlib import Path
-from typing import Optional, Tuple
 
 # テスト対象のインポート
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
