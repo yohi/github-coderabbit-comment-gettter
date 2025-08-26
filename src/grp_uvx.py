@@ -41,17 +41,33 @@ def get_github_token() -> str:
 
 def parse_pr_url(pr_url: str) -> Optional[Tuple[str, str, int]]:
     """プルリクエストURLを解析"""
+    if not pr_url:
+        return None
+
+    # GitHubの有効なowner/repo名のパターン（英数字、ハイフン、アンダースコア、ドットのみ）
+    # ただし、先頭と末尾にハイフンは使用不可
+    valid_name = r"[a-zA-Z0-9](?:[a-zA-Z0-9._-]*[a-zA-Z0-9])?"
+
     patterns = [
-        r"https://github\.com/([^/]+)/([^/]+)/pull/(\d+)",
-        r"github\.com/([^/]+)/([^/]+)/pull/(\d+)",
-        r"([^/]+)/([^/]+)#(\d+)",
+        rf"^https://github\.com/({valid_name})/({valid_name})/pull/([1-9]\d*)/?$",
+        rf"^github\.com/({valid_name})/({valid_name})/pull/([1-9]\d*)/?$",
+        rf"^({valid_name})/({valid_name})#([1-9]\d*)$",
     ]
 
     for pattern in patterns:
         match = re.match(pattern, pr_url)
         if match:
             owner, repo, pr_number = match.groups()
-            return owner, repo, int(pr_number)
+            # 追加の検証: owner/repoが空や不正文字でないことを確認
+            if (owner and repo and
+                not any(char in owner for char in [' ', '@', '$']) and
+                not any(char in repo for char in [' ', '@', '$'])):
+                try:
+                    pr_num = int(pr_number)
+                    if pr_num > 0:  # 明示的に0より大きいことを確認
+                        return owner, repo, pr_num
+                except ValueError:
+                    continue
 
     return None
 
@@ -221,7 +237,7 @@ def get_graphql_resolved_comments(
                         if thread["isResolved"]:
                             # 解決済みスレッドの全コメントIDを記録
                             for comment in thread["comments"]["nodes"]:
-                                if comment["databaseId"]:
+                                if comment.get("databaseId"):
                                     resolved_ids.add(comment["databaseId"])
                                     page_resolved += 1
 
@@ -266,12 +282,12 @@ def get_graphql_resolved_comments(
 def extract_review_type(body: str) -> str:
     """レビュー種類を抽出"""
     review_types = {
-        "⚠️ Potential issue": "Potential issue",
-        "🛠️ Refactor suggestion": "Refactor suggestion",
-        "💡 Nitpick comments": "Nitpick comments",
-        "📝 Committable suggestion": "Committable suggestion",
-        "🔍 Verification agent": "Verification agent",
-        "📊 Analysis chain": "Analysis chain",
+        "_⚠️ Potential issue_": "Potential issue",
+        "_🛠️ Refactor suggestion_": "Refactor suggestion",
+        "_💡 Nitpick comments_": "Nitpick comments",
+        "_📝 Committable suggestion_": "Committable suggestion",
+        "_🔍 Verification agent_": "Verification agent",
+        "_📊 Analysis chain_": "Analysis chain",
     }
 
     for pattern, review_type in review_types.items():
@@ -291,9 +307,23 @@ def extract_title_from_comment(body: str) -> str:
         if line.startswith("**") and line.endswith("**") and len(line) > 4:
             return line[2:-2]  # **を除去
 
-    # 最初の非空行を使用
+    # コードブロック内かどうかを判定
+    in_code_block = False
+
+    # 最初の非空行を使用（コードブロック外のみ）
     for line in lines:
         line = line.strip()
+
+        # コードブロックの開始・終了を検出
+        if line.startswith("```"):
+            in_code_block = not in_code_block
+            continue
+
+        # コードブロック内は無視
+        if in_code_block:
+            continue
+
+        # 有効な行を探す
         if line and not line.startswith("_") and not line.startswith("`"):
             return line[:80] + "..." if len(line) > 80 else line
 
@@ -362,13 +392,13 @@ def generate_coderabbit_curl_commands_for_comment(
         # JSONデータの準備（エスケープ処理）
         import json
 
-        data = {"body": message, "in_reply_to": comment_id}  # 特定のコメントに返信
+        data = {"body": message}  # 返信エンドポイントではbodyのみ
         data_json = json.dumps(data, ensure_ascii=False).replace('"', '\\"')
 
         curl_command = f'''# {action}の場合
 curl -X POST \\
-  "https://api.github.com/repos/{owner}/{repo}/pulls/{pr_number}/comments" \\
-  -H "Authorization: token ${GITHUB_TOKEN}" \\
+  "https://api.github.com/repos/{owner}/{repo}/pulls/{pr_number}/comments/{comment_id}/replies" \\
+  -H "Authorization: token ${{GITHUB_TOKEN}}" \\
   -H "Accept: application/vnd.github.v3+json" \\
   -H "Content-Type: application/json" \\
   -d "{data_json}"'''
@@ -638,6 +668,12 @@ def main():
 
     print(f"処理対象: {len(coderabbit_comments)} 件")
 
+    # タスクタイプ別内訳を表示
+    if review_types:
+        print("タスク内訳:")
+        for review_type, count in sorted(review_types.items()):
+            print(f"  - {review_type}: {count} 件")
+
     # プロンプト生成
     review_prompt = get_default_review_prompt(args.no_confirm, args.auto_commit)
 
@@ -656,16 +692,15 @@ def main():
     output.append("#### ❌ 対応不要（完全に不要）の場合")
     output.append("```bash")
     output.append(
-        f'curl -X POST "https://api.github.com/repos/{owner}/{repo}/pulls/{pr_number}/comments" \\\\'
+        f'curl -X POST "https://api.github.com/repos/{owner}/{repo}/pulls/{pr_number}/comments/[COMMENT_ID]/replies" \\\\'
     )
     output.append('  -H "Authorization: token ${GITHUB_TOKEN}" \\\\')
     output.append('  -H "Accept: application/vnd.github.v3+json" \\\\')
     output.append('  -H "Content-Type: application/json" \\\\')
     output.append("  -d '{")
     output.append(
-        '    "body": "@coderabbitai 対応不要：[技術的根拠を記載]。適切と判断される場合は**この特定の課題のみ**を解決済みにしてください。他の課題は変更しないでください。",'
+        '    "body": "@coderabbitai 対応不要：[技術的根拠を記載]。適切と判断される場合は**この特定の課題のみ**を解決済みにしてください。他の課題は変更しないでください。"'
     )
-    output.append('    "in_reply_to": [COMMENT_ID]')
     output.append("  }'")
     output.append("```")
     output.append("")
@@ -675,7 +710,7 @@ def main():
     )
     output.append("```bash")
     output.append(
-        f'curl -X POST "https://api.github.com/repos/{owner}/{repo}/pulls/{pr_number}/comments" \\\\'
+        f'curl -X POST "https://api.github.com/repos/{owner}/{repo}/pulls/{pr_number}/comments/[COMMENT_ID]/replies" \\\\'
     )
     output.append('  -H "Authorization: token ${GITHUB_TOKEN}" \\\\')
     output.append('  -H "Accept: application/vnd.github.v3+json" \\\\')
@@ -684,7 +719,7 @@ def main():
     output.append(
         '    "body": "@coderabbitai この指摘は妥当ですが、現在のPhase/ステップでは対応対象外です。現在: [具体的なPhase名]、対応予定: [具体的な将来Phase名]。**記憶依頼**: 以下を構造化記録し『[将来Phase名]』開始時・[技術領域]作業時に積極的に思い出してください - 指摘:[要約] 対象:[ファイル:行数] 解決方法:[実装案] 優先度:[高/中/低] 思い出し条件:[具体的なトリガー]。適切と判断される場合は**この特定の課題のみ**を解決済みにしてください。他の課題は変更しないでください。",'
     )
-    output.append('    "in_reply_to": [COMMENT_ID]')
+
     output.append("  }'")
     output.append("```")
     output.append("**ソースコード修正**: 指摘箇所に以下のTODOコメントを追加")
@@ -695,7 +730,7 @@ def main():
     output.append("#### 🤔 要確認の場合")
     output.append("```bash")
     output.append(
-        f'curl -X POST "https://api.github.com/repos/{owner}/{repo}/pulls/{pr_number}/comments" \\\\'
+        f'curl -X POST "https://api.github.com/repos/{owner}/{repo}/pulls/{pr_number}/comments/[COMMENT_ID]/replies" \\\\'
     )
     output.append('  -H "Authorization: token ${GITHUB_TOKEN}" \\\\')
     output.append('  -H "Accept: application/vnd.github.v3+json" \\\\')
@@ -704,14 +739,14 @@ def main():
     output.append(
         '    "body": "@coderabbitai [確認したい内容]について詳細説明をお願いします。",'
     )
-    output.append('    "in_reply_to": [COMMENT_ID]')
+
     output.append("  }'")
     output.append("```")
     output.append("")
     output.append("#### ⚠️ 指摘間違いの場合")
     output.append("```bash")
     output.append(
-        f'curl -X POST "https://api.github.com/repos/{owner}/{repo}/pulls/{pr_number}/comments" \\\\'
+        f'curl -X POST "https://api.github.com/repos/{owner}/{repo}/pulls/{pr_number}/comments/[COMMENT_ID]/replies" \\\\'
     )
     output.append('  -H "Authorization: token ${GITHUB_TOKEN}" \\\\')
     output.append('  -H "Accept: application/vnd.github.v3+json" \\\\')
@@ -720,7 +755,7 @@ def main():
     output.append(
         '    "body": "@coderabbitai この指摘は[具体的な理由]により間違いと判断します。[正しい技術的説明]。妥当と判断される場合は**この特定の課題のみ**を解決済みにしてください。他の課題は変更しないでください。",'
     )
-    output.append('    "in_reply_to": [COMMENT_ID]')
+
     output.append("  }'")
     output.append("```")
     output.append("")
@@ -769,11 +804,11 @@ def main():
                         # デフォルトの確認メッセージで返信
                         reply_message = f"@coderabbitai この指摘について確認中です。対応後に更新いたします。"
 
-                        # POSTリクエストのデータを準備
-                        post_data = {"body": reply_message, "in_reply_to": comment_id}
+                        # POSTリクエストのデータを準備（返信エンドポイントではbodyのみ）
+                        post_data = {"body": reply_message}
 
-                        # GitHub API経由で返信
-                        reply_url = f"https://api.github.com/repos/{owner}/{repo}/pulls/{pr_number}/comments"
+                        # GitHub API経由で返信（正しい返信エンドポイント）
+                        reply_url = f"https://api.github.com/repos/{owner}/{repo}/pulls/{pr_number}/comments/{comment_id}/replies"
                         headers = {
                             "Authorization": f'token {os.getenv("GITHUB_TOKEN") or token}',
                             "Accept": "application/vnd.github.v3+json",

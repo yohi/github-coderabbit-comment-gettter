@@ -122,10 +122,10 @@ def reply_to_comment_with_curl(
     import json
 
     # GitHub API URL
-    url = f"https://api.github.com/repos/{owner}/{repo}/pulls/{pr_number}/comments"
+    url = f"https://api.github.com/repos/{owner}/{repo}/pulls/{pr_number}/comments/{comment_id}/replies"
 
-    # 返信データ
-    reply_data = {"body": message, "in_reply_to": comment_id}
+    # 返信データ（返信エンドポイントではbodyのみ）
+    reply_data = {"body": message}
 
     # curlコマンドを構築
     curl_cmd = [
@@ -158,10 +158,13 @@ def reply_to_comment_with_curl(
             logger.error(f"Curl command failed: {result.stderr}")
             return False
 
-        # レスポンスを分解
-        output_lines = result.stdout.strip().split("\\n")
-        status_code = int(output_lines[-1])
-        response_body = "\\n".join(output_lines[:-1])
+        # レスポンスを分解（HTTPステータスコードを末尾から分離）
+        output = result.stdout.strip()
+        if "\n" in output:
+            response_body, _, status = output.rpartition("\n")
+        else:
+            response_body, status = output, ""
+        status_code = int(status) if status.isdigit() else 0
 
         if status_code == 201:
             # 成功
@@ -205,11 +208,11 @@ def handle_comment_reply(args) -> int:
     token = get_github_token()
 
     # PR URLをパース
-    try:
-        owner, repo, pr_number = parse_pr_url(args.pr_url)
-    except ValueError as e:
-        print(f"❌ エラー: {e}")
+    parsed = parse_pr_url(args.pr_url)
+    if not parsed:
+        print(f"❌ エラー: 無効なプルリクエストURLです: {args.pr_url}")
         return 1
+    owner, repo, pr_number = parsed
 
     # 返信メッセージを決定
     if args.reply_template:
@@ -379,18 +382,65 @@ def get_pr_issue_comments(
     return comments
 
 
-def get_all_pr_comments(
+def get_all_pr_comments_graphql(
     owner: str, repo: str, pr_number: int, token: str
 ) -> Tuple[List[Dict], Dict[str, int]]:
-    """プルリクエストの全コメント（レビューコメント + Issue コメント）を取得
+    """GraphQL APIを使用してプルリクエストの全コメント（Outside diff range comments含む）を取得"""
+    try:
+        from .github_client import GitHubClient
+        from .models import GitHubPRInfo
 
-    Returns:
-        Tuple[List[Dict], Dict[str, int]]: (全コメントリスト, 統計情報)
-    """
-    # レビューコメント取得
+        # GitHubClientを初期化
+        client = GitHubClient(token=token)
+        pr_info = GitHubPRInfo(
+            owner=owner,
+            repo=repo,
+            pull_number=pr_number,
+            url=f"https://github.com/{owner}/{repo}/pull/{pr_number}",
+        )
+
+        # GraphQL APIでレビューとOutside diff commentsを取得
+        all_reviews, outside_diff_comments = (
+            client.get_pr_reviews_with_outside_diff_graphql(pr_info)
+        )
+
+        # REST APIでレビューコメントも取得（互換性のため）
+        review_comments = get_pr_review_comments(owner, repo, pr_number, token)
+
+        # 全コメントを結合
+        all_comments = review_comments + all_reviews + outside_diff_comments
+
+        # 統計情報
+        stats = {
+            "review_comments": len(review_comments),
+            "graphql_reviews": len(all_reviews),
+            "outside_diff_comments": len(outside_diff_comments),
+            "total_comments": len(all_comments),
+        }
+
+        print(
+            f"✅ GraphQL API取得完了: レビューコメント {stats['review_comments']} 件, "
+            f"GraphQLレビュー {stats['graphql_reviews']} 件, "
+            f"Outside diff {stats['outside_diff_comments']} 件, "
+            f"合計 {stats['total_comments']} 件"
+        )
+
+        return all_comments, stats
+
+    except Exception as e:
+        print(f"⚠️ GraphQL API取得失敗、REST APIにフォールバック: {str(e)}")
+        # フォールバック: 既存のREST API使用
+        return get_all_pr_comments_rest(owner, repo, pr_number, token)
+
+
+def get_all_pr_comments_rest(
+    owner: str, repo: str, pr_number: int, token: str
+) -> Tuple[List[Dict], Dict[str, int]]:
+    """REST APIを使用してプルリクエストの全コメントを取得（フォールバック用）"""
+    # レビューコメント（diff range内）を取得
     review_comments = get_pr_review_comments(owner, repo, pr_number, token)
 
-    # Issue コメント取得
+    # Issue コメント（Outside diff range含む）を取得
     issue_comments = get_pr_issue_comments(owner, repo, pr_number, token)
 
     # 統計情報
@@ -404,6 +454,18 @@ def get_all_pr_comments(
     all_comments = review_comments + issue_comments
 
     return all_comments, stats
+
+
+def get_all_pr_comments(
+    owner: str, repo: str, pr_number: int, token: str
+) -> Tuple[List[Dict], Dict[str, int]]:
+    """プルリクエストの全コメント（GraphQL API優先、Outside diff range comments対応）
+
+    Returns:
+        Tuple[List[Dict], Dict[str, int]]: (全コメントリスト, 統計情報)
+    """
+    # GraphQL APIを優先使用（Outside diff range comments対応）
+    return get_all_pr_comments_graphql(owner, repo, pr_number, token)
 
 
 def get_graphql_resolved_comments(
@@ -558,12 +620,12 @@ def get_graphql_resolved_comments(
 def extract_review_type(body: str) -> str:
     """レビュー種類を抽出"""
     review_types = {
-        "⚠️ Potential issue": "Potential issue",
-        "🛠️ Refactor suggestion": "Refactor suggestion",
-        "💡 Nitpick comments": "Nitpick comments",
-        "📝 Committable suggestion": "Committable suggestion",
-        "🔍 Verification agent": "Verification agent",
-        "📊 Analysis chain": "Analysis chain",
+        "_⚠️ Potential issue_": "Potential issue",
+        "_🛠️ Refactor suggestion_": "Refactor suggestion",
+        "_💡 Nitpick comments_": "Nitpick comments",
+        "_📝 Committable suggestion_": "Committable suggestion",
+        "_🔍 Verification agent_": "Verification agent",
+        "_📊 Analysis chain_": "Analysis chain",
     }
 
     for pattern, review_type in review_types.items():
@@ -691,7 +753,7 @@ def get_default_review_prompt(
 ```
 @coderabbitai この指摘は妥当ですが、現在のPhase/ステップでは対応対象外です。現在: [具体的なPhase名]、対応予定: [具体的な将来Phase名]。**記憶依頼**: 以下を構造化記録し「[将来Phase名]」開始時・[技術領域]作業時に積極的に思い出してください - 指摘:[要約] 対象:[ファイル:行数] 解決方法:[実装案] 優先度:[高/中/低] 思い出し条件:[具体的なトリガー]。
 
-このコメントスレッドを解決済みにマークし、返信末尾に以下を追加してください：
+問題ないと判断できたら、下記フォーマットの解決済みマークをコメントの末尾に付与してください：
 
 [CR_RESOLUTION_CONFIRMED:TECHNICAL_ISSUE_RESOLVED]
 ✅ エンジニアによる技術的検証完了 - CodeRabbitによる解決済みマーク実行可能
@@ -702,7 +764,7 @@ def get_default_review_prompt(
 ```
 @coderabbitai [技術的根拠]により対応不要と判断します。
 
-このコメントスレッドを解決済みにマークし、返信末尾に以下を追加してください：
+問題ないと判断できたら、下記フォーマットの解決済みマークをコメントの末尾に付与してください：
 
 [CR_RESOLUTION_CONFIRMED:TECHNICAL_ISSUE_RESOLVED]
 ✅ エンジニアによる技術的検証完了 - CodeRabbitによる解決済みマーク実行可能
@@ -713,7 +775,7 @@ def get_default_review_prompt(
 ```
 @coderabbitai この指摘は[具体的な理由]により間違いと判断します。[正しい技術的説明]。
 
-このコメントスレッドを解決済みにマークし、返信末尾に以下を追加してください：
+問題ないと判断できたら、下記フォーマットの解決済みマークをコメントの末尾に付与してください：
 
 [CR_RESOLUTION_CONFIRMED:TECHNICAL_ISSUE_RESOLVED]
 ✅ エンジニアによる技術的検証完了 - CodeRabbitによる解決済みマーク実行可能
@@ -743,12 +805,15 @@ def get_default_review_prompt(
 プルリクエストコメントに対する返信は、以下の **curlコマンド** を使用して行ってください：
 
 ```bash
+# セキュアな方法（推奨）
+echo "Authorization: Bearer $GITHUB_TOKEN" > /tmp/github_headers
 curl -X POST \\
-  -H "Authorization: Bearer YOUR_GITHUB_TOKEN" \\
+  -H @/tmp/github_headers \\
   -H "Accept: application/vnd.github.v3+json" \\
   -H "Content-Type: application/json" \\
-  -d '{"body": "返信メッセージ", "in_reply_to": COMMENT_ID}' \\
-  https://api.github.com/repos/OWNER/REPO/pulls/PR_NUMBER/comments
+  -d '{"body": "@coderabbitai 返信メッセージ"}' \\
+  https://api.github.com/repos/OWNER/REPO/pulls/PR_NUMBER/comments/COMMENT_ID/replies
+rm /tmp/github_headers
 ```
 
 **返信すべき場面**:
@@ -761,12 +826,15 @@ curl -X POST \\
 
 **返信例**:
 ```bash
+# セキュアな方法（推奨）
+echo "Authorization: Bearer $GITHUB_TOKEN" > /tmp/github_headers
 curl -X POST \\
-  -H "Authorization: Bearer ${GITHUB_TOKEN}" \\
+  -H @/tmp/github_headers \\
   -H "Accept: application/vnd.github.v3+json" \\
   -H "Content-Type: application/json" \\
   -d '{"body": "@coderabbitai この指摘について検証しましたが、現在の実装で問題ありません。理由：[技術的根拠]", "in_reply_to": 123456789}' \\
   https://api.github.com/repos/owner/repo/pulls/42/comments
+rm /tmp/github_headers
 ```"""
 
     # 確認スキップオプションに応じたセクション追加
@@ -898,75 +966,128 @@ def run_lightweight_mode(args) -> int:
     output.append("")
     output.append("")
 
-    # curlコマンドテンプレートを先に生成
-    output.append("### 🔧 CodeRabbit返信用curlコマンド")
+    # 簡潔なバッチ返信方法を生成
+    output.append("### ⚡ 効率的な一括対応方法")
     output.append("")
-    output.append("**認証**: 環境変数 GITHUB_TOKEN を使用します（値は出力しません）")
-    output.append("")
-    output.append("#### ❌ 対応不要（完全に不要）の場合")
+    output.append(
+        "**推奨ツール**: `github-review-prompts comment-reply-cli batch-reply`"
+    )
     output.append("```bash")
+    output.append(f"# バッチファイル作成後、一括実行")
+    output.append(f"uvx --from /path/to/tool -n grp comment-reply-cli batch-reply \\\\")
+    output.append(f"  {pr_url} --replies-file replies.json")
+    output.append("```")
+    output.append("")
+    output.append("**代替方法（個別curl）**:")
+    output.append("```bash")
+    output.append(f"# 基本テンプレート (COMMENT_IDを各TODOから取得)")
     output.append(
         f'curl -X POST "https://api.github.com/repos/{owner}/{repo}/pulls/{pr_number}/comments" \\\\'
     )
     output.append('  -H "Authorization: token ${GITHUB_TOKEN}" \\\\')
     output.append('  -H "Accept: application/vnd.github.v3+json" \\\\')
-    output.append('  -H "Content-Type: application/json" \\\\')
-    output.append("  -d '{")
     output.append(
-        '    "body": "@coderabbitai 対応不要：[技術的根拠を記載]。適切と判断される場合は**この特定の課題のみ**を解決済みにしてください。他の課題は変更しないでください。",'
+        '  -d \'{"body": "@coderabbitai [対応内容]", "in_reply_to": [COMMENT_ID]}\''
     )
-    output.append('    "in_reply_to": [COMMENT_ID]')
-    output.append("  }'")
     output.append("```")
     output.append("")
-
-    # 他のcurlテンプレートも追加...
-    output.append("#### 📅 将来対応予定（このフェーズでは対応しない）の場合")
+    output.append("**📋 返信テンプレート**:")
     output.append(
-        "**重要**: curlコマンド実行と同時に、該当ソースファイルにTODOコメントを追加してください。"
+        "- ❌ **対応不要**: `@coderabbitai 対応不要: [理由]。解決済みマークしてください。`"
     )
-    output.append("```bash")
     output.append(
-        f'curl -X POST "https://api.github.com/repos/{owner}/{repo}/pulls/{pr_number}/comments" \\\\'
+        "- ⏳ **将来対応**: `@coderabbitai 将来対応予定: [Phase名]で実装。TODOコメント追加済み。`"
     )
-    output.append('  -H "Authorization: token ${GITHUB_TOKEN}" \\\\')
-    output.append('  -H "Accept: application/vnd.github.v3+json" \\\\')
-    output.append('  -H "Content-Type: application/json" \\\\')
-    output.append("  -d '{")
     output.append(
-        '    "body": "@coderabbitai この指摘は妥当ですが、現在のPhase/ステップでは対応対象外です。現在: [具体的なPhase名]、対応予定: [具体的な将来Phase名]。**記憶依頼**: 以下を構造化記録し『[将来Phase名]』開始時・[技術領域]作業時に積極的に思い出してください - 指摘:[要約] 対象:[ファイル:行数] 解決方法:[実装案] 優先度:[高/中/低] 思い出し条件:[具体的なトリガー]。適切と判断される場合は**この特定の課題のみ**を解決済みにしてください。他の課題は変更しないでください。\\n\\n[CR_RESOLUTION_CONFIRMED:TECHNICAL_ISSUE_RESOLVED]\\n✅ エンジニアによる技術的検証完了 - CodeRabbitによる解決済みマーク実行可能\\n※ このマーカーにより、次回のコメント取得時に自動的に処理対象から除外されます\\n[/CR_RESOLUTION_CONFIRMED]",'
+        "- ✅ **実施完了**: `@coderabbitai 修正完了: [変更内容]。確認してください。`"
     )
-    output.append('    "in_reply_to": [COMMENT_ID]')
-    output.append("  }'")
-    output.append("```")
-    output.append("**ソースコード修正**: 指摘箇所に以下のTODOコメントを追加")
-    output.append("```")
-    output.append("// TODO: [次フェーズで対応予定] - [YYYY-MM-DD]")
-    output.append("```")
     output.append("")
 
     output.append("## レビューコメント一覧")
     output.append("")
 
-    if not coderabbit_comments:
-        output.append("⚠️ 対象となるレビューコメントが見つかりませんでした。")
+    # スマートフィルタリングを適用（軽量版でも）
+    actionable_comments = []
+    if coderabbit_comments:
+        try:
+            # スマートフィルタリングを適用
+            from .utils.smart_comment_filter import SmartCommentFilter
+
+            smart_filter = SmartCommentFilter()
+            filter_results = smart_filter.filter_comments(coderabbit_comments)
+            actionable_comments = filter_results["actionable_comments"]
+
+            output.append(f"📊 スマートフィルタリング結果:")
+            output.append(f"- 総コメント数: {filter_results['total_comments']}件")
+            output.append(f"- 対応必要: {len(actionable_comments)}件")
+            output.append(f"- フィルタ除外: {len(filter_results['filtered_out'])}件")
+            output.append("")
+
+            # フィルタリング除外の詳細
+            if filter_results["filtered_out"]:
+                output.append(
+                    f"🤖 除外されたコメント ({len(filter_results['filtered_out'])}件):"
+                )
+                for excluded in filter_results["filtered_out"][:5]:  # 最初の5件のみ表示
+                    reason = excluded.get("reason", "その他")
+                    preview = excluded.get("body_preview", "")[:50]
+                    output.append(f"  - {reason}: {preview}...")
+                if len(filter_results["filtered_out"]) > 5:
+                    output.append(
+                        f"  - (他{len(filter_results['filtered_out']) - 5}件)"
+                    )
+                output.append("")
+
+        except Exception as e:
+            logger.warning(f"スマートフィルタリング失敗: {e}")
+            actionable_comments = coderabbit_comments
+
+    if not actionable_comments:
+        output.append("✅ 対応が必要な技術的コメントは見つかりませんでした。")
         output.append("")
+        output.append("詳細:")
         output.append(f"- 解決済みコメント: {len(resolved_ids)} 件（除外済み）")
         output.append(f"- 総コメント数: {len(comments)} 件")
+        output.append(
+            f"- フィルタ除外: {len(coderabbit_comments) - len(actionable_comments)} 件"
+        )
+        output.append("")
+        output.append("💡 フィルタ除外されたコメントは主に以下の種類です:")
+        output.append("  - 自動生成・情報提供コメント")
+        output.append("  - 進捗報告・完了報告")
+        output.append("  - 長いやり取りの中間コメント")
     else:
-        for i, comment in enumerate(coderabbit_comments, 1):
+        output.append(f"🎯 対応が必要なコメント ({len(actionable_comments)}件):")
+        output.append("")
+
+        for i, comment in enumerate(actionable_comments, 1):
             title = extract_title_from_comment(comment.get("body", ""))
             review_type = extract_review_type(comment.get("body", ""))
-            problem = extract_problem_description(comment.get("body", ""))
 
+            # 簡潔版表示
             output.append(f"### TODO #{i}: {title}")
             output.append(
                 f"**ファイル**: `{comment.get('path', 'Unknown')}` (行: {comment.get('line', 'Unknown')})"
             )
-            output.append("")
-            output.append("```")
-            output.append(comment.get("body", "").strip())
-            output.append("```")
+
+            # コメント内容は最初の200文字のみ表示（簡潔化）
+            body = comment.get("body", "").strip()
+            if len(body) > 200:
+                body_preview = body[:200] + "..."
+                output.append("")
+                output.append("**問題内容** (省略版):")
+                output.append(body_preview)
+                output.append("")
+                output.append(
+                    "**完全版確認**: 元のPRページでコメント詳細を確認してください"
+                )
+            else:
+                output.append("")
+                output.append("**問題内容**:")
+                output.append("```")
+                output.append(body)
+                output.append("```")
+
             output.append("")
 
             # 返信情報のみ表示
@@ -982,11 +1103,105 @@ def run_lightweight_mode(args) -> int:
     combined_output = "\n".join(output)
     output_file = "review_prompt_with_todos.md"
 
+    # コメント内訳分析関数
+    def analyze_comment_breakdown(comments):
+        """コメントの種類別内訳を分析"""
+        breakdown = {
+            "outside_diff": 0,
+            "potential_issue": 0,
+            "refactor_suggestion": 0,
+            "nitpick": 0,
+            "committable_suggestion": 0,
+            "verification": 0,
+            "analysis_chain": 0,
+            "other": 0,
+        }
+
+        for comment in comments:
+            body = comment.get("body", "").lower()
+
+            # outside diff の判定
+            if "outside diff" in body or "outside the diff hunk" in body:
+                breakdown["outside_diff"] += 1
+            # potential issue の判定
+            elif (
+                ("potential" in body and "issue" in body)
+                or "security" in body
+                or "bug" in body
+                or "vulnerability" in body
+            ):
+                breakdown["potential_issue"] += 1
+            # refactor suggestion の判定
+            elif (
+                "refactor" in body
+                or "improve" in body
+                or "consider" in body
+                or "suggestion" in body
+            ):
+                breakdown["refactor_suggestion"] += 1
+            # committable suggestion の判定
+            elif "committable suggestion" in body or "```suggestion" in body:
+                breakdown["committable_suggestion"] += 1
+            # nitpick の判定
+            elif (
+                "nitpick" in body or "nit:" in body or "minor" in body or "typo" in body
+            ):
+                breakdown["nitpick"] += 1
+            # verification agent の判定
+            elif "verification" in body or "verify" in body or "analysis agent" in body:
+                breakdown["verification"] += 1
+            # analysis chain の判定
+            elif "analysis chain" in body or "scripts executed" in body:
+                breakdown["analysis_chain"] += 1
+            else:
+                breakdown["other"] += 1
+
+        return breakdown
+
+    # コメント内訳の分析
+    breakdown = analyze_comment_breakdown(actionable_comments)
+
     # 統計情報とファイル情報を先に表示
     print()
     print("=" * 80)
     print("✅ レビュープロンプトとTODOリストを生成しました")
-    print(f"📄 ファイル保存: {output_file}")
+    print(f"📋 処理対象コメント: {len(actionable_comments)} 件")
+
+    # 詳細内訳の表示
+    if len(actionable_comments) > 0:
+        print("📊 内訳詳細:")
+        details = []
+        if breakdown["outside_diff"] > 0:
+            details.append(f"Outside Diff: {breakdown['outside_diff']}件")
+        if breakdown["potential_issue"] > 0:
+            details.append(f"Potential Issue: {breakdown['potential_issue']}件")
+        if breakdown["refactor_suggestion"] > 0:
+            details.append(f"Refactor Suggestion: {breakdown['refactor_suggestion']}件")
+        if breakdown["committable_suggestion"] > 0:
+            details.append(
+                f"Committable Suggestion: {breakdown['committable_suggestion']}件"
+            )
+        if breakdown["nitpick"] > 0:
+            details.append(f"Nitpick: {breakdown['nitpick']}件")
+        if breakdown["verification"] > 0:
+            details.append(f"Verification: {breakdown['verification']}件")
+        if breakdown["analysis_chain"] > 0:
+            details.append(f"Analysis Chain: {breakdown['analysis_chain']}件")
+        if breakdown["other"] > 0:
+            details.append(f"その他: {breakdown['other']}件")
+
+        # 内訳を2列で表示
+        for i in range(0, len(details), 2):
+            line_parts = details[i : i + 2]
+            print(
+                f"   {line_parts[0]}"
+                + (f"  {line_parts[1]}" if len(line_parts) > 1 else "")
+            )
+
+    if "filter_results" in locals():
+        print(
+            f"🗂️ 除外コメント: {len(filter_results['filtered_out'])} 件 (自動生成・進捗報告等)"
+        )
     print()
 
     # プロンプト用コピー範囲の明確な開始マーカー

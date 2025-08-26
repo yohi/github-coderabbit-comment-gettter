@@ -1,0 +1,131 @@
+# GitHub Review Prompts Configuration
+#
+# この設定ファイルはCodeRabbitアドバイスに基づいて最適化されています
+#
+# 環境: development
+# 作成日時: 2024-08-23T12:00:00
+
+# 基本設定
+environment: development
+debug: false
+log_level: INFO
+
+# GitHub設定
+github:
+  token: ${GITHUB_TOKEN}  # 環境変数から取得
+  repo: "username/repository"
+  api_base_url: "https://api.github.com"
+  timeout: 30
+  max_retries: 3
+  rate_limit_strategy: "adaptive"  # exponential_backoff, fixed_delay, adaptive, batch_processing
+
+# Issue テンプレート設定
+issue_templates:
+  security:
+    title_prefix: "[Security]"
+    labels: ["security", "terraform", "high-priority"]
+    assignee: "username"
+    auto_create: true
+    body_template: |
+      ## 🔒 セキュリティ問題
+
+      **ファイル**: {file_path}
+      **行番号**: {line_number}
+      **重要度**: {priority}
+
+      ### 問題の詳細
+      {comment_body}
+
+      ### 推奨対応
+      {recommended_actions}
+
+  syntax_error:
+    title_prefix: "[Syntax Error]"
+    labels: ["bug", "terraform", "urgent"]
+    assignee: "username"
+    auto_create: true
+    body_template: |
+      ## 🚨 構文エラー
+
+      **ファイル**: {file_path}
+      **行番号**: {line_number}
+
+      ### エラー内容
+      {comment_body}
+
+  improvement:
+    title_prefix: "[Improvement]"
+    labels: ["enhancement", "terraform"]
+    assignee: ""
+    auto_create: false
+    body_template: |
+      ## 💡 改善提案
+
+      **ファイル**: {file_path}
+      **行番号**: {line_number}
+
+      ### 提案内容
+      {comment_body}
+
+  nitpick:
+    title_prefix: "[Nitpick]"
+    labels: ["nitpick", "low-priority"]
+    assignee: ""
+    auto_create: false
+    body_template: |
+      ## 📝 軽微な指摘
+
+      **ファイル**: {file_path}
+      **行番号**: {line_number}
+
+      ### 指摘内容
+      {comment_body}
+
+# 処理ルール設定
+processing_rules:
+  auto_create_threshold: "medium"  # critical, high, medium, low
+  batch_size: 10
+  rate_limit_delay: 1.0
+  max_concurrent_requests: 5
+  enable_duplicate_detection: true
+  enable_security_analysis: true
+  enable_terraform_analysis: true
+
+# ストレージ設定
+storage:
+  backend: "file"  # file, sqlite, postgresql
+  connection_string: ""
+  cache_ttl: 3600
+  backup_enabled: true
+  backup_interval: 86400
+  cleanup_old_data_days: 30
+
+# 通知設定
+notifications:
+  enabled: false
+  webhook_url: ""
+  email_recipients: []
+  notification_threshold: "high"
+  include_progress_reports: true
+
+# カスタム設定
+custom:
+  # プロジェクト固有の設定をここに追加
+  project_name: "My Terraform Project"
+  team: "Infrastructure Team"
+
+# 環境固有の設定（オプション）
+environments:
+  development:
+    debug: true
+    log_level: DEBUG
+    processing_rules:
+      auto_create_threshold: "low"
+
+  production:
+    debug: false
+    log_level: WARNING
+    processing_rules:
+      auto_create_threshold: "high"
+    notifications:
+      enabled: true

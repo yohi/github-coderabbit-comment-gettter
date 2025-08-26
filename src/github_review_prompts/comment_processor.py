@@ -6,13 +6,21 @@ import re
 from typing import Dict, List, Optional, Set, Tuple, Any
 from datetime import datetime
 
-from .models import ReviewComment, AIPrompt, ProcessingStats, ProcessingError
+from .models import (
+    ReviewComment,
+    AIPrompt,
+    ProcessingStats,
+    ProcessingError,
+    OutsideDiffComment,
+)
 from .utils.parsers import (
     extract_ai_agent_prompt,
     categorize_prompt,
     determine_priority,
 )
 from .utils.validators import sanitize_content
+from .utils.outside_diff_parser import OutsideDiffParser
+from .utils.smart_comment_filter import SmartCommentFilter
 from .github_client import GitHubClient
 from .comment_thread_processor import CommentThreadProcessor
 
@@ -20,18 +28,46 @@ from .comment_thread_processor import CommentThreadProcessor
 class CommentProcessor:
     """コメント処理・フィルタリングクラス"""
 
-    # CodeRabbit解決済みマーカーのパターン
+    # CodeRabbit解決済みマーカーのパターン（新フォーマット対応）
     CR_RESOLUTION_MARKER_PATTERN = re.compile(
-        r"\[CR_RESOLUTION_CONFIRMED:TECHNICAL_ISSUE_RESOLVED\].*?✅.*?エンジニアによる技術的検証完了.*?CodeRabbitによる解決済みマーク実行可能.*?\[/CR_RESOLUTION_CONFIRMED\]",
+        r"\[CR_RESOLUTION_CONFIRMED[^\]]*\].*?✅.*?エンジニアによる技術的検証完了.*?CodeRabbitによる解決済みマーク実行可能.*?\[/CR_RESOLUTION_CONFIRMED\]",
         re.DOTALL | re.IGNORECASE,
     )
 
-    def __init__(self, github_client: GitHubClient):
+    # シンプルなマーカーパターン（フォールバック用・新フォーマット対応）
+    SIMPLE_RESOLUTION_PATTERNS = [
+        re.compile(r"\[CR_RESOLUTION_CONFIRMED[^:]*:[^]]*\].*?\[/CR_RESOLUTION_CONFIRMED\]", re.DOTALL | re.IGNORECASE),
+        re.compile(r"✅.*?エンジニアによる技術的検証完了.*?CodeRabbitによる解決済みマーク実行可能", re.IGNORECASE),
+        re.compile(r"CodeRabbitによる解決済みマーク実行可能", re.IGNORECASE),
+        re.compile(r"\[CR_RESOLUTION_CONFIRMED:TECHNICAL_ISSUE_RESOLVED\]", re.IGNORECASE),
+        re.compile(r"\[CR_RESOLUTION_CONFIRMED:FUTURE_PHASE_PLANNED\]", re.IGNORECASE),
+    ]
+
+    # 追加の解決済み判定パターン
+    ADDITIONAL_RESOLUTION_PATTERNS = [
+        re.compile(r"問題ないと判断.*?解決済みにマーク", re.DOTALL | re.IGNORECASE),
+        re.compile(r"将来対応と判断.*?解決済みにマーク", re.DOTALL | re.IGNORECASE),
+        re.compile(r"指摘が間違い.*?解決済みにマーク", re.DOTALL | re.IGNORECASE),
+    ]
+
+    def __init__(
+        self, github_client: GitHubClient, enable_smart_filtering: bool = True
+    ):
         self.github_client = github_client
         self.logger = logging.getLogger(__name__)
         self.stats = ProcessingStats()
         self.auto_resolved_comments = []  # 自動解決されたコメントのログ
         self.thread_processor = CommentThreadProcessor(github_client)
+        self.outside_diff_parser = OutsideDiffParser()
+
+        # スマートフィルタリング機能
+        self.enable_smart_filtering = enable_smart_filtering
+        if enable_smart_filtering:
+            self.smart_filter = SmartCommentFilter()
+            self.logger.info("スマートフィルタリング機能が有効です")
+        else:
+            self.smart_filter = None
+            self.logger.info("スマートフィルタリング機能が無効です")
 
     def detect_resolution_markers(self, comment_bodies: Dict[int, str]) -> Set[int]:
         """コメント本文からCodeRabbit解決済みマーカーを検出
@@ -45,14 +81,46 @@ class CommentProcessor:
         marked_comment_ids = set()
 
         for comment_id, body in comment_bodies.items():
-            if self.CR_RESOLUTION_MARKER_PATTERN.search(body):
+            # メインパターンでチェック
+            is_marked = self.CR_RESOLUTION_MARKER_PATTERN.search(body)
+
+            # メインパターンで検出できない場合はシンプルパターンでチェック
+            if not is_marked:
+                for pattern in self.SIMPLE_RESOLUTION_PATTERNS:
+                    if pattern.search(body):
+                        is_marked = True
+                        self.logger.debug(
+                            f"シンプルパターンでマーカー検出: コメントID {comment_id}"
+                        )
+                        break
+
+            # 追加パターンでチェック
+            if not is_marked:
+                for pattern in self.ADDITIONAL_RESOLUTION_PATTERNS:
+                    if pattern.search(body):
+                        is_marked = True
+                        self.logger.debug(
+                            f"追加パターンでマーカー検出: コメントID {comment_id}"
+                        )
+                        break
+
+            if is_marked:
                 marked_comment_ids.add(comment_id)
                 self.logger.info(
                     f"CodeRabbit解決済みマーカーを検出: コメントID {comment_id}"
                 )
+            else:
+                # デバッグ用: マーカーが見つからない場合のログ
+                self.logger.debug(
+                    f"解決マーカーなし: コメントID {comment_id}, コメント長: {len(body)}"
+                )
 
         if marked_comment_ids:
             self.logger.info(f"解決済みマーカー検出: {len(marked_comment_ids)} 件")
+        else:
+            self.logger.warning(
+                f"解決マーカーが見つかりませんでした。対象コメント数: {len(comment_bodies)}"
+            )
 
         return marked_comment_ids
 
@@ -66,19 +134,31 @@ class CommentProcessor:
             pr_info: プルリクエスト情報
         """
         if not marked_comment_ids:
+            self.logger.debug("自動解決対象のマーカーがありません")
+            return
+
+        if not pr_info:
+            self.logger.warning("自動解決: PR情報がありません")
             return
 
         self.logger.info(
             f"マーカー検出コメントの自動解決開始: {len(marked_comment_ids)} 件"
         )
+        self.logger.debug(
+            f"PR情報: {pr_info.get('owner')}/{pr_info.get('repo')}#{pr_info.get('pull_number')}"
+        )
+        self.logger.debug(f"対象コメントID: {sorted(marked_comment_ids)}")
 
         # GitHub APIを使ってコメントスレッドを解決済みにする
         # 注意: この機能はGraphQL APIまたは特別な権限が必要な場合があります
         resolved_count = 0
         failed_count = 0
 
-        for comment_id in marked_comment_ids:
+        for i, comment_id in enumerate(sorted(marked_comment_ids), 1):
             try:
+                self.logger.info(
+                    f"[{i}/{len(marked_comment_ids)}] コメントID {comment_id} の解決処理開始"
+                )
                 success = self._resolve_comment_thread_via_graphql(comment_id, pr_info)
                 if success:
                     resolved_count += 1
@@ -89,14 +169,14 @@ class CommentProcessor:
                             "reason": "CodeRabbit resolution marker detected",
                         }
                     )
-                    self.logger.info(f"コメントスレッド解決成功: ID {comment_id}")
+                    self.logger.info(f"[{i}/{len(marked_comment_ids)}] コメントスレッド解決成功: ID {comment_id}")
                 else:
                     failed_count += 1
-                    self.logger.warning(f"コメントスレッド解決失敗: ID {comment_id}")
+                    self.logger.warning(f"[{i}/{len(marked_comment_ids)}] コメントスレッド解決失敗: ID {comment_id}")
             except Exception as e:
                 failed_count += 1
                 self.logger.error(
-                    f"コメントスレッド解決エラー (ID {comment_id}): {str(e)}"
+                    f"[{i}/{len(marked_comment_ids)}] コメントスレッド解決エラー (ID {comment_id}): {str(e)}"
                 )
 
         self.logger.info(
@@ -180,7 +260,7 @@ class CommentProcessor:
     def _get_thread_id_for_comment(
         self, comment_id: int, pr_info: Dict[str, Any]
     ) -> Optional[str]:
-        """コメントIDからスレッドIDを取得する
+        """コメントIDからスレッドIDを取得する（ページネーション対応）
 
         Args:
             comment_id: コメントID
@@ -189,68 +269,103 @@ class CommentProcessor:
         Returns:
             スレッドID（GraphQL形式）
         """
-        query = """
-        query($owner: String!, $repo: String!, $number: Int!) {
-          repository(owner: $owner, name: $repo) {
-            pullRequest(number: $number) {
-              reviewThreads(first: 100) {
-                nodes {
-                  id
-                  comments(first: 50) {
+        # ページネーションで全スレッドを検索
+        cursor = None
+        max_pages = 10  # 無限ループ防止
+        page_count = 0
+
+        while page_count < max_pages:
+            query = """
+            query($owner: String!, $repo: String!, $number: Int!, $after: String) {
+              repository(owner: $owner, name: $repo) {
+                pullRequest(number: $number) {
+                  reviewThreads(first: 100, after: $after) {
+                    pageInfo {
+                      hasNextPage
+                      endCursor
+                    }
                     nodes {
-                      databaseId
+                      id
+                      comments(first: 100) {
+                        nodes {
+                          databaseId
+                        }
+                      }
                     }
                   }
                 }
               }
             }
-          }
-        }
-        """
+            """
 
-        variables = {
-            "owner": pr_info.get("owner"),
-            "repo": pr_info.get("repo"),
-            "number": pr_info.get("pull_number"),
-        }
+            variables = {
+                "owner": pr_info.get("owner"),
+                "repo": pr_info.get("repo"),
+                "number": pr_info.get("pull_number"),
+                "after": cursor,
+            }
 
-        graphql_headers = {
-            "Authorization": f"Bearer {os.getenv('GITHUB_TOKEN') or self.github_client.token}",
-            "Content-Type": "application/json",
-        }
+            graphql_headers = {
+                "Authorization": f"Bearer {os.getenv('GITHUB_TOKEN') or self.github_client.token}",
+                "Content-Type": "application/json",
+            }
 
-        try:
-            response = self.github_client._make_request(
-                "POST",
-                self.github_client.graphql_url,
-                json={"query": query, "variables": variables},
-                headers=graphql_headers,
-            )
+            try:
+                response = self.github_client._make_request(
+                    "POST",
+                    self.github_client.graphql_url,
+                    json={"query": query, "variables": variables},
+                    headers=graphql_headers,
+                )
 
-            data = response.json()
+                data = response.json()
 
-            if "errors" in data:
+                if "errors" in data:
+                    self.logger.warning(f"GraphQLエラー (page {page_count + 1}): {data['errors']}")
+                    return None
+
+                review_threads_data = (
+                    data.get("data", {})
+                    .get("repository", {})
+                    .get("pullRequest", {})
+                    .get("reviewThreads", {})
+                )
+
+                threads = review_threads_data.get("nodes", [])
+                page_info = review_threads_data.get("pageInfo", {})
+
+                self.logger.debug(
+                    f"GraphQLページ {page_count + 1}: {len(threads)}スレッドを検索中"
+                )
+
+                # コメントIDを検索
+                for thread in threads:
+                    comments = thread.get("comments", {}).get("nodes", [])
+                    for comment in comments:
+                        if comment.get("databaseId") == comment_id:
+                            thread_id = thread.get("id")
+                            self.logger.info(
+                                f"スレッドID検出成功: コメント{comment_id} -> {thread_id}"
+                            )
+                            return thread_id
+
+                # 次のページを検索
+                if page_info.get("hasNextPage"):
+                    cursor = page_info.get("endCursor")
+                    page_count += 1
+                    self.logger.debug(f"次のページへ: cursor={cursor}")
+                else:
+                    # 最終ページに到達
+                    break
+
+            except Exception as e:
+                self.logger.error(f"スレッドID取得エラー (page {page_count + 1}): {str(e)}")
                 return None
 
-            threads = (
-                data.get("data", {})
-                .get("repository", {})
-                .get("pullRequest", {})
-                .get("reviewThreads", {})
-                .get("nodes", [])
-            )
-
-            for thread in threads:
-                comments = thread.get("comments", {}).get("nodes", [])
-                for comment in comments:
-                    if comment.get("databaseId") == comment_id:
-                        return thread.get("id")
-
-            return None
-
-        except Exception as e:
-            self.logger.error(f"スレッドID取得エラー: {str(e)}")
-            return None
+        self.logger.warning(
+            f"スレッドIDが見つかりませんでした: コメントID {comment_id} (検索ページ数: {page_count})"
+        )
+        return None
 
     def process_comments(
         self,
@@ -269,6 +384,22 @@ class CommentProcessor:
         self.stats.total_comments = len(comments)
         self.logger.info(f"コメント処理開始: {len(comments)} 件")
 
+        # スマートフィルタリングの実行
+        if self.enable_smart_filtering and self.smart_filter:
+            self.logger.info("スマートフィルタリングを実行中...")
+            filter_results = self.smart_filter.filter_comments(comments)
+
+            # フィルタリング結果をログ出力
+            self.logger.info(self.smart_filter.get_filter_summary(filter_results))
+
+            # フィルタリング後のコメントを使用
+            comments = filter_results["actionable_comments"]
+            self.stats.filtered_comments = len(filter_results["filtered_out"])
+
+            self.logger.info(
+                f"スマートフィルタリング完了: {len(comments)} 件が対応対象"
+            )
+
         # スレッド処理が有効な場合、コメントをスレッド処理
         if enable_thread_processing:
             self.logger.info("スレッド処理を実行中...")
@@ -278,9 +409,25 @@ class CommentProcessor:
         # マーカー検出と自動解決処理
         marked_comment_ids = set()
         if auto_resolve_marked:
+            self.logger.debug(
+                f"解決マーカー検出開始: GraphQLコメント数={len(graphql_bodies)}"
+            )
             marked_comment_ids = self.detect_resolution_markers(graphql_bodies)
-            if marked_comment_ids and pr_info:
-                self._auto_resolve_marked_comments(marked_comment_ids, pr_info)
+
+            if marked_comment_ids:
+                if pr_info:
+                    self.logger.info(
+                        f"自動解決処理開始: マーカーあり={len(marked_comment_ids)}件, PR={pr_info.get('owner')}/{pr_info.get('repo')}#{pr_info.get('pull_number')}"
+                    )
+                    self._auto_resolve_marked_comments(marked_comment_ids, pr_info)
+                else:
+                    self.logger.warning(
+                        f"自動解決スキップ: PR情報なし, マーカー={len(marked_comment_ids)}件"
+                    )
+            else:
+                self.logger.debug("自動解決対象のマーカーが見つかりませんでした")
+        else:
+            self.logger.debug("自動解決処理が無効化されています")
 
         for comment in comments:
             try:
@@ -568,8 +715,9 @@ class CommentProcessor:
 
         # ファイルパターンフィルター
         if file_patterns:
+            prev_filtered = filtered_prompts
             filtered_prompts = []
-            for prompt in filtered_prompts:
+            for prompt in prev_filtered:
                 if any(
                     self._match_file_pattern(prompt.file_path, pattern)
                     for pattern in file_patterns
@@ -664,3 +812,47 @@ class CommentProcessor:
                 validation_errors.append(f"コメント {i}: ユーザー情報が無効です")
 
         return len(validation_errors) == 0, validation_errors
+
+    def process_outside_diff_comments(
+        self, comments: List[ReviewComment]
+    ) -> List[OutsideDiffComment]:
+        """範囲外コメントを検出・処理
+
+        Args:
+            comments: レビューコメントのリスト
+
+        Returns:
+            範囲外コメントのリスト
+        """
+        outside_diff_comments = []
+
+        for comment in comments:
+            # 範囲外コメントが含まれているかチェック
+            if self.outside_diff_parser.detect_outside_diff_comments(comment.body):
+                self.logger.info(f"範囲外コメントを検出: コメントID {comment.id}")
+
+                # 範囲外コメントを解析
+                parsed_comments = self.outside_diff_parser.parse_outside_diff_comments(
+                    comment.body, comment.id, comment.author
+                )
+                outside_diff_comments.extend(parsed_comments)
+
+                self.logger.info(
+                    f"解析完了: {len(parsed_comments)}件の範囲外コメントを抽出"
+                )
+
+        # 優先度順にソート
+        outside_diff_comments.sort(
+            key=lambda x: (
+                (
+                    0
+                    if x.severity.value == "caution"
+                    else 1 if x.severity.value == "warning" else 2
+                ),
+                x.file_path,
+                x.line_range,
+            )
+        )
+
+        self.logger.info(f"範囲外コメント処理完了: 合計 {len(outside_diff_comments)}件")
+        return outside_diff_comments

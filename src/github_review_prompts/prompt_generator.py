@@ -5,7 +5,8 @@ import time
 from typing import Dict, List, Optional, Any
 from datetime import datetime
 
-from .models import AIPrompt, PersonaConfig, PERSONAS
+from .models import AIPrompt, PersonaConfig, PERSONAS, OutsideDiffComment
+from .utils.outside_diff_parser import OutsideDiffParser
 from .utils.validators import validate_persona
 
 
@@ -22,6 +23,7 @@ class AIPromptGenerator:
         self.persona_config = PERSONAS[persona]
         self.github_token = github_token
         self.logger = logging.getLogger(__name__)
+        self.outside_diff_parser = OutsideDiffParser()
 
         self.logger.info(f"AIプロンプト生成初期化: ペルソナ '{persona}'")
 
@@ -50,10 +52,12 @@ class AIPromptGenerator:
         # フッターと拒否理由の指示
         footer = self._generate_footer()
 
-        # curlコマンドセクションを生成
-        curl_commands_section = "\n".join(
-            self._generate_curl_commands_section(self.github_token)
-        )
+        # curlコマンドセクションを生成（簡潔版）
+        # PR情報からowner, repo, pr_numberを抽出
+        owner = pr_info.get("owner") if pr_info else None
+        repo = pr_info.get("repo") if pr_info else None
+        pr_number = pr_info.get("number") if pr_info else None
+        curl_commands_section = self._generate_simple_curl_section(owner, repo, pr_number)
 
         # 全体を組み合わせ
         output_parts = [
@@ -124,37 +128,18 @@ class AIPromptGenerator:
             ]
         )
 
-        # オプション固有の指示を追加
+        # オプション固有の指示を追加（簡潔版）
         if no_confirm or auto_commit:
-            header_lines.append("## ⚡ 作業モード設定")
+            header_lines.append("## ⚡ 実行モード")
 
             if no_confirm:
-                header_lines.append(
-                    "**確認スキップモード**: 各コメント処理後の確認は行わず、連続して処理を進めてください。"
-                )
+                header_lines.append("- **確認スキップ**: 連続処理モード")
 
             if auto_commit:
                 header_lines.extend(
                     [
-                        "**自動コミット・プッシュモード**: すべてのレビューコメント対応完了後、以下を自動実行してください：",
-                        "",
-                        "### Git操作手順",
-                        "1. **ステージング**: 変更したファイルのみを個別に `git add <ファイル名>` でステージング",
-                        '2. **コミット**: `git commit -m "CodeRabbitレビューコメント対応 - [PR番号]"` でコミット',
-                        "3. **プッシュ**: `git push` でリモートリポジトリに反映",
-                        "",
-                        "⚠️ **注意**: `git add .` は使用しないでください。関係のないファイルまでコミットされる危険があります。",
-                        "",
-                        "### コミットメッセージ例",
-                        "```",
-                        "CodeRabbitレビューコメント対応 - #123",
-                        "",
-                        "- 認証モジュールの潜在的セキュリティ問題を修正",
-                        "- データベース接続処理をリファクタリング",
-                        "- 提案に従いエラーハンドリングを更新",
-                        "```",
-                        "",
-                        "**注意**: Git操作実行前に作業内容を簡潔にサマリーしてください。",
+                        "- **自動コミット**: 完了後に自動でgit add/commit/push実行",
+                        "- コミットメッセージ: `CodeRabbitレビューコメント対応 - #[PR番号]`",
                     ]
                 )
 
@@ -342,193 +327,60 @@ class AIPromptGenerator:
 
         # 返信情報（curlコマンドでの返信を指示）
         return f"""**コメントID**: {comment_id}
-**APIエンドポイント**: `POST /repos/{pr_owner}/{pr_repo}/pulls/{pr_number}/comments`
-**返信方法**: 以下のcurlコマンドで `in_reply_to: {comment_id}` を指定して返信
+**APIエンドポイント**: `POST /repos/{pr_owner}/{pr_repo}/pulls/{pr_number}/comments/{comment_id}/replies`
+**返信方法**: 以下のcurlコマンドで@coderabbitaiメンションして返信
 ```bash
 curl -X POST \\
   -H "Authorization: Bearer YOUR_GITHUB_TOKEN" \\
   -H "Accept: application/vnd.github.v3+json" \\
   -H "Content-Type: application/json" \\
-  -d '{{"body": "返信メッセージ", "in_reply_to": {comment_id}}}' \\
-  https://api.github.com/repos/{pr_owner}/{pr_repo}/pulls/{pr_number}/comments
+  -d '{{"body": "@coderabbitai 返信メッセージ"}}' \\
+  https://api.github.com/repos/{pr_owner}/{pr_repo}/pulls/{pr_number}/comments/{comment_id}/replies
 ```"""
 
-    def _generate_curl_commands_section(self, github_token: str) -> List[str]:
-        """CodeRabbit返信用curlコマンドセクションを生成"""
-        return [
-            "### 🔧 CodeRabbit返信用curlコマンド",
-            "",
-            "**認証**: 環境変数 GITHUB_TOKEN を使用します（値は出力しません）",
-            "",
-            "#### ❌ 対応不要（完全に不要）の場合",
-            "```bash",
-            'curl -X POST "https://api.github.com/repos/[OWNER]/[REPO]/pulls/[PR_NUMBER]/comments" \\\\',
-            '  -H "Authorization: token ${GITHUB_TOKEN}" \\\\',
-            '  -H "Accept: application/vnd.github.v3+json" \\\\',
-            '  -H "Content-Type: application/json" \\\\',
-            "  -d '{",
-            '    "body": "@coderabbitai 対応不要：[技術的根拠を記載]。\\n\\nこのコメントスレッドを解決済みにマークし、返信末尾に以下を追加してください：\\n\\n[CR_RESOLUTION_CONFIRMED:TECHNICAL_ISSUE_RESOLVED]\\n✅ エンジニアによる技術的検証完了 - CodeRabbitによる解決済みマーク実行可能\\n[/CR_RESOLUTION_CONFIRMED]",',
-            '    "in_reply_to": [COMMENT_ID]',
-            "  }'",
-            "```",
-            "",
-            "#### 📅 将来対応予定（このフェーズでは対応しない）の場合",
-            "**重要**: curlコマンド実行と同時に、該当ソースファイルにTODOコメントを追加してください。",
-            "```bash",
-            'curl -X POST "https://api.github.com/repos/[OWNER]/[REPO]/pulls/[PR_NUMBER]/comments" \\\\',
-            '  -H "Authorization: token ${GITHUB_TOKEN}" \\\\',
-            '  -H "Accept: application/vnd.github.v3+json" \\\\',
-            '  -H "Content-Type: application/json" \\\\',
-            "  -d '{",
-            '    "body": "@coderabbitai この指摘は妥当ですが、現在のPhase/ステップでは対応対象外です。現在: [具体的なPhase名]、対応予定: [具体的な将来Phase名]。**記憶依頼**: 以下を構造化記録し『[将来Phase名]』開始時・[技術領域]作業時に積極的に思い出してください - 指摘:[要約] 対象:[ファイル:行数] 解決方法:[実装案] 優先度:[高/中/低] 思い出し条件:[具体的なトリガー]。\\n\\nこのコメントスレッドを解決済みにマークし、返信末尾に以下を追加してください：\\n\\n[CR_RESOLUTION_CONFIRMED:TECHNICAL_ISSUE_RESOLVED]\\n✅ エンジニアによる技術的検証完了 - CodeRabbitによる解決済みマーク実行可能\\n[/CR_RESOLUTION_CONFIRMED]",',
-            '    "in_reply_to": [COMMENT_ID]',
-            "  }'",
-            "```",
-            "**ソースコード修正**: 指摘箇所に以下のTODOコメントを追加",
-            "```",
-            "// TODO: [次フェーズで対応予定] - [YYYY-MM-DD]",
-            "```",
-            "",
-            "#### 🤔 要確認の場合",
-            "```bash",
-            'curl -X POST "https://api.github.com/repos/[OWNER]/[REPO]/pulls/[PR_NUMBER]/comments" \\\\',
-            '  -H "Authorization: token ${GITHUB_TOKEN}" \\\\',
-            '  -H "Accept: application/vnd.github.v3+json" \\\\',
-            '  -H "Content-Type: application/json" \\\\',
-            "  -d '{",
-            '    "body": "@coderabbitai [確認したい内容]について詳細説明をお願いします。",',
-            '    "in_reply_to": [COMMENT_ID]',
-            "  }'",
-            "```",
-            "",
-            "#### ⚠️ 指摘間違いの場合",
-            "```bash",
-            'curl -X POST "https://api.github.com/repos/[OWNER]/[REPO]/pulls/[PR_NUMBER]/comments" \\\\',
-            '  -H "Authorization: token ${GITHUB_TOKEN}" \\\\',
-            '  -H "Accept: application/vnd.github.v3+json" \\\\',
-            '  -H "Content-Type: application/json" \\\\',
-            "  -d '{",
-            '    "body": "@coderabbitai この指摘は[具体的な理由]により間違いと判断します。[正しい技術的説明]。\\n\\nこのコメントスレッドを解決済みにマークし、返信末尾に以下を追加してください：\\n\\n[CR_RESOLUTION_CONFIRMED:TECHNICAL_ISSUE_RESOLVED]\\n✅ エンジニアによる技術的検証完了 - CodeRabbitによる解決済みマーク実行可能\\n[/CR_RESOLUTION_CONFIRMED]",',
-            '    "in_reply_to": [COMMENT_ID]',
-            "  }'",
-            "```",
-            "",
-            "**使用方法**:",
-            "1. 各TODO項目の「コメントID」を確認",
-            "2. 上記テンプレートの `[OWNER]`, `[REPO]`, `[PR_NUMBER]`, `[COMMENT_ID]` を実際の値に置換",
-            "3. `[技術的根拠を記載]` 部分に具体的な理由を記入",
-            "4. **📅 将来対応予定の場合**: 記憶依頼の各項目（Phase名、技術領域、指摘要約、対象、解決方法、優先度、トリガー条件）を具体的に記入",
-            "5. **📅 将来対応予定の場合のみ**: 該当ソースファイルにTODOコメントを追加",
-            "6. curlコマンドを実行",
-            "",
-            "**技術的根拠の例**:",
-            "- `型安全性の観点から現在の実装が適切`",
-            "- `パフォーマンス要件を満たしており変更不要`",
-            "- `セキュリティリスクが存在しないため対応不要`",
-            "- `コードの可読性を損なう可能性があるため現状維持`",
-            "",
-            "**重要**: 修正完了時の@coderabbitaiへの報告は不要です。上記コマンドは対応しない場合のみ使用してください。課題の解決判断はCodeRabbitが行いますが、**一括での課題解決は絶対に行わないでください**。",
-            "",
-            "## 🚨 返信漏れ防止チェックリスト",
-            "**重要**: 以下の対応では必ずcurl返信を実行してください（忘れがちですが必須です）：",
-            "",
-            "✅ **返信必須の対応**：",
-            "- ❌ 対応不要 → curl返信でCodeRabbitに通知",
-            "- ⏳ 将来対応 → curl返信 + ソースコードにTODOコメント追加",
-            "- ⚠️ 指摘間違い → curl返信でCodeRabbitに反論・説明",
-            "- 🤔 要確認 → curl返信でCodeRabbitに質問",
-            "",
-            "✅ **返信不要の対応**：",
-            "- ✅ 修正実施 → コード修正のみ（curl返信不要）",
-            "",
-            "**処理完了前の最終確認**：",
-            "「対応不要/将来対応/指摘間違い/要確認と判断したTODO項目について、すべてcurl返信を実行しましたか？」",
-            "",
-            "**TODOコメント例**:",
-            "```javascript",
-            "// TODO: パフォーマンス最適化検討 - 2025-01-15",
-            "function processData(data) {",
-            "  // 現在のO(n)実装で十分",
-            "  return data.map(item => transform(item));",
-            "}",
-            "```",
-            "```python",
-            "# TODO: 非同期処理対応 - v2.0で実装予定 - 2025-01-15",
-            "def process_data():",
-            "    # 現在は同期処理、将来非同期化予定",
-            "    return calculate_result()",
-            "```",
-            "",
-        ]
+    def _generate_simple_curl_section(self, owner: str = None, repo: str = None, pr_number: int = None) -> str:
+        """簡潔なcurlコマンドセクションを生成"""
+        if owner and repo and pr_number:
+            url_template = f"https://api.github.com/repos/{owner}/{repo}/pulls/{pr_number}/comments/COMMENT_ID/replies"
+            replacement_note = "**注意**: COMMENT_IDを実際のコメントIDに置換してください"
+        else:
+            url_template = "https://api.github.com/repos/OWNER/REPO/pulls/PR_NUMBER/comments/COMMENT_ID/replies"
+            replacement_note = "**注意**: OWNER/REPO/PR_NUMBER/COMMENT_IDを実際の値に置換してください"
+
+        return f"""## 📤 返信方法
+
+### 基本テンプレート
+```bash
+echo "Authorization: Bearer $GITHUB_TOKEN" > /tmp/github_headers
+curl -X POST -H @/tmp/github_headers -H "Content-Type: application/json" \\
+  -d '{{"body": "@coderabbitai 返信メッセージ"}}' \\
+  "{url_template}"
+rm /tmp/github_headers
+```
+
+### 返信パターン
+- **❌ 対応不要**: `@coderabbitai 技術的制約により対応不要。解決済みマーク依頼。`
+- **⏳ 将来対応**: `@coderabbitai 将来対応予定。記憶依頼。解決済みマーク依頼。`
+- **🤔 要確認**: `@coderabbitai 詳細説明を依頼。`
+
+{replacement_note}"""
 
     def _generate_footer(self) -> str:
-        """フッター部分を生成"""
+        """フッター部分を生成（簡潔版）"""
         return f"""
-## 作業手順
-1. コメントの技術的妥当性を評価
-2. 対応要否を判断し、理由を明記
-3. **対応する場合**: 具体的な修正を実施（@coderabbitaiへの完了報告は不要）
-4. **対応しない場合**: GitHub APIを使って@coderabbitaiに技術的根拠を含む返信コメントを作成
-5. **重要**: 各対応完了後は必ず該当コメントの解決済み指示を含める
+## 🎯 作業フロー
+1. 各コメントの技術的妥当性を評価
+2. 対応判断：✅実施 / ❌不要 / ⏳将来 / 🤔確認
+3. **✅実施**: コード修正のみ（返信不要）
+4. **❌不要/⏳将来/🤔確認**: curlで@coderabbitaiに返信
 
-**CodeRabbit返信パターン**:
-- ✅ **対応完了**: 修正のみ実施、@coderabbitaiへの完了報告は不要
-- ❌ **対応不要（完全に不要）**: CodeRabbitに返信のみ
-  - 返信:
-    ```
-    @coderabbitai 対応不要：[技術的根拠]。適切と判断される場合は**この特定の課題のみ**を解決済みにしてください。他の課題は変更しないでください。
-
-    [CR_RESOLUTION_CONFIRMED:TECHNICAL_ISSUE_RESOLVED]
-    ✅ エンジニアによる技術的検証完了 - CodeRabbitによる解決済みマーク実行可能
-    ※ このマーカーにより、次回のコメント取得時に自動的に処理対象から除外されます
-    [/CR_RESOLUTION_CONFIRMED]
-    ```
-- 📅 **将来対応予定**: 以下の2つのアクションを実行
-  1. CodeRabbitに返信:
-     ```
-     @coderabbitai 将来対応予定：このフェーズでは対応しませんが、[次のフェーズ/バージョン]で対応予定です。
-
-     [CR_RESOLUTION_CONFIRMED:TECHNICAL_ISSUE_RESOLVED]
-     ✅ エンジニアによる技術的検証完了 - CodeRabbitによる解決済みマーク実行可能
-     ※ このマーカーにより、次回のコメント取得時に自動的に処理対象から除外されます
-     [/CR_RESOLUTION_CONFIRMED]
-     ```
-  2. **ソースコードにTODOコメント追加**: 該当ファイルの指摘箇所に `// TODO: [次フェーズで対応予定] - [日付]` を追加
-- 🤔 **要確認**: `@coderabbitai 確認要望：[確認内容]。詳細説明をお願いします。`
-- ⚠️ **指摘間違い**: CodeRabbitに返信のみ
-  - 返信:
-    ```
-    @coderabbitai この指摘は[具体的な理由]により間違いと判断します。[正しい技術的説明]。
-
-    [CR_RESOLUTION_CONFIRMED:TECHNICAL_ISSUE_RESOLVED]
-    ✅ エンジニアによる技術的検証完了 - CodeRabbitによる解決済みマーク実行可能
-    ※ このマーカーにより、次回のコメント取得時に自動的に処理対象から除外されます
-    [/CR_RESOLUTION_CONFIRMED]
-    ```
-
-**重要**: 修正完了時の@coderabbitaiへの報告は不要です。課題の解決判断はCodeRabbitに委ねます。**一括での課題解決は禁止**です。
-
-**対応不要な指摘について**:
-対応不要と判断した指摘については、以下の形式で理由を記載してください:
-
-```
-対応不要: [指摘の要約]
-理由: [具体的な理由]
-```
-
-**例**:
-```
-対応不要: "In backend-auth/server.js around line 44"
-理由: 開発・ローカル環境ではMemoryStoreで十分。本番環境では別途Redis/MongoDBを使用予定。
-
-対応不要: "In backend-auth/server.js around lines 127 to 163"
-理由: シンプルな開発用認証サーバーでは、HTMLのインライン埋め込みは許容範囲。
-テンプレートエンジンの導入は現段階では複雑性を増すだけ。
-```
+## ⚠️ 重要ルール
+- 修正完了時は返信不要
+- 対応不要時は必ず返信
+- 一括解決禁止
 
 ---
-
-**生成情報**: {time.strftime('%Y-%m-%d %H:%M:%S')} | ペルソナ: {self.persona_config.role}
+**生成**: {time.strftime('%Y-%m-%d %H:%M:%S')} | {self.persona_config.role}
 """
 
     def _sort_prompts_for_output(self, prompts: List[AIPrompt]) -> List[AIPrompt]:
@@ -602,3 +454,115 @@ curl -X POST \\
 **特別な指示**:
 {chr(10).join(f'- {instruction}' for instruction in config.instructions)}
 """
+
+    def generate_outside_diff_section(
+        self, outside_diff_comments: List[OutsideDiffComment]
+    ) -> str:
+        """範囲外コメント用の特別セクションを生成
+
+        Args:
+            outside_diff_comments: 範囲外コメントのリスト
+
+        Returns:
+            範囲外コメント用のプロンプトセクション
+        """
+        if not outside_diff_comments:
+            return ""
+
+        # 優先度別に分類
+        categorized = self.outside_diff_parser.categorize_by_priority(
+            outside_diff_comments
+        )
+        priority_order = self.outside_diff_parser.get_priority_order()
+
+        section = """
+## 🚨 範囲外重要コメント（プラットフォーム制限により別途対応）
+
+**⚠️ 重要**: これらのコメントはGitHubのプラットフォーム制限により、
+diffビューでインライン表示されていませんが、対応が必要です。
+ファイル全体を確認して該当箇所を特定してください。
+
+### 🔒 セキュリティファースト対応手順
+1. **ファイル特定**: 指定されたファイルパスを確認
+2. **行範囲確認**: 指定された行範囲を直接確認
+3. **コード理解**: 現在の実装を把握
+4. **修正適用**: 提案されたdiffを慎重に適用
+5. **影響範囲検証**: 関連する他の箇所への影響を確認
+
+"""
+
+        todo_counter = 1
+
+        for priority in priority_order:
+            if priority not in categorized:
+                continue
+
+            comments = categorized[priority]
+            section += f"\n### {priority}対応項目\n\n"
+
+            for comment in comments:
+                section += self._format_outside_diff_comment(comment, todo_counter)
+                todo_counter += 1
+
+        return section
+
+    def _format_outside_diff_comment(
+        self, comment: OutsideDiffComment, todo_number: int
+    ) -> str:
+        """範囲外コメントを整形
+
+        Args:
+            comment: 範囲外コメント
+            todo_number: TODO番号
+
+        Returns:
+            整形されたコメント文字列
+        """
+        # カテゴリアイコン/名称
+        category_icons = {"actionable": "🚨", "duplicate": "♻️", "nitpick": "🧹"}
+        category_names = {
+            "actionable": "要対応",
+            "duplicate": "重複",
+            "nitpick": "指摘（軽微）",
+        }
+
+        # 重要度アイコン/名称
+        severity_icons = {"caution": "🔴", "warning": "🟡", "info": "🟢"}
+        severity_names = {"caution": "重大", "warning": "注意", "info": "情報"}
+
+        category_value = getattr(comment.category, "value", "actionable")
+        severity_value = getattr(comment.severity, "value", "warning")
+        category_icon = category_icons.get(category_value, "📝")
+        severity_icon = severity_icons.get(severity_value, "ℹ️")
+
+        formatted = f"""
+### TODO #{todo_number}: {comment.title}
+**ID**: {comment.id}
+**ファイル**: `{comment.file_path}`
+**行範囲**: {comment.line_range}
+**カテゴリ**: {category_icon} {category_names.get(category_value, category_value)} ({severity_icon} {severity_names.get(severity_value, severity_value)})
+**制限理由**: diff範囲外のためインライン表示不可
+
+**問題**: {comment.title}
+**詳細**: {comment.description}
+"""
+
+        if comment.suggested_fix:
+            formatted += f"""
+**🔧 推奨修正**:
+```diff
+{comment.suggested_fix}
+```
+"""
+
+        formatted += f"""
+**📍 対応方法**:
+1. ファイル `{comment.file_path}` を開く
+2. 行 {comment.line_range} を確認
+3. 上記の修正案を慎重に適用
+4. 関連する他の箇所への影響を検証
+
+---
+"""
+
+        return formatted

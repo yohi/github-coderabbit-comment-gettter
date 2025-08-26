@@ -135,6 +135,11 @@ class CLIInterface:
             "--include-resolved", action="store_true", help="解決済みコメントも含める"
         )
         filter_group.add_argument(
+            "--disable-smart-filter",
+            action="store_true",
+            help="スマートフィルタリングを無効にする（全コメントを処理）",
+        )
+        filter_group.add_argument(
             "--categories",
             nargs="+",
             choices=["security", "performance", "style", "logic", "general"],
@@ -373,15 +378,18 @@ class CLIInterface:
             self.logger.info("全コメント取得開始...")
             all_comments, comment_stats = github_client.get_all_pr_comments(pr_info)
 
-            # GraphQL APIで解決済みコメント検出
-            self.logger.info("解決済みコメント検出開始...")
+            # ハイブリッドアプローチで解決済みコメント検出
+            self.logger.info("ハイブリッドアプローチでコメント検出開始...")
             resolved_ids, graphql_bodies = (
-                github_client.get_resolved_comments_via_graphql(pr_info)
+                github_client.get_comments_via_hybrid_approach(pr_info)
             )
 
             # コメント処理
             self.logger.info("コメント処理開始...")
-            processor = CommentProcessor(github_client)
+            enable_smart_filtering = not args.disable_smart_filter
+            processor = CommentProcessor(
+                github_client, enable_smart_filtering=enable_smart_filtering
+            )
             prompts, stats = processor.process_comments(
                 all_comments,
                 resolved_ids,
@@ -759,12 +767,12 @@ git checkout -b {head_branch} fork/{head_branch}"""
     def _extract_review_type(self, comment_body: str) -> str:
         """コメント本体からレビュー種類を抽出"""
         review_types = {
-            "⚠️ Potential issue": "Potential issue",
-            "🛠️ Refactor suggestion": "Refactor suggestion",
-            "💡 Nitpick comments": "Nitpick comments",
-            "📝 Committable suggestion": "Committable suggestion",
-            "🔍 Verification agent": "Verification agent",
-            "📊 Analysis chain": "Analysis chain",
+            "_⚠️ Potential issue_": "Potential issue",
+            "_🛠️ Refactor suggestion_": "Refactor suggestion",
+            "_💡 Nitpick comments_": "Nitpick comments",
+            "_📝 Committable suggestion_": "Committable suggestion",
+            "_🔍 Verification agent_": "Verification agent",
+            "_📊 Analysis chain_": "Analysis chain",
         }
 
         for pattern, review_type in review_types.items():

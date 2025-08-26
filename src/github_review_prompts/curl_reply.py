@@ -23,15 +23,16 @@ class CurlReplyError(Exception):
 class GitHubCurlReply:
     """CurlでGitHub APIを使用したコメント返信クラス"""
 
-    def __init__(self, token: str):
+    def __init__(self, token: str, api_url: str = "https://api.github.com"):
         """
         初期化
 
         Args:
             token: GitHub APIトークン
+            api_url: GitHub API URL (default: https://api.github.com, for Enterprise)
         """
         self.token = token
-        self.base_url = "https://api.github.com"
+        self.base_url = api_url
 
         # curlの基本オプション
         self.curl_base_args = [
@@ -90,9 +91,9 @@ class GitHubCurlReply:
                 raise CurlReplyError(f"Curl command failed: {result.stderr}")
 
             # レスポンスを分解
-            output_lines = result.stdout.strip().split("\\n")
+            output_lines = result.stdout.strip().split("\n")
             status_code = int(output_lines[-1])
-            response_body = "\\n".join(output_lines[:-1])
+            response_body = "\n".join(output_lines[:-1])
 
             # JSONレスポンスをパース
             try:
@@ -225,11 +226,11 @@ class GitHubCurlReply:
         # PR番号を抽出
         pr_number = pr_url.split("/")[-1]
 
-        # 返信コメント作成のAPIエンドポイント
-        url = f"{self.base_url}/repos/{owner}/{repo}/pulls/{pr_number}/comments"
+        # 返信コメント作成のAPIエンドポイント（正しい返信エンドポイント）
+        url = f"{self.base_url}/repos/{owner}/{repo}/pulls/{pr_number}/comments/{comment_id}/replies"
 
-        # 返信データ
-        reply_data = {"body": reply_text, "in_reply_to": comment_id}
+        # 返信データ（返信エンドポイントではbodyのみ）
+        reply_data = {"body": reply_text}
 
         try:
             response, status_code = self._run_curl("POST", url, reply_data)

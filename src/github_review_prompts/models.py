@@ -3,8 +3,75 @@
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Set
+from enum import Enum
 
 from pydantic import BaseModel, Field, ConfigDict
+
+
+class OutsideDiffCommentCategory(Enum):
+    """範囲外コメントのカテゴリ"""
+
+    ACTIONABLE = "actionable"
+    DUPLICATE = "duplicate"
+    NITPICK = "nitpick"
+
+
+class OutsideDiffCommentSeverity(Enum):
+    """範囲外コメントの重要度"""
+
+    CAUTION = "caution"
+    WARNING = "warning"
+    INFO = "info"
+
+
+class ResolutionMethod(Enum):
+    """解決方法の種類"""
+
+    MANUAL = "manual"
+    AUTOMATED = "automated"
+    SKIPPED = "skipped"
+    DUPLICATE = "duplicate"
+
+
+@dataclass
+class OutsideDiffComment:
+    """範囲外コメント（diff範囲外）のデータクラス"""
+
+    id: int
+    body: str
+    file_path: str
+    line_range: str  # "201-241" or "185-200"
+    category: OutsideDiffCommentCategory
+    severity: OutsideDiffCommentSeverity
+    title: str
+    description: str
+    suggested_fix: Optional[str] = None
+    author: str = ""
+    created_at: str = ""
+    platform_limitation: bool = True  # 常にTrue（範囲外のため）
+    context: Dict[str, Any] = None
+
+    # Phase 2: 詳細情報フィールド
+    file_details: Optional[Dict[str, Any]] = None
+    line_details: Optional[Dict[str, Any]] = None
+    suggestion_details: Optional[Dict[str, Any]] = None
+
+    # 解決状態管理フィールド
+    is_resolved: bool = False
+    resolution_method: Optional[ResolutionMethod] = None
+    resolved_at: Optional[str] = None
+    resolved_by: Optional[str] = None
+    resolution_notes: Optional[str] = None
+
+    def __post_init__(self) -> None:
+        if self.context is None:
+            self.context = {}
+        if self.file_details is None:
+            self.file_details = {}
+        if self.line_details is None:
+            self.line_details = {}
+        if self.suggestion_details is None:
+            self.suggestion_details = {}
 
 
 @dataclass
@@ -103,6 +170,9 @@ class ProcessingStats(BaseModel):
     )
     prompts_extracted: int = Field(
         default=0, ge=0, description="抽出されたプロンプト数"
+    )
+    filtered_comments: int = Field(
+        default=0, ge=0, description="スマートフィルタで除外されたコメント数"
     )
     processing_time: float = Field(default=0.0, ge=0.0, description="処理時間（秒）")
     api_calls: int = Field(default=0, ge=0, description="API呼び出し数")
