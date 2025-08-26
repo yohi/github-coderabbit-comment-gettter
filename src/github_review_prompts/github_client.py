@@ -142,7 +142,12 @@ class GitHubClient:
     def _make_graphql_request(
         self, query: str, variables: Dict[str, Any]
     ) -> requests.Response:
-        """GraphQLリクエストの実行"""
+        """GraphQLリクエストの実行
+        
+        注意: このメソッドはセッションの既定ヘッダー（Authorization: token ...）を使用します。
+        GitHub GraphQL APIは Bearer 認証を推奨するため、将来的にはすべてのGraphQL呼び出しで
+        明示的に "Authorization: Bearer ..." ヘッダーを使用するよう統一することを推奨します。
+        """
         url = "https://api.github.com/graphql"
         payload = {"query": query, "variables": variables}
         return self._make_request("POST", url, json=payload)
@@ -1404,7 +1409,16 @@ class GitHubClient:
 
             variables = {"threadId": thread_id}
 
-            response = self._make_graphql_request(mutation, variables)
+            graphql_headers = {
+                "Authorization": f"Bearer {os.getenv('GITHUB_TOKEN') or self.token}",
+                "Content-Type": "application/json",
+            }
+            response = self._make_request(
+                "POST",
+                "https://api.github.com/graphql",
+                json={"query": mutation, "variables": variables},
+                headers=graphql_headers,
+            )
             data = response.json()
 
             if "errors" in data:

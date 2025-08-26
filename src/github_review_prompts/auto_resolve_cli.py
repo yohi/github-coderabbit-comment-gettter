@@ -29,8 +29,9 @@ def get_github_token() -> Optional[str]:
         print("export GITHUB_TOKEN=your_token_here を実行してください")
         return None
 
-    if not validate_github_token(token):
-        print("エラー: 無効なGitHubトークンです")
+    is_valid, error_message = validate_github_token(token)
+    if not is_valid:
+        print(f"エラー: 無効なGitHubトークンです - {error_message}")
         return None
 
     return token
@@ -167,6 +168,12 @@ def main() -> int:
         # GitHubトークン取得
         token = args.token or get_github_token()
         if not token:
+            return 1
+
+        # トークン検証（--token引数の場合も含む）
+        is_valid, error_message = validate_github_token(token)
+        if not is_valid:
+            logger.error(f"無効なGitHubトークンです: {error_message}")
             return 1
 
         # 処理実行

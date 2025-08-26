@@ -45,8 +45,9 @@ class AutoResolveProcessor:
         self.logger = logging.getLogger(__name__)
 
         # GitHubトークンの検証
-        if not validate_github_token(github_token):
-            raise ValueError("無効なGitHubトークンです")
+        is_valid, error_msg = validate_github_token(github_token)
+        if not is_valid:
+            raise ValueError(f"無効なGitHubトークンです: {error_msg or '不明なエラー'}")
 
         self.github_client = GitHubClient(github_token)
         self.logger.info("AutoResolveProcessor初期化完了")

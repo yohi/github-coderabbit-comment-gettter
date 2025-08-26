@@ -23,15 +23,16 @@ class CurlReplyError(Exception):
 class GitHubCurlReply:
     """CurlでGitHub APIを使用したコメント返信クラス"""
 
-    def __init__(self, token: str):
+    def __init__(self, token: str, api_url: str = "https://api.github.com"):
         """
         初期化
 
         Args:
             token: GitHub APIトークン
+            api_url: GitHub API URL (default: https://api.github.com, for Enterprise)
         """
         self.token = token
-        self.base_url = "https://api.github.com"
+        self.base_url = api_url
 
         # curlの基本オプション
         self.curl_base_args = [
