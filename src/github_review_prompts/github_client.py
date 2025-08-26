@@ -1114,8 +1114,8 @@ class GitHubClient:
             "body": reply_body,
         }
 
-        # 正しい返信エンドポイント: /comments/{comment_id}/replies
-        url = f"{self.base_url}/repos/{pr_info.owner}/{pr_info.repo}/pulls/{pr_info.pull_number}/comments/{comment_id}/replies"
+        # 正しい返信エンドポイント: /repos/{owner}/{repo}/pulls/comments/{comment_id}/replies
+        url = f"{self.base_url}/repos/{pr_info.owner}/{pr_info.repo}/pulls/comments/{comment_id}/replies"
 
         try:
             self.logger.info(f"コメント {comment_id} に返信中...")
@@ -1261,7 +1261,7 @@ class GitHubClient:
             if not original_comment:
                 raise APIError(f"コメント ID {comment_id} が見つかりません")
 
-            url = f"{self.base_url}/repos/{pr_info.owner}/{pr_info.repo}/pulls/{pr_info.pull_number}/comments/{comment_id}/replies"
+            url = f"{self.base_url}/repos/{pr_info.owner}/{pr_info.repo}/pulls/comments/{comment_id}/replies"
             # GitHub API仕様: 返信エンドポイントではbodyのみ
             data = {
                 "body": reply_body,
