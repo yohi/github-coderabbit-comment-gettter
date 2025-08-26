@@ -7,16 +7,14 @@ import pytest
 import json
 import sys
 import os
-from unittest.mock import Mock, patch, MagicMock
-from io import StringIO
+from unittest.mock import Mock, patch
 from pathlib import Path
-from datetime import datetime
 
 # テスト対象のインポート
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 import grp_uvx
 from github_review_prompts.github_client import GitHubClient
-from github_review_prompts.models import AuthenticationError, RateLimitError, APIError
+from github_review_prompts.models import AuthenticationError
 
 
 class TestGitHubAPIIntegration:
