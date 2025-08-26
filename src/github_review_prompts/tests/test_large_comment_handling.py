@@ -220,6 +220,8 @@ class TestLargeCommentHandling:
         if "security" in prompt.lower():
             assert "セキュリティ" in prompt or "security" in prompt
 
+    @pytest.mark.slow
+    @pytest.mark.memory_intensive
     def test_performance_with_large_dataset(
         self, prompt_engine, large_comment_set, pr_info_large
     ):

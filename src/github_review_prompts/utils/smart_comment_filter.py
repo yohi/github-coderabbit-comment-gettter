@@ -32,12 +32,31 @@ class FilterReason(Enum):
     SHORT_COMMENT = "短文・簡易コメント"
     RESOLVED_DISCUSSION = "解決済み議論"
     INFORMATIONAL_ONLY = "情報提供のみ"
+    INFORMATIONAL = "純粋な情報提供"
     TECHNICAL_ISSUE = "技術的指摘・修正提案"
     NEEDS_REVIEW = "要検討コメント"
 
 
 class SmartCommentFilter:
     """コメントのタスク化適性を判定するフィルター"""
+
+
+    # クラスレベル定数: アクション必要な技術的指摘
+    ACTIONABLE_INDICATORS = [
+        "_⚠️ Potential issue_",
+        "_🛠️ Refactor suggestion_",
+        "_🔒 Security issue_",
+        "_⚡ Performance issue_",
+        "_📝 Committable suggestion_",
+        "_💡 Nitpick comments_",
+    ]
+
+    # クラスレベル定数: 情報提供のみ（アクション不要）
+    INFORMATIONAL_INDICATORS = [
+        "_💡 Verification agent_",
+        "_📊 Analysis chain_",
+        "_🔍 Verification agent_",
+    ]
 
     def __init__(self):
         self.logger = logging.getLogger(__name__)
@@ -170,28 +189,29 @@ class SmartCommentFilter:
         self.logger.debug(f"コメント分析開始: ID={comment_id}, Author={author}")
 
         # 0. 最初に技術的指摘マーカーをチェック（除外パターンより優先）
-        technical_indicators = [
-            "_⚠️ Potential issue_",
-            "_🛠️ Refactor suggestion_",
-            "_💡 Verification agent_",
-            "_🔒 Security issue_",
-            "_⚡ Performance issue_",
-            "_📝 Committable suggestion_",
-            "_💡 Nitpick comments_",
-            "_📊 Analysis chain_",
-            "_🔍 Verification agent_",
-        ]
+        # アクション必要な技術的指摘
 
-        has_technical_indicator = any(
-            indicator in comment_body for indicator in technical_indicators
+        # クラス定数を使用
+        actionable_indicators = self.ACTIONABLE_INDICATORS
+        informational_indicators = self.INFORMATIONAL_INDICATORS
+        has_actionable_indicator = any(
+            indicator in comment_body for indicator in actionable_indicators
         )
-        if has_technical_indicator:
+        has_informational_indicator = any(
+            indicator in comment_body for indicator in informational_indicators
+        )
+
+        if has_actionable_indicator or has_informational_indicator:
             self.logger.debug(f"技術的指摘マーカー検出 - 除外パターンをスキップ")
             # CodeRabbitコメントなら詳細分析、そうでなければactionable扱い
             if author in ["coderabbitai[bot]", "coderabbitai"]:
                 return self._analyze_coderabbit_comment(comment_body)
             else:
-                return True, FilterReason.TECHNICAL_ISSUE, CommentType.ACTIONABLE
+                # CodeRabbit以外でアクション必要マーカーがある場合のみタスク化
+                if has_actionable_indicator:
+                    return True, FilterReason.TECHNICAL_ISSUE, CommentType.ACTIONABLE
+                else:
+                    return False, FilterReason.INFORMATIONAL, CommentType.INFORMATIONAL
 
         # 1. 解決済みマーカーチェック（技術的指摘がない場合のみ）
         for marker in self.resolved_markers:
@@ -243,38 +263,41 @@ class SmartCommentFilter:
     ) -> Tuple[bool, FilterReason, CommentType]:
         """CodeRabbitコメントの詳細分析（厳格版）"""
 
-        # 明確な技術的指摘タイプのみタスク化
-        technical_indicators = [
-            "_⚠️ Potential issue_",
-            "_🛠️ Refactor suggestion_",
-            "_💡 Verification agent_",
-            "_🔒 Security issue_",
-            "_⚡ Performance issue_",
-            "_📝 Committable suggestion_",
-            "_💡 Nitpick comments_",
-            "_📊 Analysis chain_",
-            "_🔍 Verification agent_",
-        ]
+        # アクション必要な技術的指摘
 
-        if any(indicator in comment_body for indicator in technical_indicators):
-            # Verification agentの検証スクリプトのみの場合は除外
-            # しかし、実際の問題指摘や修正提案があるVerification agentは含める
-            if (
-                "_💡 Verification agent_" in comment_body
-                and (
-                    "検証スクリプト" in comment_body
-                    or "rg -nP" in comment_body
-                    or "#!/bin/bash" in comment_body
-                )
-                and len(re.sub(r"```.*?```", "", comment_body, flags=re.DOTALL).strip())
-                < 100
-            ):
-                self.logger.debug("検証スクリプトのみのVerification agent - 除外")
-                return False, FilterReason.AUTO_GENERATED, CommentType.AUTO_GENERATED
+        # クラス定数を使用
+        actionable_indicators = self.ACTIONABLE_INDICATORS
+        informational_indicators = self.INFORMATIONAL_INDICATORS
 
-            # 技術的指摘マーカーがある場合はactionable
-            self.logger.debug(f"技術的指摘マーカー検出 - タスク化")
+        # アクション必要なマーカーをチェック
+        if any(indicator in comment_body for indicator in actionable_indicators):
+            self.logger.debug(f"アクション必要な技術的指摘マーカー検出 - タスク化")
             return True, FilterReason.TECHNICAL_ISSUE, CommentType.ACTIONABLE
+
+        # 情報提供のみのマーカーをチェック
+        if any(indicator in comment_body for indicator in informational_indicators):
+            comment_lower = comment_body.lower()
+
+            # 否定文・完了報告パターンを先に除外
+            negative_patterns = [
+                "no issues found", "no problems found", "no errors found",
+                "completed", "verified", "confirmed", "passed",
+                "問題なし", "エラーなし", "完了", "確認済", "検証済"
+            ]
+
+            has_negative_pattern = any(pattern in comment_lower for pattern in negative_patterns)
+
+            # 情報提供系でも、具体的な問題指摘や修正提案が含まれている場合はアクション必要
+            # ただし、否定文・完了報告の場合は除外
+            if not has_negative_pattern and any(keyword in comment_lower for keyword in [
+                "vulnerability", "issue", "problem", "error", "bug", "fix", "修正", "問題", "エラー", "バグ",
+                "should", "must", "need", "recommend", "suggest", "提案", "推奨", "必要"
+            ]):
+                self.logger.debug(f"情報提供マーカーだが具体的な修正要求を含む - タスク化")
+                return True, FilterReason.TECHNICAL_ISSUE, CommentType.ACTIONABLE
+            else:
+                self.logger.debug(f"純粋な情報提供マーカー検出 - 除外")
+                return False, FilterReason.INFORMATIONAL, CommentType.INFORMATIONAL
 
         # コードブロックや修正提案があるコメントをactionableとする
         code_indicators = [
@@ -416,6 +439,7 @@ class SmartCommentFilter:
                 "informational": 0,
                 "resolved": 0,
                 "short_comment": 0,
+                "discussion": 0,
             },
         }
 
@@ -449,6 +473,8 @@ class SmartCommentFilter:
                     results["statistics"]["informational"] += 1
                 elif comment_type == CommentType.RESOLVED:
                     results["statistics"]["resolved"] += 1
+                elif comment_type == CommentType.DISCUSSION:
+                    results["statistics"]["discussion"] += 1
 
                 if reason == FilterReason.SHORT_COMMENT:
                     results["statistics"]["short_comment"] += 1

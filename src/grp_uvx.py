@@ -41,17 +41,33 @@ def get_github_token() -> str:
 
 def parse_pr_url(pr_url: str) -> Optional[Tuple[str, str, int]]:
     """プルリクエストURLを解析"""
+    if not pr_url:
+        return None
+
+    # GitHubの有効なowner/repo名のパターン（英数字、ハイフン、アンダースコア、ドットのみ）
+    # ただし、先頭と末尾にハイフンは使用不可
+    valid_name = r"[a-zA-Z0-9](?:[a-zA-Z0-9._-]*[a-zA-Z0-9])?"
+
     patterns = [
-        r"https://github\.com/([^/]+)/([^/]+)/pull/(\d+)",
-        r"github\.com/([^/]+)/([^/]+)/pull/(\d+)",
-        r"([^/]+)/([^/]+)#(\d+)",
+        rf"^https://github\.com/({valid_name})/({valid_name})/pull/([1-9]\d*)/?$",
+        rf"^github\.com/({valid_name})/({valid_name})/pull/([1-9]\d*)/?$",
+        rf"^({valid_name})/({valid_name})#([1-9]\d*)$",
     ]
 
     for pattern in patterns:
         match = re.match(pattern, pr_url)
         if match:
             owner, repo, pr_number = match.groups()
-            return owner, repo, int(pr_number)
+            # 追加の検証: owner/repoが空や不正文字でないことを確認
+            if (owner and repo and
+                not any(char in owner for char in [' ', '@', '$']) and
+                not any(char in repo for char in [' ', '@', '$'])):
+                try:
+                    pr_num = int(pr_number)
+                    if pr_num > 0:  # 明示的に0より大きいことを確認
+                        return owner, repo, pr_num
+                except ValueError:
+                    continue
 
     return None
 
@@ -221,7 +237,7 @@ def get_graphql_resolved_comments(
                         if thread["isResolved"]:
                             # 解決済みスレッドの全コメントIDを記録
                             for comment in thread["comments"]["nodes"]:
-                                if comment["databaseId"]:
+                                if comment.get("databaseId"):
                                     resolved_ids.add(comment["databaseId"])
                                     page_resolved += 1
 
@@ -291,9 +307,23 @@ def extract_title_from_comment(body: str) -> str:
         if line.startswith("**") and line.endswith("**") and len(line) > 4:
             return line[2:-2]  # **を除去
 
-    # 最初の非空行を使用
+    # コードブロック内かどうかを判定
+    in_code_block = False
+
+    # 最初の非空行を使用（コードブロック外のみ）
     for line in lines:
         line = line.strip()
+
+        # コードブロックの開始・終了を検出
+        if line.startswith("```"):
+            in_code_block = not in_code_block
+            continue
+
+        # コードブロック内は無視
+        if in_code_block:
+            continue
+
+        # 有効な行を探す
         if line and not line.startswith("_") and not line.startswith("`"):
             return line[:80] + "..." if len(line) > 80 else line
 
@@ -368,7 +398,7 @@ def generate_coderabbit_curl_commands_for_comment(
         curl_command = f'''# {action}の場合
 curl -X POST \\
   "https://api.github.com/repos/{owner}/{repo}/pulls/{pr_number}/comments/{comment_id}/replies" \\
-  -H "Authorization: token ${GITHUB_TOKEN}" \\
+  -H "Authorization: token ${{GITHUB_TOKEN}}" \\
   -H "Accept: application/vnd.github.v3+json" \\
   -H "Content-Type: application/json" \\
   -d "{data_json}"'''

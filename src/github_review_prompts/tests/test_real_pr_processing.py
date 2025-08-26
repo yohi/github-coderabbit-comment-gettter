@@ -224,6 +224,7 @@ class TestRealPRProcessing:
         # 優先度マーカーの存在
         assert "🔴" in prompt or "🟡" in prompt or "🟢" in prompt
 
+    @pytest.mark.slow
     def test_performance_with_realistic_dataset(self, prompt_engine, pr12_similar_comments, pr12_info):
         """リアルデータセットでのパフォーマンステスト"""
         import time
