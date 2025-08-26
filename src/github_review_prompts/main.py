@@ -12,9 +12,22 @@ import sys
 from pathlib import Path
 from typing import Dict, List, Optional, Any
 
-# 既存モジュールのインポート
-if __name__ == "__main__":
-    # 直接実行時は相対インポートを回避
+# 動的インポートで相対・絶対インポートの問題を解決
+try:
+    # 相対インポートを試行
+    from .core.prompt_engine import UnifiedPromptEngine
+    from .config import ConfigManager
+    from .github_client import GitHubClient
+    from .comment_processor import CommentProcessor
+    from .output_formatter import OutputFormatter
+    from .models import APIError, AuthenticationError, RateLimitError, PERSONAS
+    from .utils.validators import (
+        validate_pr_url,
+        validate_persona,
+        validate_output_format,
+    )
+except ImportError:
+    # 絶対インポートで回避
     sys.path.insert(0, str(Path(__file__).parent))
     from core.prompt_engine import UnifiedPromptEngine
     from config import ConfigManager
@@ -23,19 +36,6 @@ if __name__ == "__main__":
     from output_formatter import OutputFormatter
     from models import APIError, AuthenticationError, RateLimitError, PERSONAS
     from utils.validators import (
-        validate_pr_url,
-        validate_persona,
-        validate_output_format,
-    )
-else:
-    # モジュールとして実行時
-    from .core.prompt_engine import UnifiedPromptEngine
-    from .config import ConfigManager
-    from .github_client import GitHubClient
-    from .comment_processor import CommentProcessor
-    from .output_formatter import OutputFormatter
-    from .models import APIError, AuthenticationError, RateLimitError, PERSONAS
-    from .utils.validators import (
         validate_pr_url,
         validate_persona,
         validate_output_format,
@@ -370,6 +370,11 @@ class UnifiedCLI:
                 args.reply_message, args.reply_template, None
             )
 
+            # curl_reply.py の機能を使用（動的インポート）
+            try:
+                from .curl_reply import GitHubCurlReply
+            except ImportError:
+                from curl_reply import GitHubCurlReply
 
             curl_reply = GitHubCurlReply(token, args.api_url)
             result = curl_reply.reply_to_comment(args.pr_url, args.reply_to, message)
