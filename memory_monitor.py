@@ -52,9 +52,20 @@ def monitor_pytest_memory(duration=300, interval=5):
         for proc in psutil.process_iter(['pid', 'name', 'memory_info', 'cmdline']):
             try:
                 # pytestプロセスを特定
-                if ('python' in proc.info['name'].lower() and 
-                    proc.info['cmdline'] and 
-                    any('pytest' in arg for arg in proc.info['cmdline'])):
+                proc_name = proc.info.get('name', '').lower() if proc.info.get('name') else ''
+                cmdline = proc.info.get('cmdline') or []
+                
+                # pytestプロセスの判定条件を改善
+                is_pytest_process = False
+                
+                # 1. プロセス名に"pytest"が含まれる場合（直接実行）
+                if 'pytest' in proc_name:
+                    is_pytest_process = True
+                # 2. プロセス名に"python"が含まれ、コマンドライン引数に"pytest"がある場合
+                elif 'python' in proc_name and cmdline:
+                    is_pytest_process = any('pytest' in str(arg) for arg in cmdline if arg is not None)
+                
+                if is_pytest_process:
                     
                     pytest_found = True
                     memory_mb = proc.info['memory_info'].rss / 1024 / 1024
@@ -116,10 +127,20 @@ def show_current_memory_status():
     pytest_processes = []
     for proc in psutil.process_iter(['pid', 'name', 'memory_info', 'cmdline']):
         try:
-            if ('python' in proc.info['name'].lower() and 
-                proc.info['cmdline'] and 
-                any('pytest' in arg for arg in proc.info['cmdline'])):
-                
+            # pytestプロセスの判定条件を改善（show_current_memory_status）
+            proc_name = proc.info.get('name', '').lower() if proc.info.get('name') else ''
+            cmdline = proc.info.get('cmdline') or []
+            
+            is_pytest_process = False
+            
+            # 1. プロセス名に"pytest"が含まれる場合（直接実行）
+            if 'pytest' in proc_name:
+                is_pytest_process = True
+            # 2. プロセス名に"python"が含まれ、コマンドライン引数に"pytest"がある場合
+            elif 'python' in proc_name and cmdline:
+                is_pytest_process = any('pytest' in str(arg) for arg in cmdline if arg is not None)
+            
+            if is_pytest_process:
                 memory_mb = proc.info['memory_info'].rss / 1024 / 1024
                 pytest_processes.append((proc.info['pid'], memory_mb))
         except (psutil.NoSuchProcess, psutil.AccessDenied):

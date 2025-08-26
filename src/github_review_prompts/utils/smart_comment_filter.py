@@ -439,6 +439,7 @@ class SmartCommentFilter:
                 "informational": 0,
                 "resolved": 0,
                 "short_comment": 0,
+                "discussion": 0,
             },
         }
 
@@ -472,6 +473,8 @@ class SmartCommentFilter:
                     results["statistics"]["informational"] += 1
                 elif comment_type == CommentType.RESOLVED:
                     results["statistics"]["resolved"] += 1
+                elif comment_type == CommentType.DISCUSSION:
+                    results["statistics"]["discussion"] += 1
 
                 if reason == FilterReason.SHORT_COMMENT:
                     results["statistics"]["short_comment"] += 1
